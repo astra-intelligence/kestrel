@@ -21,14 +21,7 @@ import { sweep } from "../src/send/sweep";
 import { guardD1 } from "./support/d1_guard";
 import { addresses, dueSend, resetDatabase, seedConfirmed, tick } from "./support/fixtures";
 import { allowErrorLogs } from "./support/log";
-import { ResendLikeProvider } from "./support/resend_like";
-
-/** SES-shaped: one recipient a request and no idempotency key. */
-class SesLikeProvider extends ResendLikeProvider {
-  override readonly maxBatch: number = 1;
-  override readonly idempotentRetry: boolean = false;
-  override readonly idempotencyWindowMs: number | undefined = undefined;
-}
+import { NoKeyProvider, ResendLikeProvider, SesLikeProvider } from "./support/resend_like";
 
 /** The test env with its D1 held to the 100-bind cap and counted. */
 function guarded() {
@@ -211,9 +204,7 @@ describe("a retryable answer to a handed-off batch", () => {
     await tick();
 
     // The operator moves the deployment to a provider that can't dedupe a re-send.
-    const plain = new (class extends ResendLikeProvider {
-      override readonly idempotentRetry: boolean = false;
-    })();
+    const plain = new NoKeyProvider();
     vi.mocked(providers.getProvider).mockReturnValue(plain);
     await tick();
 
@@ -231,10 +222,7 @@ describe("a retryable answer to a handed-off batch", () => {
     const emails = addresses(4);
     await seedConfirmed(emails);
     const send = await dueSend();
-    const ses = new (class extends ResendLikeProvider {
-      override readonly maxBatch: number = 1;
-      override readonly idempotentRetry: boolean = false;
-    })();
+    const ses = new SesLikeProvider();
     vi.mocked(providers.getProvider).mockReturnValue(ses);
 
     ses.loseAnswers = 1;
@@ -296,9 +284,10 @@ describe("lease ownership", () => {
     expect(await sends.openDeliveryCount(env.DB, send.id)).toBe(2);
     expect((await posts.getPost(env.DB, send.post_id))!.status).toBe("scheduled");
 
-    // The successor still owns the send and finishes it.
+    // The successor still owns the send: a third run stays out while its lease is live, and
+    // it can still renew that lease to carry on.
     const result = await runSend(env, send.id);
-    expect(result.leased).toBe(false); // its lease is live, so a third run stays out
+    expect(result.leased).toBe(false);
     expect(await sends.renewLease(env.DB, send.id, successor!, now + LEASE_TTL_MS)).toBe(true);
   });
 
@@ -466,7 +455,6 @@ describe("a one-recipient provider's groups", () => {
   });
 
   it("starts requests no faster than the provider's rate", async () => {
-    vi.useRealTimers();
     const paced = new (class extends SesLikeProvider {
       readonly maxRequestRate = 50;
       readonly starts: number[] = [];
@@ -628,21 +616,20 @@ describe("the tick's clock", () => {
   });
 
   it("keeps one pace and one deadline across every send in the tick", async () => {
-    vi.useRealTimers();
     await seedConfirmed(addresses(30));
     const a = await dueSend();
     const b = await dueSend();
     const budget = new Budget(1000);
-    // 10 a second in a one-second window: at most eleven starts in all, fewer than A's
-    // thirty recipients, so A runs until the window closes and leaves B nothing to start.
-    const window = new SendWindow(10, 1000);
+    // 10 a second in a 300 ms window: at most four starts in all, fewer than A's thirty
+    // recipients, so A runs until the window closes and leaves B nothing to start.
+    const window = new SendWindow(10, 300);
 
     await runSend(env, a.id, budget, window);
     const afterA = ses.requests;
     await runSend(env, b.id, budget, window);
 
     expect(afterA).toBeGreaterThan(0);
-    expect(afterA).toBeLessThanOrEqual(11);
+    expect(afterA).toBeLessThanOrEqual(4);
     expect(ses.requests).toBe(afterA);
     expect(window.startsLeft()).toBe(0);
   });

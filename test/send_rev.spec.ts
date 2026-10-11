@@ -7,22 +7,14 @@ import * as sends from "../src/db/sends";
 import { clearFakeOutbox, failFakeSendBatch } from "../src/providers/fake";
 import { runSend } from "../src/send/loop";
 import { applyDeliveryEvents } from "../src/services/webhook_events";
-import { adminAuth } from "./support/auth";
-import { frozenSend, resetDatabase, seedConfirmed } from "./support/fixtures";
+import { frozenSend, resetDatabase, seedConfirmed, tpl } from "./support/fixtures";
+import { AUTH, base, JSON_AUTH, readJson } from "./support/http";
 
 // Every change a reader could see of a send moves its `rev` along one app-wide sequence,
 // and a list read hands back a cursor at that sequence (SPEC §8), so a client can later
 // ask what changed since and miss nothing, whichever client made the change. A lease
 // renewal is not such a change. List rows carry the same phase, conditions, and actions as the
 // send's `GET /api/sends/:id`.
-
-const AUTH = await adminAuth();
-const JSON_AUTH = { ...AUTH, "content-type": "application/json" };
-const base = "https://kestrel.test";
-const readJson = async (r: Response): Promise<any> => r.json();
-
-const tpl = (marker: string) =>
-  `<div>{{ .Post.Body }}<p>${marker} · {{ .Publication.Name }}</p><a href="{{ .Email.UnsubscribeURL }}">Unsubscribe</a></div>`;
 
 async function rev(id: string): Promise<number> {
   const row = await sends.getSend(env.DB, id);
@@ -32,13 +24,9 @@ async function rev(id: string): Promise<number> {
   return row.rev;
 }
 
-/** The sequence now, read the way the list reads it. */
-async function seq(): Promise<number> {
-  const row = await env.DB.prepare(
-    "SELECT MAX(COALESCE((SELECT MAX(rev) FROM sends), 0), COALESCE((SELECT MAX(rev) FROM send_tombstones), 0)) AS value",
-  ).first<{ value: number }>();
-  return row!.value;
-}
+/** The sequence now, through the app's own reader of it, so a change to its formula is
+ *  checked here rather than a copy of the old one. */
+const seq = (): Promise<number> => sends.currentSendSeq(env.DB);
 
 async function listSends(query = ""): Promise<any> {
   const res = await SELF.fetch(`${base}/api/sends${query}`, { headers: AUTH });
@@ -117,7 +105,6 @@ describe("a send's rev", () => {
   });
 
   it("moves when a send completes", async () => {
-    await seedConfirmed("a@example.com");
     const send = await frozenSend(Date.now() - 1000);
     const lease = await sends.acquireLease(env.DB, send.id, Date.now(), 60_000);
     const before = await rev(send.id);
@@ -129,7 +116,6 @@ describe("a send's rev", () => {
   });
 
   it("does not move on a lease renewal, but does when the lease is taken or released", async () => {
-    await seedConfirmed("a@example.com");
     const send = await frozenSend(Date.now() - 1000);
     const now = Date.now();
     const before = await rev(send.id);

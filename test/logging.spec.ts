@@ -14,7 +14,8 @@ import { applyDeliveryEvents } from "../src/services/webhook_events";
 import { toNextTick } from "./support/clock";
 import { dueSend, frozenSend, resetDatabase, seedConfirmed } from "./support/fixtures";
 import { allowErrorLogs, type LoggedLine, logged } from "./support/log";
-import { ResendLikeProvider } from "./support/resend_like";
+import { NoKeyProvider, ResendLikeProvider } from "./support/resend_like";
+import { fetchWith } from "./support/worker_env";
 
 // The structured log (SPEC §12): every line one JSON object, a send's lifecycle in order
 // under its sendId, the lines of a tick or a request under one run, and never a
@@ -22,12 +23,6 @@ import { ResendLikeProvider } from "./support/resend_like";
 
 const AUDIENCE = ["ada@example.com", "grace@example.com", "linus@example.org"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/** A provider with no idempotency key, as SES is: a request lost in flight is ambiguous. */
-class NoKeyProvider extends ResendLikeProvider {
-  override readonly idempotentRetry: boolean = false;
-  override readonly idempotencyWindowMs: number | undefined = undefined;
-}
 
 let spies: MockInstance[] = [];
 
@@ -52,29 +47,10 @@ function expectNoAddress(): void {
   }
 }
 
-/** The Worker's own fetch handler, waiting for the work it leaves to `waitUntil`. */
-async function workerFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const ctx = createExecutionContext();
-  const res = await worker.fetch(
-    new Request(`https://kestrel.test${path}`, init) as Request<
-      unknown,
-      IncomingRequestCfProperties
-    >,
-    env,
-    ctx,
-  );
-  await waitOnExecutionContext(ctx);
-  return res;
-}
-
 beforeEach(async () => {
   await resetDatabase();
   clearFakeOutbox();
-  spies = [
-    vi.spyOn(console, "log").mockImplementation(() => {}),
-    vi.spyOn(console, "warn").mockImplementation(() => {}),
-    vi.spyOn(console, "error").mockImplementation(() => {}),
-  ];
+  spies = [vi.spyOn(console, "log"), vi.spyOn(console, "warn"), vi.spyOn(console, "error")];
 });
 
 afterEach(() => {
@@ -312,7 +288,7 @@ describe("the entry points group a tick's or a request's lines under one run", (
     provider.refuse = "ada@example.com: the account is suspended";
     vi.spyOn(providers, "getProvider").mockReturnValue(provider);
 
-    await workerFetch("/subscribe", {
+    await fetchWith({}, "/subscribe", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-ray": "8c0ffee-LHR" },
       body: JSON.stringify({ email: "ada@example.com" }),
@@ -330,7 +306,7 @@ describe("the entry points group a tick's or a request's lines under one run", (
   });
 
   it("a request with no cf-ray gets a run of its own", async () => {
-    await workerFetch("/webhooks/resend", { method: "POST", body: "{}" });
+    await fetchWith({}, "/webhooks/resend", { method: "POST", body: "{}" });
 
     expect(lines()).toEqual([
       expect.objectContaining({
