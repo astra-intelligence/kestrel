@@ -41,7 +41,7 @@ Your instance's repository holds its configuration, its database migrations, and
     npm run dev
     ```
 
-    Open http://localhost:8787/dashboard/ to see the editor. To fill it with demo content, run `npm run seed` in a second terminal, and `npm run reset` to empty it again. Press <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop the server.
+    Open http://localhost:8787/dashboard/ to see the editor. To fill it with demo content, run `npm run seed` in a second terminal in the same folder, and `npm run reset` to empty it again. Press <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop the server.
 
 ## 2. Sign in to Cloudflare
 
