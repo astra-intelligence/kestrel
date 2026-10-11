@@ -22,6 +22,7 @@ import { sweep } from "../src/send/sweep";
 import { adminAuth } from "./support/auth";
 import { has } from "./support/conditions";
 import { RESEND_DEPLOY, SES_DEPLOY } from "./support/deploy";
+import { resetDatabase } from "./support/fixtures";
 import { allowErrorLogs, logged } from "./support/log";
 
 // The local send simulation behind the provider seam (SPEC §10): list sends only, a profile
@@ -76,18 +77,13 @@ async function seedAccepted(sendId: string, n: number, ageMs: number): Promise<v
 }
 
 beforeEach(async () => {
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM deliveries"),
-    env.DB.prepare("DELETE FROM notifications"),
-    env.DB.prepare("DELETE FROM sends"),
-    env.DB.prepare("DELETE FROM images"),
-    env.DB.prepare("DELETE FROM post_revisions"),
-    env.DB.prepare("DELETE FROM posts"),
-    env.DB.prepare("DELETE FROM suppressions"),
-    env.DB.prepare("DELETE FROM subscribers"),
-  ]);
+  await resetDatabase();
   clearFakeOutbox();
   resetSimulation();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /** This suite's env with some vars overridden, as a dev server's own `.dev.vars` would set them. */
@@ -110,8 +106,9 @@ async function fetchWith(
   return res;
 }
 
-/** `n` confirmed subscribers, `reader0@birds.example` up. */
-async function seedConfirmed(n: number): Promise<string[]> {
+/** `n` confirmed readers, `reader0@birds.example` up, with index-based ids and tokens
+ *  (`sub-0`, `uns-0`) that this spec's links name. */
+async function seedReaders(n: number): Promise<string[]> {
   const now = Date.now();
   const emails = Array.from({ length: n }, (_, i) => `reader${i}@birds.example`);
   await env.DB.batch(
@@ -124,8 +121,8 @@ async function seedConfirmed(n: number): Promise<string[]> {
   return emails;
 }
 
-/** A post frozen onto a send that is already due, as the sweep finds one at its fire time. */
-async function dueSend(e: AppEnv, subject: string): Promise<string> {
+/** A due send frozen under `e`'s config (its own vars), and its id. */
+async function dueSendUnder(e: AppEnv, subject: string): Promise<string> {
   const { post } = await posts.createPost(
     e.DB,
     { subject, markdown: `# ${subject}\n\nbody` },
@@ -349,8 +346,8 @@ describe("the SES profile reaches what an SES failure leads to", { timeout: 60_0
     ];
     const vars = { SIMULATE_SENDS: "ses", SUBREQUEST_BUDGET: "10000" };
     const e = withVars(vars);
-    const emails = await seedConfirmed(30);
-    const sendId = await dueSend(e, "Kestrels");
+    const emails = await seedReaders(30);
+    const sendId = await dueSendUnder(e, "Kestrels");
     const progress = async () =>
       (await readJson(await fetchWith(vars, `/api/sends/${sendId}`, { headers: AUTH }))).send;
     const addresses = async (status: string) =>
@@ -461,8 +458,8 @@ describe("the SES profile reaches what an SES failure leads to", { timeout: 60_0
   it("runs clean with no faults: one tick, no halt, every receipt a delivery", async () => {
     const vars = { SIMULATE_SENDS: "ses:none", SUBREQUEST_BUDGET: "10000" };
     const e = withVars(vars);
-    await seedConfirmed(12);
-    const sendId = await dueSend(e, "Merlins");
+    await seedReaders(12);
+    const sendId = await dueSendUnder(e, "Merlins");
     await sweep(e);
     let row = (await sends.getSend(env.DB, sendId))!;
     expect(row.status).toBe("sent");
@@ -560,6 +557,8 @@ describe("drainSimulatedWebhooks (delayed synthetic receipts through the real in
     // Accepts aged into the BOUNCE window: past the delivered (~≤12s) and bounce (~≤30s)
     // lags, but short of the complaint (~≥45s) lag. So on this drain every delivery and
     // bounce is due, and no complaint is yet — delivered/bounces genuinely precede complaints.
+    // Date is faked so that window holds however long seeding 300 rows takes.
+    vi.useFakeTimers({ toFake: ["Date"] });
     await seedAccepted("s-order", 300, 35_000);
     await drainSimulatedWebhooks(env, simConfig());
 
@@ -585,6 +584,8 @@ describe("drainSimulatedWebhooks (delayed synthetic receipts through the real in
   });
 
   it("leaves not-yet-due recipients unconfirmed (delivery lags acceptance)", async () => {
+    // Date is faked so no lag elapses while the rows are seeded, however slow the run.
+    vi.useFakeTimers({ toFake: ["Date"] });
     await seedAccepted("s-fresh", 20, 0); // just accepted → lag not elapsed
     const applied = await drainSimulatedWebhooks(env, simConfig());
     expect(applied).toBe(0);
