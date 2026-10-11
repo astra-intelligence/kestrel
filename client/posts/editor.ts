@@ -412,7 +412,13 @@ export async function renderEditor(
         } catch {}
       };
     } catch (e) {
-      toast(message(e));
+      if (signal.aborted) {
+        return;
+      }
+      // The API names only what it didn't find ("post"), which says nothing on its own.
+      toast(
+        e instanceof ApiError && e.status === 404 ? "This post was deleted elsewhere." : message(e),
+      );
     }
   }
   for (const t of tabs) {
