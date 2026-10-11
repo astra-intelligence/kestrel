@@ -3,6 +3,7 @@ import type { SendSummary } from "../../shared/sends";
 import type { SettingsResponse } from "../../shared/settings";
 import { slugify } from "../../shared/slug";
 import type { ViewHandle } from "../lifecycle";
+import { readSendsNow } from "../send_state";
 import { appState } from "../state";
 import { feedReads, sendServer } from "../test/send_server";
 import {
@@ -600,6 +601,107 @@ describe("editor view", () => {
     expect($("#toasts").textContent).toMatch(/deleted elsewhere/);
   });
 
+  // A post deleted elsewhere: what a read or write of it answers from then on.
+  const postGone = () => jsonResponse({ error: "not_found", message: "post not found" }, 404);
+
+  it("goes to Drafts when the freshness poll finds the draft deleted elsewhere (SPEC §4)", async () => {
+    let deleted = false;
+    await open([{ path: "/api/posts/p1", reply: () => (deleted ? postGone() : draft()) }]);
+    deleted = true;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(location.hash).toBe("#/drafts");
+    expect($("#toasts").textContent).toBe("This post was deleted elsewhere.");
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(reads()).toHaveLength(2); // it stops reading a post that is gone
+  });
+
+  // What the editor shows once its draft is gone with edits that could not be saved.
+  const keptOpen = () => {
+    expect(location.hash).toBe("#/edit/p1");
+    expect($("#freshnessBanner").hidden).toBe(false);
+    expect($("#freshnessBanner").textContent).toMatch(
+      /This post was deleted elsewhere, so your unsaved edits can't be saved\. They're still here/,
+    );
+    expect($("#saveBtn").getAttribute("aria-disabled")).toBe("true");
+  };
+
+  it("keeps a draft open with its unsaved edits when an autosave finds it deleted elsewhere, and stops saving", async () => {
+    await open([
+      { path: "/api/posts/p1", reply: () => draft() },
+      { method: "PUT", path: "/api/posts/p1", reply: postGone },
+    ]);
+    typeInto(body(), "mine");
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(puts()).toHaveLength(1);
+    keptOpen();
+    expect(body().value).toBe("mine");
+    expect($("#toasts").textContent).toBe(""); // the banner says it, not a save error
+    typeInto(body(), "mine still");
+    $("#f-subject").dispatchEvent(new Event("blur")); // a blur's save, too
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(puts()).toHaveLength(1); // nothing left to save to
+    expect(reads()).toHaveLength(1); // nor to poll
+    expect(handle().dirty()).toBe(true); // closing the tab still asks
+    expect(handle().beforeLeave()).toBe("confirm"); // and so does leaving
+    $("#saveBtn").click(); // Save draft saves nothing
+    await vi.advanceTimersByTimeAsync(0);
+    expect(puts()).toHaveLength(1);
+    typeInto(body(), "# Owls\n\nHoot."); // back to the last save, which went with the post
+    expect(handle().dirty()).toBe(true);
+    expect(handle().beforeLeave()).toBe("confirm");
+  });
+
+  it("goes to Drafts, without asking, when Schedule finds a clean draft deleted elsewhere", async () => {
+    await open([
+      { path: "/api/posts/p1", reply: () => draft() },
+      { method: "POST", path: "/api/posts/p1/schedule", reply: postGone },
+    ]);
+    $("#scheduleBtn").click();
+    $<HTMLInputElement>("#schWhen").value = "2026-09-25T15:00";
+    $("#schGo").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(location.hash).toBe("#/drafts");
+    expect($("#toasts").textContent).toBe("This post was deleted elsewhere.");
+    expect(document.querySelector(".modal")).toBeNull();
+    expect(handle().beforeLeave()).toBe("leave"); // nothing unsaved to ask about
+  });
+
+  it("goes to Drafts when the post it opens isn't there, rather than offering a Retry that can't work", async () => {
+    await open([{ path: "/api/posts/p1", reply: postGone }]);
+    expect(location.hash).toBe("#/drafts");
+    expect($("#toasts").textContent).toBe("There's no post here. It may have been deleted.");
+    expect(document.querySelector("[data-retry]")).toBeNull();
+  });
+
+  it("keeps a draft open with its unsaved edits when the freshness poll finds it deleted elsewhere", async () => {
+    let deleted = false;
+    await open([{ path: "/api/posts/p1", reply: () => (deleted ? postGone() : draft()) }]);
+    await vi.advanceTimersByTimeAsync(9000);
+    deleted = true;
+    typeInto(body(), "mine"); // typed just before the poll, the autosave not yet due
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(puts()).toHaveLength(0);
+    keptOpen();
+    expect(body().value).toBe("mine");
+  });
+
+  it("says a leave's save found the draft deleted elsewhere, without moving the reader", async () => {
+    await open([
+      { path: "/api/posts/p1", reply: () => draft() },
+      { method: "PUT", path: "/api/posts/p1", reply: postGone },
+    ]);
+    typeInto(body(), "leaving");
+    expect(handle().beforeLeave()).toBe("leave");
+    location.hash = "#/sent"; // where the reader went
+    unmount();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(puts()).toHaveLength(1);
+    expect($("#toasts").textContent).toBe(
+      "This post was deleted elsewhere, so your last edits weren't saved.",
+    );
+    expect(location.hash).toBe("#/sent");
+  });
+
   it("shows the error with a retry that mounts the draft", async () => {
     let failures = 1;
     await open([
@@ -944,19 +1046,36 @@ describe("editor view", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
-  it("says the post was deleted elsewhere when the preview finds it gone", async () => {
-    const server = draftServer();
+  it("goes to Drafts, saying so once, when the preview finds its post deleted elsewhere", async () => {
+    let deleted = false;
     await open([
-      { path: "/api/posts/p1", reply: server.get },
-      {
-        path: "/api/posts/p1/preview",
-        reply: () => jsonResponse({ error: "not_found", message: "post" }, 404),
-      },
+      { path: "/api/posts/p1", reply: () => (deleted ? postGone() : draft()) },
+      { path: "/api/posts/p1/preview", reply: postGone },
     ]);
+    deleted = true;
     $(".ctab[data-tab='preview']").click();
     await vi.advanceTimersByTimeAsync(0);
+    expect(location.hash).toBe("#/drafts");
     expect($("#toasts").textContent).toBe("This post was deleted elsewhere.");
+    // The poll finds it gone too, at 10s, after that toast has faded: nothing more is said.
+    await vi.advanceTimersByTimeAsync(10000);
+    expect($("#toasts").textContent).toBe("");
     expect(fake.unhandled).toEqual([]);
+  });
+
+  it("keeps unsaved edits in view when the save before a preview finds the post deleted elsewhere", async () => {
+    await open([
+      { path: "/api/posts/p1", reply: () => draft() },
+      { method: "PUT", path: "/api/posts/p1", reply: postGone },
+    ]);
+    typeInto(body(), "mine");
+    $(".ctab[data-tab='preview']").click();
+    await vi.advanceTimersByTimeAsync(0);
+    keptOpen();
+    expect(body().hidden).toBe(false); // back on Edit, where the banner points
+    expect(body().value).toBe("mine");
+    expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p1/preview")).toBe(false);
+    expect($("#toasts").textContent).toBe("");
   });
 
   describe("the preview's link to the post's own public page", () => {
@@ -1533,6 +1652,74 @@ describe("editor view", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect($<HTMLButtonElement>("#cancelSchedule").disabled).toBe(true);
     expect($<HTMLButtonElement>("#rescheduleSchedule").disabled).toBe(true);
+  });
+
+  it("goes to Drafts when a cancel finds the send deleted with its post elsewhere", async () => {
+    const linked = scheduledPost();
+    await open([
+      ...linked.routes,
+      {
+        method: "POST",
+        path: "/api/sends/s1/cancel",
+        reply: () => {
+          linked.sends.remove("s1"); // deleted before the follow's next read noticed
+          return jsonResponse({ error: "not_found", message: "send not found" }, 404);
+        },
+      },
+    ]);
+    $("#cancelSchedule").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(location.hash).toBe("#/drafts");
+    expect($("#toasts").textContent).toBe("This post was deleted elsewhere.");
+    readSendsNow(); // the follow finds the send gone too, and says nothing more
+    await vi.advanceTimersByTimeAsync(0);
+    expect($("#toasts").textContent).toBe("This post was deleted elsewhere.");
+  });
+
+  it("says plainly that a cancel refused at the fire time is too late and the email is going out, and hands off to the live watch as it starts", async () => {
+    const linked = scheduledPost(Date.now() + 60_000);
+    await open([
+      ...linked.routes,
+      {
+        method: "POST",
+        path: "/api/sends/s1/cancel",
+        reply: () => {
+          // The server's clock passed the fire time while the request was out, and the
+          // sweep started the send.
+          linked.start();
+          return jsonResponse(
+            { error: "window_closed", message: "the review window has closed" },
+            409,
+          );
+        },
+      },
+    ]);
+    $("#cancelSchedule").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect($("#toasts").textContent).toMatch(
+      /^Too late to cancel: the send time has passed, so this email is going out\./,
+    );
+    expect($("#toasts").textContent).not.toMatch(/review window/);
+    expect(location.hash).toBe("#/sent/s1"); // the follow read at once and handed off
+    expect(fake.unhandled).toHaveLength(0);
+  });
+
+  it("keeps the window closed after a cancel refused at the fire time, on a page whose clock is behind", async () => {
+    await open([
+      ...scheduledPost(Date.now() + 60_000).routes,
+      {
+        method: "POST",
+        path: "/api/sends/s1/cancel",
+        reply: () =>
+          jsonResponse({ error: "window_closed", message: "the review window has closed" }, 409),
+      },
+    ]);
+    $("#cancelSchedule").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect($<HTMLButtonElement>("#cancelSchedule").disabled).toBe(true);
+    expect($<HTMLButtonElement>("#rescheduleSchedule").disabled).toBe(true);
+    expect($("#schedWhen").textContent).toMatch(/· Preparing to send…$/);
+    expect(location.hash).toBe("#/edit/p1"); // not started yet: the follow hands off when it does
   });
 
   it("offers only the window controls the server lists for the send", async () => {

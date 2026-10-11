@@ -15,7 +15,7 @@ import type { SubscriberListResponse } from "../../shared/subscribers";
 import { ApiError, api, apiText } from "../api";
 import { earliestFireAt, minLeadText, postArchiveUrl, withNoProviderNote } from "../deployment";
 import { at, every, mount, onAbort, poll, type ViewHandle } from "../lifecycle";
-import { followSend, type StageChange } from "../send_state";
+import { followSend, readSendsNow, type StageChange } from "../send_state";
 import { openRescheduleModal } from "../sends/dialogs";
 import { can, has } from "../sends/progress";
 import { appliedNoticeHtml } from "../settings/remake";
@@ -90,6 +90,22 @@ export async function renderEditor(
       mount((r, s) => renderEditor(id, r, s));
     }
   };
+  // The post was deleted elsewhere (another tab, or Claude through the API), found by a
+  // read or write that answers 404: say so once and go to Drafts. A draft with unsaved
+  // edits stays open instead (postGone, below), so they are not thrown away.
+  let gone = false;
+  // Gone, with the editor kept open on text that now exists nowhere else (postGone).
+  let stranded = false;
+  const removed = (msg = "This post was deleted elsewhere.") => {
+    if (gone) {
+      return;
+    }
+    gone = true;
+    toast(msg);
+    if (!signal.aborted) {
+      handOff("#/drafts");
+    }
+  };
   setHtml(root, html`<p class="muted">Loading…</p>`);
   let data: PostResponse;
   // A scheduled post's send, as the send routes report it: the banner's countdown and
@@ -111,6 +127,12 @@ export async function renderEditor(
       return;
     }
   } catch (e) {
+    // A Retry can only fail again for a post that isn't there (gone since the last read,
+    // or a link to one that never was), so it goes to Drafts instead.
+    if (isNotFound(e)) {
+      removed("There's no post here. It may have been deleted.");
+      return;
+    }
     renderError(root, message(e), remount);
     return;
   }
@@ -122,9 +144,8 @@ export async function renderEditor(
         return;
       }
       // A send is deleted only with its post, so the post went between the two reads.
-      if (e instanceof ApiError && e.status === 404) {
-        toast("This post was deleted elsewhere.");
-        handOff("#/drafts");
+      if (isNotFound(e)) {
+        removed();
         return;
       }
       // Any other failure leaves the post readable: the editor opens with its banner from
@@ -393,8 +414,8 @@ export async function renderEditor(
   async function showPreview() {
     showTab("preview");
     try {
-      if (!locked) {
-        await saveDraft(true);
+      if (!locked && (await saveDraft(true)) === "refused" && gone) {
+        return; // the save found the post gone, and said so
       }
       previewFrame.srcdoc = await apiText(`/api/posts/${id}/preview`);
       previewFrame.onload = () => {
@@ -412,13 +433,10 @@ export async function renderEditor(
         } catch {}
       };
     } catch (e) {
-      if (signal.aborted) {
+      if (signal.aborted || foundGone(e)) {
         return;
       }
-      // The API names only what it didn't find ("post"), which says nothing on its own.
-      toast(
-        e instanceof ApiError && e.status === 404 ? "This post was deleted elsewhere." : message(e),
-      );
+      toast(message(e));
     }
   }
   for (const t of tabs) {
@@ -574,7 +592,7 @@ export async function renderEditor(
     }
     paintMarkdown(); // repaint the highlight overlay from the new textarea value
     refreshDirty();
-    if (!conflicted) {
+    if (!conflicted && !gone) {
       scheduleAutosave();
     }
   }
@@ -592,8 +610,8 @@ export async function renderEditor(
     if (silent && !dirty.dirty) {
       return "unchanged"; // nothing changed since the last save
     }
-    if (conflicted) {
-      return "refused"; // paused until the out-of-date banner is resolved
+    if (conflicted || gone) {
+      return "refused"; // paused behind the out-of-date banner, or nothing left to save to
     }
     mine.cancel(); // a save is starting — cancel any pending autosave trigger
     saving = true;
@@ -643,6 +661,10 @@ export async function renderEditor(
         showConflict(conflict);
         return "refused";
       }
+      if (isNotFound(e)) {
+        postGone();
+        return "refused";
+      }
       saveFailed = true; // the leave guard now prompts rather than silently flushing
       throw e;
     } finally {
@@ -656,7 +678,7 @@ export async function renderEditor(
       // §4), so the button reads as unavailable and a click (or ⌘S) does not pretend to
       // save: it points at the banner, whose Reload or Keep editing is the next step.
       // aria-disabled, not disabled, so the click still lands to do that.
-      if (conflicted) {
+      if (conflicted || gone) {
         freshnessEl.scrollIntoView({ block: "nearest" });
         return;
       }
@@ -670,7 +692,10 @@ export async function renderEditor(
     if (!saveBtn) {
       return;
     }
-    if (conflicted) {
+    if (gone) {
+      saveBtn.setAttribute("aria-disabled", "true");
+      saveBtn.title = "This post was deleted elsewhere, so there is nothing to save to";
+    } else if (conflicted) {
       saveBtn.setAttribute("aria-disabled", "true");
       saveBtn.title = "Saving is paused: choose Reload or Keep editing above";
     } else {
@@ -709,18 +734,33 @@ export async function renderEditor(
         revisions.saved(u.current_revision);
         dirty.markSaved(sent);
       })
-      .catch((e) =>
+      .catch((e) => {
+        if (isNotFound(e)) {
+          // The reader has left, and their edits with the page: say what happened to them.
+          gone = true;
+          toast("This post was deleted elsewhere, so your last edits weren't saved.");
+          return;
+        }
         toast(
           e instanceof ApiError && e.status === 409
             ? "Changed elsewhere — your edits weren't saved"
             : `Couldn't save your changes — ${message(e)}`,
-        ),
-      );
+        );
+      });
     trackSaves(saveChain);
   };
   const handle: ViewHandle = {
-    dirty: () => editorDirty,
+    // Once the editor is kept open on a gone post, "unsaved" no longer measures what would
+    // be lost: the last save went with the post, so whatever is on screen exists nowhere
+    // else, and leaving always asks.
+    dirty: () => editorDirty || stranded,
     beforeLeave() {
+      if (stranded) {
+        return "confirm";
+      }
+      if (gone) {
+        return "leave"; // on its way to Drafts, with nothing unsaved
+      }
       if (editorDirty && (saveFailed || conflicted)) {
         return "confirm"; // a silent flush would fail (or clobber): the reader decides
       }
@@ -811,11 +851,50 @@ export async function renderEditor(
     }
   }
 
+  // Any read or write of the post that finds it deleted elsewhere. With nothing unsaved (a
+  // scheduled post never has any) it goes to Drafts, as the send follow does. With unsaved
+  // edits, going would throw away what the publisher just wrote, and there is nowhere left
+  // to save it, so the editor stays open and says so: saving stops, the text stays to copy
+  // out, and leaving asks first.
+  function postGone() {
+    if (gone) {
+      return;
+    }
+    if (!dirty.dirty) {
+      removed();
+      return;
+    }
+    gone = true;
+    stranded = true;
+    mine.cancel();
+    paintSaveBtn();
+    showTab("edit"); // the banner points at the text, so the text is what shows
+    setHtml(
+      freshnessEl,
+      html`<span><span aria-hidden="true">⚠️</span> This post was deleted elsewhere, so your unsaved edits can't be saved. They're still here: copy them out before you leave.</span>`,
+    );
+    freshnessEl.hidden = false;
+  }
+
+  // A read or write that found the post gone (a 404) answers it here, whichever control
+  // made it: the API names only what it didn't find ("post"), which says nothing alone.
+  function foundGone(e: unknown): boolean {
+    if (!isNotFound(e)) {
+      return false;
+    }
+    if (locked) {
+      removed();
+    } else {
+      postGone();
+    }
+    return true;
+  }
+
   if (!locked) {
     // Skipped while hidden, saving, or already warned — poll GET is cheap and only
     // re-warns on a revision we haven't surfaced yet. Read at once when the tab is shown.
     const pollFreshness = async () => {
-      if (saving || conflicted || document.hidden) {
+      if (saving || conflicted || gone || document.hidden) {
         return;
       }
       const baseAtRequest = revisions.base; // to tell our own save landing mid-poll from another writer's
@@ -832,8 +911,11 @@ export async function renderEditor(
         if (decision !== "ignore" && decision !== "fresh") {
           showConflict(decision);
         }
-      } catch {
-        /* transient — try again next tick */
+      } catch (e) {
+        if (isNotFound(e)) {
+          postGone();
+        }
+        // Anything else is transient: try again next tick.
       }
     };
     every(10000, pollFreshness, signal);
@@ -950,10 +1032,7 @@ export async function renderEditor(
             paintBanner();
             showRemade();
           },
-          removed() {
-            toast("This post was deleted elsewhere.");
-            handOff("#/drafts");
-          },
+          removed,
           // The layer's cursor ran ahead of the database: read the post and its send again.
           stale: remount,
         },
@@ -991,7 +1070,19 @@ export async function renderEditor(
           toast("Schedule canceled");
           remount();
         } catch (e) {
-          toast(message(e));
+          if (isNotFound(e)) {
+            removed(); // the send went with its post before the follow noticed
+          } else if (e instanceof ApiError && e.code === "window_closed") {
+            // The fire time passed while the cancel was out, so the email is going out. The
+            // server's clock has closed the window even if this page's has not, so the banner
+            // reads as due, and the follow, read at once, hands off to the live watch when
+            // the send starts.
+            current = { ...current, phase: "due" };
+            toast("Too late to cancel: the send time has passed, so this email is going out.");
+            readSendsNow();
+          } else {
+            toast(message(e));
+          }
         }
         // `busy` hands the button back when it ends; a cancel still answering at the fire
         // time must not re-enable it, so the clock's verdict is painted again at once.
@@ -1017,7 +1108,9 @@ export async function renderEditor(
       markEdited();
       toast("Image added");
     } catch (e) {
-      toast(message(e));
+      if (!foundGone(e)) {
+        toast(message(e));
+      }
     }
   }
   const composerBody = $("#composerBody");
@@ -1162,6 +1255,11 @@ export async function renderEditor(
             ),
           );
         } catch (e) {
+          if (isNotFound(e)) {
+            m.close();
+            foundGone(e);
+            return;
+          }
           toast(message(e));
         }
       });
@@ -1220,6 +1318,11 @@ export async function renderEditor(
             toast(withNoProviderNote(`Scheduled for ${fmt(t)}. Send yourself a test.`));
             remount();
           } catch (e) {
+            if (isNotFound(e)) {
+              m.close();
+              foundGone(e);
+              return;
+            }
             toast(message(e));
           }
         });
@@ -1241,6 +1344,11 @@ export async function renderEditor(
             toast(withNoProviderNote(`Sends at ${fmt(send.fire_at)}, cancelable until then.`));
             remount();
           } catch (e) {
+            if (isNotFound(e)) {
+              m.close();
+              foundGone(e);
+              return;
+            }
             toast(message(e));
           }
         });
@@ -1319,6 +1427,11 @@ function scheduledBannerHtml(send: BannerSend, due: boolean): Html {
     return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at, true)}</span>`;
   }
   return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at)}</span> · cancelable until then.`;
+}
+
+/** Whether a read or write found its post (or its send, which goes with it) gone. */
+function isNotFound(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 404;
 }
 
 /** Where a post's send now lives, when that is no longer the editor: the watch while it
