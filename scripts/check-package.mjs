@@ -4,15 +4,15 @@
  *
  * Packs this repository as `npm publish` would (the `prepare` build included), checks the
  * tarball holds what an instance needs and none of Kestrel's source, then scaffolds a scratch
- * instance with the package's own `kestrel init` and installs the tarball into it, which on
- * npm 12 must block no dependency's install script. In that instance it runs the scaffold's typecheck (`wrangler types` and `tsc`), `tsc` again with
- * Kestrel's declaration checked too, and a `wrangler deploy --dry-run` that bundles the Worker
- * from node_modules; applies the migrations init copied to a local database; and checks that
+ * instance with the package's own `kestrel init`, its production flags given, and installs the
+ * tarball into it, which on npm 12 must block no dependency's install script. In that instance
+ * it runs the scaffold's typecheck (`wrangler types` and `tsc`), `tsc` again with Kestrel's
+ * declaration checked too, and a `wrangler deploy --dry-run` that bundles the Worker from
+ * node_modules; applies the migrations init copied to a local database; and checks that
  * `kestrel check-context` finds every context file current. Last it runs the instance: `npm
  * run dev` must answer its health check and serve the editor, and `kestrel seed` must load the
- * demo through it. The instance installs the
- * wrangler and TypeScript versions this repository uses, so a failure here is the package's,
- * not a newer tool's.
+ * demo through it. The instance installs the wrangler and TypeScript versions this repository
+ * uses, so a failure here is the package's, not a newer tool's.
  *
  * The CI gate runs it after the quality gate. `--keep` leaves the scratch directory in place
  * to look at; it is printed either way.
@@ -120,7 +120,27 @@ const unpacked = join(work, "unpacked");
 mkdirSync(unpacked);
 step("tar", ["-xzf", join(work, packed.filename), "-C", unpacked], work);
 const instance = join(work, "instance");
-step(process.execPath, [join(unpacked, "package", "bin", "kestrel.mjs"), "init", instance], work);
+// With the production flags, so the packed command fills the block the typecheck below parses.
+step(
+  process.execPath,
+  [
+    join(unpacked, "package", "bin", "kestrel.mjs"),
+    "init",
+    instance,
+    "--app-host",
+    "news.kestrel-check.test",
+    "--sending-host",
+    "send.kestrel-check.test",
+  ],
+  work,
+);
+if (
+  !readFileSync(join(instance, "wrangler.jsonc"), "utf8").includes(
+    '"APP_ORIGIN": "https://news.kestrel-check.test"',
+  )
+) {
+  fail("init --app-host did not write the production APP_ORIGIN");
+}
 
 // init wrote every file an instance starts with, under its instance name, and nothing under a
 // shipped name.

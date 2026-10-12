@@ -10,15 +10,17 @@ Your instance's repository holds its configuration, its database migrations, and
 
 1. On GitHub, [create a new repository](https://github.com/new) named `newsletter`. It can be private. Leave it empty, with no README, license, or `.gitignore`.
 
-1. Clone it, and write a new instance into it. Replace `YOUR_USERNAME` with your GitHub username:
+1. Clone it, and write a new instance into it. Replace `YOUR_USERNAME` with your GitHub username, and the two hostnames with the ones you [chose](01-overview.md#choose-your-hostnames):
 
     ```bash
     git clone https://github.com/YOUR_USERNAME/newsletter.git
     cd newsletter
-    npx @kurtbruns/kestrel init
+    npx @kurtbruns/kestrel init --app-host newsletter.example.com --sending-host send.example.com
     ```
 
     This writes the instance's files: `wrangler.jsonc` for its settings, `package.json` with the release it runs, the release's database migrations, and a starting point for Claude Code in `.claude/`. The instance's `README.md` lists its commands.
+
+    The two hostnames go into the production settings for you, and your mail comes from `Newsletter <newsletter@send.example.com>`. To choose another sender, add `--from "Your Name <you@send.example.com>"`, keeping the address on your sending hostname. Init refuses a value it can't use and names the flag. You can also leave the hostnames off and fill them in by hand in [Configure production](#4-configure-production).
 
 1. Install the release and its tools:
 
@@ -74,7 +76,7 @@ Every command from here on acts on your Cloudflare account through the Wrangler 
 
 `wrangler.jsonc` holds two sets of settings. The top level is for local development, so leave it alone. The `production` block under `env` is yours to fill in.
 
-1. Open `wrangler.jsonc` and change the values marked here in the `production` block:
+1. Open `wrangler.jsonc` and change the values marked here in the `production` block. If you gave `init` your hostnames, it already filled in all but the `database_id`, so check them and change only that:
 
     ```jsonc
     "production": {

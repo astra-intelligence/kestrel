@@ -11,6 +11,14 @@
  * `.npmrc` out of a published package, and the Claude files sit outside `.claude/` so they
  * don't load into sessions in Kestrel's own repository. Init never overwrites: if any file it
  * would write exists already, it writes nothing and names them.
+ *
+ * `--app-host`, `--sending-host`, and `--from` fill the `production` block of wrangler.jsonc,
+ * which otherwise repeats each hostname by hand: the app hostname in the route and
+ * `APP_ORIGIN`, the sending hostname in `SENDING_DOMAIN` and `FROM_ADDRESS`. They are flags
+ * only, never a prompt, so a run with no terminal (CI, Claude) can't hang waiting for an
+ * answer, and a run without them writes the template as it ships, for the setup guide's
+ * by-hand edit. The values are checked before anything is written. The D1 id stays a
+ * placeholder, since the database exists only after `wrangler d1 create`.
  */
 import {
   copyFileSync,
@@ -23,6 +31,7 @@ import {
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONTEXT_FILES, writeShipped } from "./context.mjs";
+import { parseArgs } from "./dev-api.mjs";
 import { syncMigrationsCommand } from "./sync-migrations.mjs";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -61,9 +70,133 @@ function packageName(dir) {
   return name || "newsletter";
 }
 
-/** `kestrel init [dir]`. */
+const OPTIONS = ["app-host", "sending-host", "from"];
+
+// What the template's production block holds until init or the operator fills it.
+const PLACEHOLDER = { appHost: "newsletter.example.com", sendingHost: "send.example.com" };
+
+/** The From address init writes when `--sending-host` comes without `--from`. */
+const defaultFrom = (host) => `Newsletter <newsletter@${host}>`;
+
+// One DNS label: letters, digits, and inner hyphens, at most 63 characters.
+const LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** `value` as a bare lowercase hostname, or a refusal naming `flag`. */
+function readHost(flag, value) {
+  const host = value.trim().toLowerCase().replace(/\.$/, "");
+  const labels = host.split(".");
+  if (labels.length < 2 || host.length > 253 || !labels.every((l) => LABEL.test(l))) {
+    return {
+      refuse: `--${flag} takes a bare hostname such as ${PLACEHOLDER[flag === "app-host" ? "appHost" : "sendingHost"]}, with no https://, port, or path, not "${value}".`,
+    };
+  }
+  // The guide's example names; the app refuses them too, but only once a provider is set.
+  if (host === "example.com" || host.endsWith(".example.com")) {
+    return {
+      refuse: `--${flag} is the setup guide's example.com placeholder; give your own hostname.`,
+    };
+  }
+  return { host };
+}
+
+/**
+ * What `kestrel init` was asked for: `{ dir, appHost?, sendingHost?, from? }`, with the
+ * hostnames lowercased and From defaulted from the sending host, or `{ refuse }` with a
+ * message naming the flag at fault.
+ */
+export function readInitArgs(argv) {
+  const { flags, positional } = parseArgs(argv);
+  const unknown = [
+    ...Object.keys(flags)
+      .filter((f) => !OPTIONS.includes(f))
+      .map((f) => `--${f}`),
+    ...positional.filter((p) => p.startsWith("-")),
+  ];
+  if (unknown.length > 0) {
+    return {
+      refuse: `unknown option ${unknown[0]}. init takes [dir], --app-host, --sending-host, and --from.`,
+    };
+  }
+  if (positional.length > 1) {
+    return { refuse: `init takes one directory, not ${positional.join(" ")}.` };
+  }
+  const args = { dir: positional[0] ?? "." };
+  for (const flag of ["app-host", "sending-host"]) {
+    if (flags[flag] === undefined) {
+      continue;
+    }
+    const read = readHost(flag, flags[flag]);
+    if (read.refuse) {
+      return read;
+    }
+    args[flag === "app-host" ? "appHost" : "sendingHost"] = read.host;
+  }
+  if (flags.from !== undefined) {
+    if (!args.sendingHost) {
+      return { refuse: "--from needs --sending-host, the hostname its address is on." };
+    }
+    const from = flags.from.trim();
+    // As the app reads it (src/env.ts): the address is the last `<…>`, else the whole value.
+    const address = /<([^<>]*)>$/.exec(from)?.[1].trim() ?? from;
+    const at = address.lastIndexOf("@");
+    if (at < 1 || at === address.length - 1 || /\s/.test(address)) {
+      return {
+        refuse: `--from takes an email address, optionally with a name, such as "${defaultFrom(args.sendingHost)}", not "${flags.from}".`,
+      };
+    }
+    const domain = address.slice(at + 1).toLowerCase();
+    if (domain !== args.sendingHost) {
+      return {
+        refuse: `--from must be an address on the sending hostname, ${args.sendingHost}, not ${domain}.`,
+      };
+    }
+    args.from = from;
+  } else if (args.sendingHost) {
+    args.from = defaultFrom(args.sendingHost);
+  }
+  return args;
+}
+
+/**
+ * The template's wrangler.jsonc text with the given values written into its `production`
+ * block, comments and layout kept. Each value it replaces must appear there exactly once,
+ * so a template that drifts fails loud here rather than writing half a configuration.
+ */
+export function fillProduction(text, { appHost, sendingHost, from }) {
+  const start = text.indexOf('"production": {');
+  if (start < 0) {
+    throw new Error("template/wrangler.jsonc has no production block");
+  }
+  let block = text.slice(start);
+  const set = (key, before, after) => {
+    const was = `${JSON.stringify(key)}: ${JSON.stringify(before)}`;
+    const parts = block.split(was);
+    if (parts.length !== 2) {
+      throw new Error(
+        `template/wrangler.jsonc's production block has ${parts.length - 1} of ${was}, not one`,
+      );
+    }
+    block = parts.join(`${JSON.stringify(key)}: ${JSON.stringify(after)}`);
+  };
+  if (appHost) {
+    set("pattern", PLACEHOLDER.appHost, appHost);
+    set("APP_ORIGIN", `https://${PLACEHOLDER.appHost}`, `https://${appHost}`);
+  }
+  if (sendingHost) {
+    set("SENDING_DOMAIN", PLACEHOLDER.sendingHost, sendingHost);
+    set("FROM_ADDRESS", defaultFrom(PLACEHOLDER.sendingHost), from);
+  }
+  return text.slice(0, start) + block;
+}
+
+/** `kestrel init [dir] [--app-host <host>] [--sending-host <host> [--from <address>]]`. */
 export function initCommand(argv) {
-  const root = resolve(argv.find((a) => !a.startsWith("-")) ?? ".");
+  const args = readInitArgs(argv);
+  if (args.refuse) {
+    console.error(`[init] refused: ${args.refuse}`);
+    process.exit(1);
+  }
+  const root = resolve(args.dir);
   const files = [
     ...scaffoldFiles(),
     [join(PACKAGE_ROOT, ".dev.vars.example"), ".dev.vars.example"],
@@ -94,6 +227,10 @@ export function initCommand(argv) {
   pkg.devDependencies.typescript = PACKAGE.devDependencies.typescript;
   pkg.devDependencies.wrangler = PACKAGE.peerDependencies.wrangler;
   writeFileSync(join(root, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
+  if (args.appHost || args.sendingHost) {
+    const config = join(root, "wrangler.jsonc");
+    writeFileSync(config, fillProduction(readFileSync(config, "utf8"), args));
+  }
   for (const file of CONTEXT_FILES) {
     writeShipped(root, file);
   }
@@ -102,7 +239,14 @@ export function initCommand(argv) {
   // A path from here when the instance is below this directory, else the absolute one.
   const rel = relative(process.cwd(), root);
   const where = rel.startsWith("..") ? root : rel;
-  console.log(`[init] a Kestrel ${PACKAGE.version} instance${where ? ` in ${where}` : ""}. Next:`);
+  const filled = [
+    ...(args.appHost ? [`answers on https://${args.appHost}`] : []),
+    ...(args.sendingHost ? [`sends from ${args.from}`] : []),
+  ];
+  console.log(
+    `[init] a Kestrel ${PACKAGE.version} instance${where ? ` in ${where}` : ""}` +
+      `${filled.length ? `, whose production ${filled.join(" and ")}` : ""}. Next:`,
+  );
   console.log(
     [
       ...(where ? [`  cd ${where}`] : []),

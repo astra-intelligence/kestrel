@@ -22,6 +22,10 @@ const HELP = `kestrel ${PACKAGE.version}
 Usage: kestrel <command> [options]
 
   init [dir]                    write a new instance repository here (or in dir)
+    --app-host <host>           its production hostname, for the route and APP_ORIGIN
+    --sending-host <host>       the hostname it sends from, for SENDING_DOMAIN and FROM_ADDRESS
+    --from <address>            the From address, on the sending hostname (default:
+                                Newsletter <newsletter@SENDING_HOST>)
   dev [wrangler dev args]       run locally, with the send sweep once a minute (PORT picks the port)
   sync-migrations               copy this release's migrations into migrations/
   check-context [--update]      compare the Claude files in .claude/ with this release's

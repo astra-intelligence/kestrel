@@ -18,6 +18,7 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 ### Added
 
+- `kestrel init` takes `--app-host`, `--sending-host`, and `--from`, and writes them into the new instance's `production` settings (the route, `APP_ORIGIN`, `SENDING_DOMAIN`, and `FROM_ADDRESS`), so Deploy's Configure production step leaves only the database id to fill in. It refuses a hostname with a scheme or path, the guide's `example.com` placeholders, or a From address off the sending hostname, naming the flag; without the flags it writes the settings as before.
 - Reader pages, post pages included, show the publication's logo as the browser tab's icon when one is set; with no logo, the browser's default icon stays (SPEC §5).
 - A setup guide, **Try Kestrel on your computer**, runs a new instance locally with the demo publication, with no Cloudflare account or Git host, and shows how the folder becomes your instance's repository when you deploy.
 
