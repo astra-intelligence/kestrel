@@ -33,7 +33,8 @@ import type { RequestContext } from "../router";
 import { param } from "../router";
 import { archiveHomeUrl, devDashboardUrl, readerIdentity, readerMessage } from "./reader";
 
-function formatPublishedDate(ms: number): string {
+/** A post's date as the reader surface shows it. */
+export function formatPublishedDate(ms: number): string {
   return new Date(ms).toLocaleDateString("en-US", {
     timeZone: "UTC",
     year: "numeric",
@@ -124,6 +125,18 @@ export function webVersion(
     .join(ARCHIVE_POST_HEAD + dev.head);
 }
 
+/** One page for every archive address with no published post (see `archivePage`). */
+export function nothingHereYetPage(c: RequestContext): Promise<Response> {
+  return readerMessage(c, {
+    title: "Nothing here yet",
+    eyebrow: "Archive",
+    headline: "Nothing here yet",
+    ledeHtml: "A post appears here as soon as it’s sent.",
+    afterHtml: archiveLink(archiveHomeUrl(c.config), "Browse the archive"),
+    status: 404,
+  });
+}
+
 export async function archivePage(c: RequestContext): Promise<Response> {
   const slug = param(c, "slug");
   const post = await getBySlug(c.env.DB, slug);
@@ -132,14 +145,7 @@ export async function archivePage(c: RequestContext): Promise<Response> {
     // One page for every address with no published post, a draft, a scheduled post, or
     // none at all, so it never reveals that a post is on its way. A test email's "view
     // in browser" link lands here until the send starts.
-    return readerMessage(c, {
-      title: "Nothing here yet",
-      eyebrow: "Archive",
-      headline: "Nothing here yet",
-      ledeHtml: "A post appears here as soon as it’s sent.",
-      afterHtml: archiveLink(archiveHomeUrl(c.config), "Browse the archive"),
-      status: 404,
-    });
+    return nothingHereYetPage(c);
   }
   const html = webVersion(send.rendered_html, {
     config: c.config,

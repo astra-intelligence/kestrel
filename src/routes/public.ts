@@ -107,8 +107,8 @@ function subscribePage(
   });
 }
 
-export async function subscribeForm(c: RequestContext): Promise<Response> {
-  const identity = await readerIdentity(c, c.config);
+/** The subscribe form, in the identity given (Settings' preview passes its own read). */
+export function subscribeFormPage(c: RequestContext, identity: ReaderIdentity): Response {
   const lede = identity.tagline
     ? escapeHtml(identity.tagline)
     : "Get the next post delivered to your inbox.";
@@ -120,6 +120,28 @@ export async function subscribeForm(c: RequestContext): Promise<Response> {
   return subscribePage(c, identity, main);
 }
 
+/** The form again, for an address that doesn't parse. */
+export function subscribeNotAnEmailPage(c: RequestContext, identity: ReaderIdentity): Response {
+  const main =
+    `<p class="r-ey">Newsletter</p>` +
+    `<h1 class="r-h1">That doesn’t look like an email</h1>` +
+    `<p class="r-lead">Please check the address and try again.</p>` +
+    subscribeFormHtml();
+  return subscribePage(c, identity, main, 400);
+}
+
+/** The one answer every subscribe request gets, whatever the address's state (SPEC §7). */
+export function subscribeCheckInboxPage(c: RequestContext, identity: ReaderIdentity): Response {
+  const main =
+    `<p class="r-ey">Newsletter</p><h1 class="r-h1">Almost there</h1>` +
+    `<p class="r-lead">If that address isn’t subscribed yet, a confirmation link is on its way. Check your inbox to finish subscribing.</p>`;
+  return subscribePage(c, identity, main);
+}
+
+export async function subscribeForm(c: RequestContext): Promise<Response> {
+  return subscribeFormPage(c, await readerIdentity(c, c.config));
+}
+
 export async function subscribe(c: RequestContext): Promise<Response> {
   const raw = await readEmail(c);
   const email = raw ? normalizeEmail(raw) : "";
@@ -127,13 +149,7 @@ export async function subscribe(c: RequestContext): Promise<Response> {
     if (!wantsHtml(c)) {
       return json({ error: "bad_request", message: "a valid email is required" }, 400);
     }
-    const identity = await readerIdentity(c, c.config);
-    const main =
-      `<p class="r-ey">Newsletter</p>` +
-      `<h1 class="r-h1">That doesn’t look like an email</h1>` +
-      `<p class="r-lead">Please check the address and try again.</p>` +
-      subscribeFormHtml();
-    return subscribePage(c, identity, main, 400);
+    return subscribeNotAnEmailPage(c, await readerIdentity(c, c.config));
   }
   // Subscribing, and any confirmation, happen after the answer has gone: the answer, and
   // how long it takes, must not depend on the address's state (SPEC §7). A refusal is
@@ -150,11 +166,7 @@ export async function subscribe(c: RequestContext): Promise<Response> {
     const body: PublicSubscribeResponse = { status: "check_inbox" };
     return json(body);
   }
-  const identity = await readerIdentity(c, c.config);
-  const main =
-    `<p class="r-ey">Newsletter</p><h1 class="r-h1">Almost there</h1>` +
-    `<p class="r-lead">If that address isn’t subscribed yet, a confirmation link is on its way. Check your inbox to finish subscribing.</p>`;
-  return subscribePage(c, identity, main);
+  return subscribeCheckInboxPage(c, await readerIdentity(c, c.config));
 }
 
 /** Opening a confirm link shows a Confirm button and changes nothing: mail scanners open
@@ -170,9 +182,15 @@ export async function confirm(c: RequestContext): Promise<Response> {
   return confirmStatePage(c, await confirmSubscription(c.env.DB, token), token);
 }
 
-async function confirmStatePage(
+/** A confirm page's state: a link's state, or a preview's sample of one. */
+export type ConfirmPageState =
+  | { kind: "ready" | "confirmed" | "expired"; subscriber: { email: string } }
+  | Extract<ConfirmLinkState, { kind: "invalid" }>;
+
+/** The page a confirm link's state shows. Settings' preview passes a sample state. */
+export async function confirmStatePage(
   c: RequestContext,
-  state: ConfirmLinkState,
+  state: ConfirmPageState,
   token: string,
 ): Promise<Response> {
   const eyebrow = "Newsletter";
@@ -230,7 +248,7 @@ async function confirmStatePage(
 
 /** An unsubscribe link that matches no subscriber: most often one cut short when it
  *  was copied, so the page points at a link that works. */
-function unsubscribeInvalidPage(c: RequestContext): Promise<Response> {
+export function unsubscribeInvalidPage(c: RequestContext): Promise<Response> {
   return readerMessage(c, {
     title: "Invalid link",
     eyebrow: "Unsubscribe",
@@ -243,7 +261,7 @@ function unsubscribeInvalidPage(c: RequestContext): Promise<Response> {
 
 /** The page once an address is off the list, whether it just left or already had. A
  *  test walks through it too, with a sample address under the test banner. */
-function unsubscribedPage(
+export function unsubscribedPage(
   c: RequestContext,
   email: string,
   banner?: ReaderBanner,
@@ -259,7 +277,7 @@ function unsubscribedPage(
 
 /** The page that asks before unsubscribing, its button posting to `action`. A test
  *  shows the same page with a sample address under the test banner. */
-async function unsubscribeAskPage(
+export async function unsubscribeAskPage(
   c: RequestContext,
   email: string,
   action: string,
