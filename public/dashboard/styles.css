@@ -4228,6 +4228,11 @@ button.copied svg {
   flex-direction: column;
   gap: 8px;
 }
+/* The hint and the not-square warning stack in one column, under the tile on a wide
+   screen and beside it where the slot becomes a row. */
+.set-logo-notes {
+  min-width: 0;
+}
 .set-logo-tile {
   width: 100%;
   aspect-ratio: 1;

@@ -15,7 +15,24 @@ import {
   typeInto,
   unmount,
 } from "../test/support";
+import { squareImage, UnreadableImage } from "../ui/square_image";
 import { renderSettings } from "./settings";
+
+// The browser's canvas, which squares a picked logo, doesn't exist under happy-dom: the
+// stand-in answers as `squareImage` would for a source of the given size, and every other
+// part of the upload (the upload itself, its toast, the page's update) runs for real.
+vi.mock("../ui/square_image", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ui/square_image")>()),
+  squareImage: vi.fn(),
+}));
+const SQUARED_PNG = new Blob(["squared"], { type: "image/png" });
+function pickedImage(width: number, height: number) {
+  vi.mocked(squareImage).mockResolvedValue({
+    png: SQUARED_PNG,
+    width,
+    height,
+  });
+}
 
 const DEFAULT_COPY = {
   subject: "Confirm your subscription",
@@ -590,6 +607,7 @@ describe("settings view", () => {
       value: [new File(["png"], "logo.png", { type: "image/png" })],
       configurable: true,
     });
+    pickedImage(512, 512);
     input.dispatchEvent(new Event("change"));
     await vi.advanceTimersByTimeAsync(0);
     expect(
@@ -611,6 +629,94 @@ describe("settings view", () => {
     expect($("#cePvMastLogo").hidden).toBe(true);
     expect($("#toasts").textContent).toMatch(/Logo removed/);
     expect(bar().classList.contains("show")).toBe(false); // the logo never dirties the bar
+  });
+
+  // The logo picker, with a file chosen as the browser hands one over.
+  const pickLogo = () => {
+    const input = $<HTMLInputElement>("#logoInput");
+    Object.defineProperty(input, "files", {
+      value: [new File(["photo"], "photo.jpg", { type: "image/jpeg" })],
+      configurable: true,
+    });
+    input.dispatchEvent(new Event("change"));
+  };
+  const logoPosts = () =>
+    fake.calls.filter((c) => c.method === "POST" && c.url.pathname === "/api/settings/logo");
+
+  it("uploads a picked logo squared, and says when it was cropped to its center", async () => {
+    await open([
+      { path: "/api/settings", reply: () => response() },
+      {
+        method: "POST",
+        path: "/api/settings/logo",
+        reply: () => ({ settings: settings(), remade: [] }),
+      },
+    ]);
+    pickedImage(800, 600);
+    pickLogo();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.mocked(squareImage).mock.calls[0]?.[1]).toBe(256);
+    const sent = logoPosts()[0]?.form?.get("file");
+    expect(sent instanceof File && [sent.name, sent.type, sent.size]).toEqual([
+      "logo.png",
+      "image/png",
+      SQUARED_PNG.size,
+    ]);
+    expect(document.querySelector(".modal")).toBeNull(); // no step between the pick and the save
+    expect($("#toasts").textContent).toBe("Logo updated, cropped to its center square");
+  });
+
+  it("says so when a picked file can't be read as an image", async () => {
+    await open();
+    vi.mocked(squareImage).mockRejectedValue(new UnreadableImage());
+    pickLogo();
+    await vi.advanceTimersByTimeAsync(0);
+    expect($("#toasts").textContent).toBe(
+      "Couldn’t read that image. Pick a PNG, JPEG, WebP, or GIF.",
+    );
+    expect(logoPosts()).toHaveLength(0);
+  });
+
+  it("notes that a logo uploaded before the crop step isn't square, since emails stretch it, until a square one replaces it", async () => {
+    // The page reads the current logo as any <img> does; a stand-in reports its size.
+    const sizes: Record<string, [number, number]> = {
+      "https://app.birds.example/media/branding/logo?v=1": [300, 100],
+    };
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 0;
+        naturalHeight = 0;
+        onload: (() => void) | null = null;
+        set src(url: string) {
+          [this.naturalWidth, this.naturalHeight] = sizes[url] ?? [256, 256];
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+    const pub = { name: "Birds Weekly", tagline: "", address: "" };
+    const withLogo = (logoUrl: string) =>
+      response({ settings: { publication: { ...pub, logoUrl } } });
+    await open([
+      {
+        path: "/api/settings",
+        reply: () => withLogo("https://app.birds.example/media/branding/logo?v=1"),
+      },
+      {
+        method: "POST",
+        path: "/api/settings/logo",
+        reply: () => ({
+          settings: withLogo("https://app.birds.example/media/branding/logo/2-squared").settings,
+          remade: [],
+        }),
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect($("#logoShape").hidden).toBe(false);
+    pickedImage(512, 512);
+    pickLogo();
+    await vi.advanceTimersByTimeAsync(0);
+    expect($("#logoShape").hidden).toBe(true); // the square that replaced it
   });
 
   it("shows the error with a retry", async () => {
