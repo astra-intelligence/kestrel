@@ -23,7 +23,10 @@ export function buildEmbed(mode: EmbedMode, name: string, appOrigin: string): st
   if (mode === "styled") {
     // The hosted subscribe page's look, carried inline: a serif headline (Georgia, the
     // reader pages' own fallback, so it needs no web font) over a sans body, in the reader
-    // pages' ink and line colors. The headline inherits its color from the host page.
+    // pages' ink and muted colors. The headline inherits its color from the host page, and
+    // the field's border is a step darker than the reader pages' line so it still shows on
+    // a host page of any background. The apostrophe is plain ASCII, so the snippet reads
+    // right whatever encoding the host page declares.
     return (
       `<form action="${action}" method="post" style="max-width:460px;font:16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">\n` +
       `  <div style="font:600 22px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-0.01em;margin-bottom:12px">${heading}</div>\n` +
@@ -117,7 +120,7 @@ export function subscribeSection(page: SettingsPage): Html {
  *  Copy a code block wears, since here copying is what the band is for (DESIGN §1). */
 function embedCopy(mode: EmbedMode, code: string): Html {
   const variant = mode === "styled" ? "Styled" : "Plain";
-  return html`<button type="button" class="secondary set-embed-copy" data-copy="${code}" data-copy-word="Copy HTML" aria-label="Copy the ${variant} form">${copyFace(false, "Copy HTML")}</button>`;
+  return html`<button type="button" class="secondary set-embed-copy" data-copy="${code}" data-copy-word="Copy HTML" aria-label="Copy HTML, ${variant} form">${copyFace(false, "Copy HTML")}</button>`;
 }
 
 /** The Plain/Styled toggle drives the code, the rendered preview, and the Copy payload;

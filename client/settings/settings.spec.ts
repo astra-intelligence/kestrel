@@ -504,8 +504,11 @@ describe("settings view", () => {
     expect($(".set-pf-fine").textContent).toBe(
       "We’ll email you a link to confirm. Unsubscribe anytime.",
     );
-    // The toggle names the variant; the Copy at the band's foot says which it copies.
-    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Styled form");
+    // Either way it posts an email to the public /subscribe, which starts the double opt-in (I1).
+    expect($("#embedCode").textContent).toContain('<input type="email" name="email" required');
+    // The toggle names the variant; the Copy at the band's foot says which it copies, its
+    // name starting with the words it shows so voice control finds it.
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy HTML, Styled form");
     $("#embedCopy button").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Subscribe to Birds Weekly"));
@@ -521,7 +524,29 @@ describe("settings view", () => {
       `<form action="https://app.birds.example/subscribe" method="post">\n`,
     );
     expect($("#embedCode").textContent).not.toContain("style=");
-    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Plain form");
+    expect($("#embedCode").textContent).toContain('<input type="email" name="email"');
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy HTML, Plain form");
+    // The Copy follows the toggle: it now copies the plain form, not the styled one.
+    $("#embedCopy button").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeText.mock.calls[1]?.[0]).toBe($("#embedCode").textContent);
+    expect(writeText.mock.calls[1]?.[0]).not.toContain("style=");
+  });
+
+  it("escapes the publication's name once in the snippet, and copies it exactly", async () => {
+    const writeText = stubClipboard();
+    const odd = response({
+      settings: { publication: { ...settings().publication, name: `Birds & "Bees" <weekly>` } },
+    });
+    await open([{ path: "/api/settings", reply: () => odd }]);
+    const heading = "Subscribe to Birds &amp; &quot;Bees&quot; &lt;weekly&gt;";
+    expect($("#embedCode").textContent).toContain(`margin-bottom:12px">${heading}</div>`);
+    $("[data-embed='plain']").click();
+    expect($("#embedCode").textContent).toContain(`<label>\n    ${heading}\n`);
+    $("#embedCopy button").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writeText.mock.calls[0]?.[0]).toBe($("#embedCode").textContent);
+    expect(writeText.mock.calls[0]?.[0]).toContain(heading);
   });
 
   it("offers the two ways as parallel bands of one card, the page first, each saying what it is", async () => {
