@@ -64,7 +64,19 @@ export const badge = (status: string): Html => html`<span class="badge ${status}
 export interface Modal {
   el: HTMLElement;
   close: () => void;
+  /**
+   * Say why the dialog's act didn't go through, inside the dialog: beneath `field` when one
+   * field is at fault (marked invalid, focused, and cleared as soon as it is edited),
+   * otherwise just above the actions, where the reader is looking; a toast at the foot of
+   * the screen would be far from the field and gone while the dialog stays open. A second
+   * call replaces the first.
+   */
+  error: (message: string, field?: HTMLInputElement | HTMLTextAreaElement) => void;
+  /** Take the error away, as a new try begins. */
+  clearError: () => void;
 }
+
+let dialogErrorSeq = 0;
 
 /**
  * A modal over a backdrop; a click outside or Escape closes it. The content is markup.
@@ -78,22 +90,91 @@ export function modal(content: Html, signal: AbortSignal): Modal {
   const back = document.createElement("div");
   back.className = "modal-backdrop";
   setHtml(back, html`<div class="modal" role="dialog" aria-modal="true">${content}</div>`);
-  // Escape listens on the document and the end of the view on its signal, so close()
-  // takes both listeners with it however the dialog closes (a button, the backdrop,
-  // Escape, the view ending), and each lives exactly as long as the dialog.
-  const onEsc = (e: KeyboardEvent) => {
+  const dialog = back.firstElementChild as HTMLElement;
+  // Focus goes back where it was when the dialog closes, so a keyboard reader carries on
+  // from the control that opened it rather than from the top of the page.
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  // Escape and Tab listen on the document and the end of the view on its signal, so
+  // close() takes both listeners with it however the dialog closes (a button, the
+  // backdrop, Escape, the view ending), and each lives exactly as long as the dialog.
+  const onKey = (e: KeyboardEvent) => {
+    // With dialogs stacked (a confirmation over the dialog that asked for it), only the top
+    // one answers the keyboard: Escape closes it alone, and Tab stays inside it.
+    if (back !== [...document.querySelectorAll(".modal-backdrop")].pop()) {
+      return;
+    }
     if (e.key === "Escape") {
       close();
+    } else if (e.key === "Tab") {
+      trapTab(dialog, e);
     }
   };
+  let errorLine: HTMLElement | null = null;
+  let errorField: HTMLInputElement | HTMLTextAreaElement | null = null;
+  let fieldDescribedBy: string | null = null;
+  const clearError = () => {
+    errorLine?.remove();
+    errorLine = null;
+    if (errorField) {
+      errorField.classList.remove("is-invalid");
+      if (fieldDescribedBy === null) {
+        errorField.removeAttribute("aria-describedby");
+      } else {
+        errorField.setAttribute("aria-describedby", fieldDescribedBy);
+      }
+      errorField.removeEventListener("input", clearError);
+      errorField = null;
+    }
+  };
+  const error = (message: string, field?: HTMLInputElement | HTMLTextAreaElement) => {
+    clearError();
+    const line = document.createElement("div");
+    line.className = field ? "field-error" : "field-error dialog-error";
+    line.id = `dialog-error-${++dialogErrorSeq}`;
+    line.setAttribute("role", "alert");
+    const ico = document.createElement("span");
+    ico.className = "field-error-ico";
+    ico.setAttribute("aria-hidden", "true");
+    ico.textContent = "!";
+    const text = document.createElement("span");
+    text.textContent = message;
+    line.append(ico, text);
+    if (field) {
+      field.after(line);
+      errorField = field;
+      fieldDescribedBy = field.getAttribute("aria-describedby");
+      field.setAttribute(
+        "aria-describedby",
+        fieldDescribedBy ? `${fieldDescribedBy} ${line.id}` : line.id,
+      );
+      field.classList.add("is-invalid");
+      field.addEventListener("input", clearError);
+      field.focus();
+    } else {
+      const actions = dialog.querySelector(".actions");
+      if (actions) {
+        actions.before(line);
+      } else {
+        dialog.append(line);
+      }
+    }
+    errorLine = line;
+  };
   const close = () => {
+    // A click on the backdrop has already dropped focus to the page body, so that counts as
+    // focus lost with the dialog too.
+    const active = document.activeElement;
+    const hadFocus = back.contains(active) || !active || active === document.body;
     back.remove();
-    document.removeEventListener("keydown", onEsc);
+    document.removeEventListener("keydown", onKey);
     signal.removeEventListener("abort", close);
+    if (hadFocus && opener?.isConnected) {
+      opener.focus();
+    }
   };
   if (signal.aborted) {
     // The view is already gone, so the dialog is never shown.
-    return { el: back, close };
+    return { el: back, close, error, clearError };
   }
   document.body.appendChild(back);
   back.addEventListener("click", (e) => {
@@ -101,9 +182,44 @@ export function modal(content: Html, signal: AbortSignal): Modal {
       close();
     }
   });
-  document.addEventListener("keydown", onEsc);
+  document.addEventListener("keydown", onKey);
   signal.addEventListener("abort", close, { once: true });
-  return { el: back, close };
+  // A caller that focuses a field of its own does so before this runs; otherwise focus
+  // lands on the dialog's first control, so the keyboard starts inside it.
+  queueMicrotask(() => {
+    if (back.isConnected && !dialog.contains(document.activeElement)) {
+      focusables(dialog)[0]?.focus();
+    }
+  });
+  return { el: back, close, error, clearError };
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest("[hidden]"));
+}
+// Tab and Shift+Tab cycle within the dialog: aria-modal says the page behind is inert, so
+// focus must not walk out to it.
+function trapTab(dialog: HTMLElement, e: KeyboardEvent): void {
+  const els = focusables(dialog);
+  const first = els[0];
+  const last = els[els.length - 1];
+  if (!first || !last) {
+    e.preventDefault();
+    return;
+  }
+  const at = document.activeElement;
+  if (!dialog.contains(at)) {
+    e.preventDefault();
+    first.focus();
+  } else if (e.shiftKey && at === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && at === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 // Keep an info tooltip within the viewport. The tip is a CSS pseudo-element
@@ -170,13 +286,21 @@ export interface MenuItem {
 // the menu) closes it on an outside click — no document-listener race.
 let menuEls: HTMLElement[] = [];
 let menuSignal: AbortSignal | null = null;
+let menuAnchor: HTMLElement | null = null;
 function closeMenu(): void {
+  const hadFocus = menuEls.some((e) => e.contains(document.activeElement));
   for (const e of menuEls) {
     e.remove();
   }
   menuEls = [];
   menuSignal?.removeEventListener("abort", closeMenu);
   menuSignal = null;
+  // Back to the ⋯ that opened it, so the keyboard keeps its place in the list. A pick that
+  // opens a dialog runs after this, and the dialog returns focus here when it closes.
+  if (hadFocus && menuAnchor?.isConnected) {
+    menuAnchor.focus();
+  }
+  menuAnchor = null;
 }
 /**
  * Open a row-action menu under an anchor; any outside click or a pick closes it. Like a
@@ -193,9 +317,12 @@ export function openMenu(anchor: Element, items: MenuItem[], signal: AbortSignal
   overlay.onclick = closeMenu;
   const m = document.createElement("div");
   m.className = "menu";
+  m.setAttribute("role", "menu");
   for (const it of items) {
     const b = document.createElement("button");
     b.type = "button";
+    b.setAttribute("role", "menuitem");
+    b.tabIndex = -1;
     b.className = `menu-item${it.danger ? " danger-item" : ""}`;
     b.textContent = it.label;
     b.onclick = () => {
@@ -204,14 +331,42 @@ export function openMenu(anchor: Element, items: MenuItem[], signal: AbortSignal
     };
     m.appendChild(b);
   }
+  m.addEventListener("keydown", (e) => menuKey(m, e));
   document.body.appendChild(overlay);
   document.body.appendChild(m);
   menuEls = [overlay, m];
   menuSignal = signal;
+  menuAnchor = anchor instanceof HTMLElement ? anchor : null;
   signal.addEventListener("abort", closeMenu, { once: true });
   const r = anchor.getBoundingClientRect();
   m.style.top = `${r.bottom + window.scrollY + 4}px`;
   m.style.left = `${r.right + window.scrollX - m.offsetWidth}px`;
+  m.querySelector<HTMLElement>(".menu-item")?.focus();
+}
+// The menu keys: arrows, Home, and End move between items (wrapping), Escape closes it,
+// and Tab closes it and lets focus move on from the ⋯, as a menu button does.
+function menuKey(m: HTMLElement, e: KeyboardEvent): void {
+  const items = [...m.querySelectorAll<HTMLElement>(".menu-item")];
+  const i = items.indexOf(document.activeElement as HTMLElement);
+  const go = (n: number) => {
+    e.preventDefault();
+    items[(n + items.length) % items.length]?.focus();
+  };
+  if (e.key === "ArrowDown") {
+    go(i + 1);
+  } else if (e.key === "ArrowUp") {
+    go(i - 1);
+  } else if (e.key === "Home") {
+    go(0);
+  } else if (e.key === "End") {
+    go(items.length - 1);
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+  } else if (e.key === "Tab") {
+    closeMenu();
+  }
 }
 
 /** Run an action with the button disabled and relabeled, restoring it after, if it is still in the page. */

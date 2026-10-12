@@ -89,6 +89,80 @@ describe("modal", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
+  it("starts focus on its first control, keeps Tab inside, and hands focus back on close", async () => {
+    const opener = document.createElement("button");
+    $("#app").appendChild(opener);
+    opener.focus();
+    const m = modal(html`<button id="a">Cancel</button><button id="b">Go</button>`, live);
+    await Promise.resolve();
+    expect(document.activeElement?.id).toBe("a");
+    const tab = (shiftKey: boolean) => {
+      const e = new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true });
+      document.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(tab(true)).toBe(true); // Shift+Tab from the first wraps to the last
+    expect(document.activeElement?.id).toBe("b");
+    expect(tab(false)).toBe(true); // Tab from the last wraps to the first
+    expect(document.activeElement?.id).toBe("a");
+    m.close();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("lets only the top dialog of a stack answer Tab and Escape", async () => {
+    const lower = modal(html`<button id="l1">Lower</button>`, live);
+    const upper = modal(html`<button id="u1">One</button><button id="u2">Two</button>`, live);
+    await Promise.resolve();
+    $<HTMLButtonElement>("#u1").focus();
+    const tab = () => {
+      const e = new KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+      document.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    // Not the last control, so Tab moves on naturally: the lower dialog must not pull focus.
+    expect(tab()).toBe(false);
+    expect(document.activeElement?.id).toBe("u1");
+    pressEscape();
+    expect(upper.el.isConnected).toBe(false);
+    expect(lower.el.isConnected).toBe(true);
+    lower.close();
+  });
+
+  it("hands focus back when closed by a click on the backdrop", async () => {
+    const opener = document.createElement("button");
+    $("#app").appendChild(opener);
+    opener.focus();
+    const m = modal(html`<button>Cancel</button>`, live);
+    await Promise.resolve();
+    // A click on the backdrop drops focus to the body before the dialog closes.
+    (document.activeElement as HTMLElement).blur();
+    m.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(m.el.isConnected).toBe(false);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("leaves focus where its caller put it", async () => {
+    const m = modal(html`<button id="a">Cancel</button><input id="f" />`, live);
+    $<HTMLInputElement>("#f", m.el).focus();
+    await Promise.resolve();
+    expect(document.activeElement?.id).toBe("f");
+    m.close();
+  });
+
+  it("says a failure inside the dialog, above its actions, where the reader is looking", () => {
+    const m = modal(html`<p>Sure?</p><div class="actions"><button>Go</button></div>`, live);
+    m.error("The server said no");
+    const line = $(".modal .dialog-error", m.el);
+    expect(line.textContent).toBe("!The server said no");
+    expect(line.getAttribute("role")).toBe("alert");
+    expect(line.nextElementSibling?.classList.contains("actions")).toBe(true);
+    m.error("Still no"); // a second call replaces the first
+    expect(m.el.querySelectorAll(".field-error").length).toBe(1);
+    m.clearError();
+    expect(m.el.querySelector(".field-error")).toBeNull();
+    m.close();
+  });
+
   it("never shows for a view that has already ended", () => {
     const view = new AbortController();
     view.abort();
@@ -117,6 +191,56 @@ describe("openMenu", () => {
     view.abort();
     expect(document.querySelector(".menu")).toBeNull();
     expect(document.querySelector(".menu-overlay")).toBeNull();
+  });
+
+  it("is reachable by keyboard: arrows move, Escape closes and returns to the ⋯", () => {
+    const b = anchor();
+    b.focus();
+    openMenu(
+      b,
+      [
+        { label: "Edit", onClick: () => {} },
+        { label: "Delete", danger: true, onClick: () => {} },
+      ],
+      live,
+    );
+    const key = (k: string) =>
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }),
+      );
+    expect(document.activeElement?.textContent).toBe("Edit");
+    key("ArrowDown");
+    expect(document.activeElement?.textContent).toBe("Delete");
+    key("ArrowDown"); // wraps
+    expect(document.activeElement?.textContent).toBe("Edit");
+    key("End");
+    expect(document.activeElement?.textContent).toBe("Delete");
+    key("Escape");
+    expect(document.querySelector(".menu")).toBeNull();
+    expect(document.activeElement).toBe(b);
+  });
+
+  it("returns focus to the ⋯ after a pick opens a dialog and the dialog closes", async () => {
+    const b = anchor();
+    b.focus();
+    let dialog: ReturnType<typeof modal> | undefined;
+    openMenu(
+      b,
+      [
+        {
+          label: "Delete",
+          onClick: () => {
+            dialog = modal(html`<button>Cancel</button>`, live);
+          },
+        },
+      ],
+      live,
+    );
+    $<HTMLButtonElement>(".menu-item").click();
+    await Promise.resolve();
+    expect(dialog?.el.contains(document.activeElement)).toBe(true);
+    dialog?.close();
+    expect(document.activeElement).toBe(b);
   });
 
   it("lets go of a view it no longer belongs to", () => {

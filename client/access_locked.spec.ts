@@ -37,7 +37,7 @@ describe("the locked editor, before Access is set up (SPEC §11)", () => {
     expect(document.body.classList.contains("signed-out")).toBe(true);
     const wall = $("#app .access-wall");
     expect($("h2", wall).textContent).toBe("The editor is locked until you set up Access");
-    expect(wall.textContent).toContain("can't tell who is asking, so it lets no one in");
+    expect(wall.textContent).toContain("can’t tell who is asking, so it lets no one in");
     // The editor's Docs tab is behind the same 401, so the guide is the published one.
     const link = $("a", wall);
     expect(link.getAttribute("href")).toBe(ACCESS_GUIDE);
@@ -59,6 +59,19 @@ describe("the locked editor, before Access is set up (SPEC §11)", () => {
     expect($("#app .auth-wall h2").textContent).toBe("Session expired");
     expect($("#app #reauth").textContent).toBe("Sign in");
     expect(document.querySelector("#app .access-wall")).toBeNull();
+    expect(document.activeElement).toBe($("#app .auth-wall h2"));
+  });
+
+  it("draws the session-expired wall once, however many calls fail", async () => {
+    fake = fakeApi([
+      { path: "/api/posts", reply: () => jsonResponse({ error: "unauthorized" }, 401) },
+    ]);
+    await api("/api/posts").catch(() => {});
+    const wall = $("#app .auth-wall");
+    $<HTMLButtonElement>("#reauth", wall).focus();
+    await api("/api/posts").catch(() => {});
+    expect($("#app .auth-wall")).toBe(wall);
+    expect(document.activeElement).toBe($("#reauth", wall));
   });
 
   it("takes over from a mounted view whose call finds no Access, once however many calls fail", async () => {

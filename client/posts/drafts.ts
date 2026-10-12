@@ -91,7 +91,7 @@ export async function renderDrafts(root: HTMLElement, signal: AbortSignal): Prom
         const filtered = state.search || (state.status && state.status !== DRAFTS_SCOPE);
         setHtml(
           listEl,
-          html`<p class="muted">${filtered ? "No drafts match." : "No drafts yet — create your first draft."}</p>`,
+          html`<p class="muted">${filtered ? "No drafts match." : "No drafts yet. Create your first draft."}</p>`,
         );
         setHtml(pagerEl, html``);
         return data;
@@ -106,7 +106,7 @@ export async function renderDrafts(root: HTMLElement, signal: AbortSignal): Prom
             // show it as `sending` and route it to the live watch, not the editor.
             const sending = p.active_send_status === "sending";
             const href = sending ? `#/sent/${p.active_send_id}` : `#/edit/${p.id}`;
-            return html`<tr class="clickable" data-id="${p.id}" data-target="${href}"><td><a href="${href}">${p.subject || html`<em>untitled</em>`}</a></td><td>${sending ? badge("sending") : badge(p.status)}</td><td class="muted when${p.fire_at ? "" : " empty"}">${p.fire_at ? fmt(p.fire_at) : "—"}</td><td class="muted updated">${fmt(p.updated_at)}</td><td class="act"><button class="icon" data-menu="${p.id}" data-status="${sending ? "sending" : p.status}" data-target="${href}" aria-label="Post actions">⋯</button></td></tr>`;
+            return html`<tr class="clickable" data-id="${p.id}" data-target="${href}"><td><a href="${href}">${p.subject || html`<em>untitled</em>`}</a></td><td>${sending ? badge("sending") : badge(p.status)}</td><td class="muted when${p.fire_at ? "" : " empty"}">${p.fire_at ? fmt(p.fire_at) : "—"}</td><td class="muted updated">${fmt(p.updated_at)}</td><td class="act"><button class="icon" data-menu="${p.id}" data-status="${sending ? "sending" : p.status}" data-target="${href}" aria-label="Post actions" aria-haspopup="menu">⋯</button></td></tr>`;
           },
         )}</tbody></table></div>`,
       );
@@ -214,20 +214,21 @@ export async function renderDrafts(root: HTMLElement, signal: AbortSignal): Prom
 
 function confirmDelete(pid: string, reload: () => unknown, signal: AbortSignal): void {
   const m = modal(
-    html`<h3>Delete draft?</h3><p class="hint">This permanently deletes the draft and its revisions. This can't be undone.</p><div class="actions"><button type="button" id="dCancel">Cancel</button><button type="button" class="danger" id="dGo">Delete</button></div>`,
+    html`<h3>Delete draft?</h3><p class="hint">This permanently deletes the draft and its revisions. This can’t be undone.</p><div class="actions"><button type="button" id="dCancel">Cancel</button><button type="button" class="danger" id="dGo">Delete</button></div>`,
     signal,
   );
   const go = $<HTMLButtonElement>("#dGo", m.el);
   $("#dCancel", m.el).onclick = m.close;
   go.onclick = () =>
     busy(go, "Deleting…", async () => {
+      m.clearError();
       try {
         await api(`/api/posts/${pid}`, { method: "DELETE" });
         m.close();
         toast("Draft deleted");
         reload();
       } catch (e) {
-        toast(e instanceof Error ? e.message : String(e));
+        m.error(e instanceof Error ? e.message : String(e));
       }
     });
 }
