@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as posts from "../src/db/posts";
 import { latestSentSendForPost } from "../src/db/sends";
-import { setPublicationLogo, updateSettings } from "../src/db/settings";
+import { newLogoKey, setPublicationLogo, updateSettings } from "../src/db/settings";
 import { getConfig } from "../src/env";
 import { archiveIndexPage, landingPage } from "../src/lib/page";
 import { clearFakeOutbox, fakeOutbox } from "../src/providers/fake";
@@ -1046,5 +1046,39 @@ describe("a publication with no name (SPEC §9)", () => {
     expect(backLink(unnamed)).toBe("Archive");
     const named = await (await fetchWith(NAMED, `/archive/${post.slug}`)).text();
     expect(backLink(named)).toBe("Birds Weekly");
+  });
+});
+
+describe("the publication logo as the tab icon (SPEC §5)", () => {
+  const PAGES = ["/", "/archive", "/subscribe", "/archive/missing"];
+  const iconsOf = (page: string) => page.match(/<link rel="icon"[^>]*>/g) ?? [];
+  const headOf = (page: string) => /<head>[\s\S]*?<\/head>/.exec(page)?.[0] ?? "";
+
+  it("links no icon while the publication has no logo", async () => {
+    const post = await publish("A Post", 1_000);
+    for (const path of [...PAGES, `/archive/${post.slug}`]) {
+      const page = await (await SELF.fetch(`${base}${path}`)).text();
+      expect(iconsOf(page), path).toEqual([]);
+    }
+  });
+
+  it("links the current logo in every reader page's head, post pages included, never in the frozen or sent email (I3)", async () => {
+    // A logo set before the send, so the render had one to leak if it ever carried the icon.
+    await setPublicationLogo(env.DB, { version: 1, contentType: "image/png", key: newLogoKey(1) });
+    const post = await publish("A Post", 1_000);
+    const send = (await latestSentSendForPost(env.DB, post.id))!;
+    for (const html of [send.rendered_html, fakeOutbox()[0]!.html]) {
+      expect(html).not.toContain('rel="icon"');
+    }
+
+    // A new logo after the send: every page, the post page too, links the current one.
+    const key = newLogoKey(2);
+    await setPublicationLogo(env.DB, { version: 2, contentType: "image/png", key });
+    const icon = `<link rel="icon" href="${getConfig(env).mediaPublicBase}/${key}">`;
+    for (const path of [...PAGES, `/archive/${post.slug}`]) {
+      const page = await (await SELF.fetch(`${base}${path}`)).text();
+      expect(iconsOf(page), path).toEqual([icon]);
+      expect(headOf(page), path).toContain(icon);
+    }
   });
 });
