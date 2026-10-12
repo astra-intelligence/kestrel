@@ -7,6 +7,7 @@ import { $ } from "../ui/dom";
 import { fmt } from "../ui/format";
 import { type Html, html } from "../ui/html";
 import { icon } from "../ui/icons";
+import { squareImage } from "../ui/square_image";
 import { busy, toast } from "../ui/widgets";
 import { chip, HIDDEN, message, type SectionHandle, type SettingsPage, secHead } from "./page";
 import { isRemakeTooClose, remakeIdentity, savedToast, withRemakeConfirm } from "./remake";
@@ -31,6 +32,10 @@ function identityNote(inUse: InUseView): string {
   return `${shown} ${reach}${wait}`;
 }
 
+/** The side of the square PNG a logo uploads as: sharp at 3× the largest place it shows
+ *  (the reader pages' 64 px), and small for any inbox. */
+const LOGO_SIZE = 256;
+
 // The logo tile's background image is set from the DOM (applyLogoUi), not written into
 // the markup: a URL has no place inside a style attribute the tag would escape as text.
 export function identitySection(page: SettingsPage): Html {
@@ -52,8 +57,11 @@ export function identitySection(page: SettingsPage): Html {
               <button type="button" id="logoReplace">${state.logoUrl ? "Replace" : "Upload"}</button>
               <button type="button" class="danger-subtle" id="logoRemove"${state.logoUrl ? null : HIDDEN}>Remove</button>
             </div>
-            <p class="field-hint">PNG, JPEG, WebP, or GIF, up to 512&nbsp;KB. Saves immediately.</p>
-            <div class="field-error" id="logoError" role="alert" hidden><span class="field-error-ico" aria-hidden="true">!</span><span></span></div>
+            <div class="set-logo-notes">
+              <p class="field-hint">Shown as a square. Pick an image at least ${String(LOGO_SIZE)}&nbsp;×&nbsp;${String(LOGO_SIZE)}&nbsp;px; a wider or taller one is cropped to its center square.</p>
+              <p class="set-field-warn" id="logoShape" hidden>Your logo isn’t square, so emails show it stretched. Replace it to have it cropped square.</p>
+              <div class="field-error" id="logoError" role="alert" hidden><span class="field-error-ico" aria-hidden="true">!</span><span></span></div>
+            </div>
           </div>
           <div class="set-id-fields">
             <div class="set-field">
@@ -145,8 +153,23 @@ export function mountIdentity(root: HTMLElement, page: SettingsPage): SectionHan
   const logoPh = $("#logoPh", root);
   const logoReplace = $<HTMLButtonElement>("#logoReplace", root);
   const logoRemove = $<HTMLButtonElement>("#logoRemove", root);
+  // A logo uploaded before the crop step may not be square, and emails show it stretched
+  // to one. Said under the tile until it is replaced; the image is read as any <img> is.
+  const logoShape = $("#logoShape", root);
+  const checkLogoShape = (url: string) => {
+    logoShape.hidden = true;
+    if (!url) {
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      logoShape.hidden = state.logoUrl !== url || img.naturalWidth === img.naturalHeight;
+    };
+    img.src = url;
+  };
   const applyLogoUi = () => {
     const has = !!state.logoUrl;
+    checkLogoShape(state.logoUrl);
     logoTile.classList.toggle("has-img", has);
     logoTile.style.backgroundImage = has ? `url('${state.logoUrl}')` : "";
     logoPh.hidden = has;
@@ -191,25 +214,25 @@ export function mountIdentity(root: HTMLElement, page: SettingsPage): SectionHan
     if (!file) {
       return;
     }
-    if (file.size > 512 * 1024) {
-      toast("That image is over 512 KB. Pick a smaller one.");
-      return;
-    }
     showLogoError("");
     try {
+      // Squared before it uploads: every surface shows the logo square, and an email
+      // stretches one that isn't. The tile shows the result; Replace is the way back.
+      const squared = await squareImage(file, LOGO_SIZE);
+      const cropped = squared.width !== squared.height;
       // The logo is part of the identity, so an upload that reaches scheduled emails
       // asks first (withRemakeConfirm); the file is held and re-sent with the ids.
       const r = await withRemakeConfirm(
         (ack) => {
           const fd = new FormData();
-          fd.append("file", file);
+          fd.append("file", new File([squared.png], "logo.png", { type: "image/png" }));
           const q = ack ? `?remake=${encodeURIComponent(ack.join(","))}` : "";
           return api<LogoResponse>(`/api/settings/logo${q}`, { method: "POST", body: fd });
         },
         remakeIdentity("Upload", "Uploading"),
       );
       if (r) {
-        logoSaved(r, "Logo updated");
+        logoSaved(r, cropped ? "Logo updated, cropped to its center square" : "Logo updated");
       }
     } catch (err) {
       logoFailed(err);
