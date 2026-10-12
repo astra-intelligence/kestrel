@@ -117,7 +117,7 @@ describe("settings view", () => {
     expect($("#embedCode").textContent).toContain(
       `<form action="https://app.birds.example/subscribe" method="post">`,
     );
-    expect($("#embedPreview label").textContent).toBe("Subscribe to Birds Weekly");
+    expect($("#embedPreview label").textContent?.trim()).toBe("Subscribe to Birds Weekly");
     // Blank wording previews as the built-in default, so the email is never wordless.
     expect($("#cePvSubject").textContent).toBe(DEFAULT_COPY.subject);
     expect($("#cePvButton").textContent).toBe("Confirm");
@@ -238,7 +238,7 @@ describe("settings view", () => {
     await open();
     typeInto($<HTMLInputElement>("#setName"), "Birds Monthly");
     expect(bar().classList.contains("show")).toBe(true);
-    expect($("#embedPreview label").textContent).toBe("Subscribe to Birds Monthly"); // live
+    expect($("#embedPreview label").textContent?.trim()).toBe("Subscribe to Birds Monthly"); // live
     $("#savebarDiscard").click();
     expect($<HTMLInputElement>("#setName").value).toBe("Birds Weekly");
     expect(bar().classList.contains("show")).toBe(false);
@@ -493,10 +493,14 @@ describe("settings view", () => {
     $("[data-embed='styled']").click();
     expect($("[data-embed='styled']").getAttribute("aria-pressed")).toBe("true");
     expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("false");
-    expect($("#embedCode").textContent).toContain('style="max-width:420px');
+    expect($("#embedCode").textContent).toContain('style="max-width:460px');
     // The toggle names the variant; the Copy at the band's foot says which it copies.
     expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Styled form");
     expect($("#embedPreview form").className).toBe("set-pf-styled");
+    // Styled wears the hosted page's look: a Georgia headline over a sans body.
+    expect($("#embedCode").textContent).toContain(
+      `<div style="font:600 22px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-0.01em;margin-bottom:12px">Subscribe to Birds Weekly</div>`,
+    );
     $("#embedCopy button").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Subscribe to Birds Weekly"));
@@ -536,6 +540,18 @@ describe("settings view", () => {
     expect($(".set-embed", ways[1]).nextElementSibling?.id).toBe("embedCopy");
   });
 
+  it("previews the plain form as its markup renders, the field inside its label", async () => {
+    await open();
+    // The snippet wraps the field in its label and leaves the button beside it, so the
+    // preview does too, rather than stacking them like the admin's own fields.
+    expect($("#embedCode").textContent).toContain(
+      "<label>\n    Subscribe to Birds Weekly\n    <input",
+    );
+    const form = $("#embedPreview form.set-pf-plain");
+    expect($$("input", $("label", form))).toHaveLength(1);
+    expect(form.lastElementChild?.tagName).toBe("BUTTON");
+  });
+
   it("names the publication in the page's line only while it has a name, live", async () => {
     await open();
     typeInto($<HTMLInputElement>("#setName"), "");
@@ -573,7 +589,7 @@ describe("settings view", () => {
     });
     unnamed.deployment.fromAddress = "hello@send.birds.example";
     await open([{ path: "/api/settings", reply: () => unnamed }]);
-    expect($("#embedPreview label").textContent).toBe("Subscribe");
+    expect($("#embedPreview label").textContent?.trim()).toBe("Subscribe");
     expect($("#embedCode").textContent).toContain("\n    Subscribe\n");
     expect($("#embedCode").textContent).not.toContain("Subscribe to");
     expect($("#setName").nextElementSibling?.textContent).toBe(
