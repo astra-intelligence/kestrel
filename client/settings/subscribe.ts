@@ -2,17 +2,13 @@
 // paste into the publisher's own site. Both post to the public /subscribe and start the
 // double opt-in, never an auto-confirm (I1).
 
-import { codeBlock, copyButton, wireCopy } from "../ui/copy";
+import { copyButton, copyFace, wireCopy } from "../ui/copy";
 import { $, $$ } from "../ui/dom";
 import { escapeHtml, type Html, html, setHtml } from "../ui/html";
+import { type IconName, icon } from "../ui/icons";
 import { chip, type SectionHandle, type SettingsPage, secHead } from "./page";
 
 type EmbedMode = "plain" | "styled";
-
-const EMBED_HINTS: Record<EmbedMode, string> = {
-  styled: "Carries its own styles, so it pastes in anywhere.",
-  plain: "Bare markup. Style it to match your site.",
-};
 
 /** The embed's heading: "Subscribe to <name>", or "Subscribe" with no name (SPEC §9). */
 function embedHeading(name: string): string {
@@ -25,14 +21,20 @@ export function buildEmbed(mode: EmbedMode, name: string, appOrigin: string): st
   const heading = escapeHtml(embedHeading(name));
   const action = `${escapeHtml(appOrigin)}/subscribe`;
   if (mode === "styled") {
+    // The hosted subscribe page's look, carried inline: a serif headline (Georgia, the
+    // reader pages' own fallback, so it needs no web font) over a sans body, in the reader
+    // pages' ink and muted colors. The headline inherits its color from the host page, and
+    // the field's border is a step darker than the reader pages' line so it still shows on
+    // a host page of any background. The apostrophe is plain ASCII, so the snippet reads
+    // right whatever encoding the host page declares.
     return (
-      `<form action="${action}" method="post" style="max-width:420px;font:15px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif">\n` +
-      `  <div style="font-weight:600;margin-bottom:6px">${heading}</div>\n` +
-      `  <div style="display:flex;gap:8px;flex-wrap:wrap">\n` +
-      `    <input type="email" name="email" required placeholder="you@example.com" aria-label="Email address" style="flex:1 1 200px;padding:10px 12px;border:1px solid #d4d4d8;border-radius:8px;font:inherit">\n` +
-      `    <button type="submit" style="padding:10px 18px;border:0;border-radius:8px;background:#18181b;color:#fff;font:inherit;font-weight:600;cursor:pointer">Subscribe</button>\n` +
+      `<form action="${action}" method="post" style="max-width:460px;font:16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">\n` +
+      `  <div style="font:600 22px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-0.01em;margin-bottom:12px">${heading}</div>\n` +
+      `  <div style="display:flex;gap:10px;flex-wrap:wrap">\n` +
+      `    <input type="email" name="email" required placeholder="you@example.com" aria-label="Email address" style="flex:1 1 220px;padding:11px 13px;border:1px solid #d6d3cc;border-radius:9px;background:#fff;color:#1b1a17;font:inherit">\n` +
+      `    <button type="submit" style="padding:11px 20px;border:1px solid #1b1a17;border-radius:9px;background:#1b1a17;color:#fbfbfa;font:inherit;font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap">Subscribe</button>\n` +
       `  </div>\n` +
-      `  <p style="margin:8px 0 0;font-size:13px;color:#71717a">Double opt-in: we'll email a confirmation link. Unsubscribe anytime.</p>\n` +
+      `  <p style="margin:12px 0 0;font-size:12.5px;color:#6b6a63">We'll email you a link to confirm. Unsubscribe anytime.</p>\n` +
       `</form>`
     );
   }
@@ -47,17 +49,40 @@ export function buildEmbed(mode: EmbedMode, name: string, appOrigin: string): st
   );
 }
 
-/** The snippet as it will look on the publisher's site: a mockup, inert. */
+/** The snippet as it will look on the publisher's site: a mockup, inert. The styled form
+ *  wears the hosted page's look; the plain one is laid out as its markup renders, with
+ *  the browser's own controls, since bare markup gets the site's styles or none. */
 function embedPreview(mode: EmbedMode, name: string): Html {
   const heading = embedHeading(name);
   if (mode === "styled") {
-    return html`<form class="set-pf-styled"><span class="l">${heading}</span><div class="rowf"><input type="email" placeholder="you@example.com" disabled><button type="button" class="sub-btn" tabindex="-1">Subscribe</button></div><p class="set-pf-fine">Double opt-in: we’ll email a confirmation link.</p></form>`;
+    return html`<form class="set-pf-styled"><span class="l">${heading}</span><div class="rowf"><input type="email" placeholder="you@example.com" disabled><button type="button" class="sub-btn" tabindex="-1">Subscribe</button></div><p class="set-pf-fine">We’ll email you a link to confirm. Unsubscribe anytime.</p></form>`;
   }
-  return html`<form class="set-pf-plain"><label>${heading}</label><input type="email" placeholder="you@example.com" disabled><button type="button" tabindex="-1">Subscribe</button></form>`;
+  return html`<form class="set-pf-plain"><label>${heading} <input type="email" placeholder="you@example.com" disabled></label> <button type="button" tabindex="-1">Subscribe</button></form>`;
 }
 
 function appOriginOf(page: SettingsPage): string {
   return page.data.deployment.appOrigin || location.origin;
+}
+
+/** The page's line names the publication only when it has a name, since the page then
+ *  reads "Subscribe" (SPEC §9). */
+function pageLine(name: string): string {
+  return name
+    ? "A public page with your publication’s name and a sign-up form ready to go."
+    : "A public page with a sign-up form ready to go.";
+}
+
+/** One way to subscribe, a band of the section's card: its glyph and title, its line,
+ *  and any control at the head's right end, then what it offers. The two ways share
+ *  this head so they read as parallel options. */
+function way(
+  glyph: IconName,
+  title: string,
+  line: Html,
+  body: Html,
+  control: Html | null = null,
+): Html {
+  return html`<div class="set-way"><div class="set-way-head"><div class="set-way-name"><h3 class="set-way-title">${icon(glyph)}${title}</h3><p class="set-way-line">${line}</p></div>${control}</div>${body}</div>`;
 }
 
 export function subscribeSection(page: SettingsPage): Html {
@@ -65,48 +90,57 @@ export function subscribeSection(page: SettingsPage): Html {
   return html`
     <section class="set-sec set-sec-subscribe">
       ${secHead("Ways to subscribe", chip("copyout", "Copy-out"))}
-      <div class="set-card set-card-pad">
-        <div class="set-field">
-          <label>Public subscribe page</label>
-          <div class="pub-row">
-            <code class="pub-val">${subscribeUrl}</code>
-            ${copyButton(subscribeUrl, "Copy the subscribe page's address")}
-            <a class="ghost-link" href="${subscribeUrl}" target="_blank" rel="noopener">Open&nbsp;↗</a>
+      <p class="set-lede">Two ways for readers to join your list. Either way, a reader is added only once they confirm by email.</p>
+      <div class="set-card">
+      ${way(
+        "link",
+        "Share the page",
+        html`<span id="subscribePageLine"></span>`,
+        html`<div class="set-way-body set-way-addr"><code class="set-addr">${subscribeUrl}</code>${copyButton(subscribeUrl, "Copy the subscribe page's address")}<a class="ghost-link" href="${subscribeUrl}" target="_blank" rel="noopener">Open&nbsp;↗</a></div>`,
+      )}
+      ${way(
+        "code",
+        "Embed a form",
+        html`Put a sign-up form on another site you own.`,
+        html`<div class="set-embed">
+            <div class="set-embed-preview" id="embedPreview"></div>
+            <pre class="set-embed-code"><code id="embedCode"></code></pre>
           </div>
-          <p class="field-hint">The double opt-in page Kestrel hosts. Share it directly, or embed the form below.</p>
-        </div>
-        <div class="set-embed-head" style="margin-top:18px">
-          <label style="margin:0">Embeddable subscribe form</label>
-          <span class="set-wtog" role="group" aria-label="Snippet style">
-            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
-            <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
-          </span>
-        </div>
-        <p class="field-hint" id="embedHint" style="margin:0 0 10px"></p>
-        <div class="set-embed-preview">
-          <div class="set-embed-cap">Rendered preview</div>
-          <div id="embedPreview"></div>
-        </div>
-        <div class="set-embed" id="embedBlock"></div>
+          <div class="set-embed-foot" id="embedCopy"></div>`,
+        html`<span class="set-wtog" role="group" aria-label="Snippet style">
+            <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="true">Styled</button>
+            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="false">Plain</button>
+          </span>`,
+      )}
       </div>
     </section>`;
 }
 
-/** The Plain/Styled toggle drives the code, the hint, the rendered preview, and the Copy
- *  payload; the name follows the live identity field. */
+/** The embed's one act, copying the snippet, as a Secondary button rather than the quiet
+ *  Copy a code block wears, since here copying is what the band is for (DESIGN §1). */
+function embedCopy(mode: EmbedMode, code: string): Html {
+  const variant = mode === "styled" ? "Styled" : "Plain";
+  return html`<button type="button" class="secondary set-embed-copy" data-copy="${code}" data-copy-word="Copy HTML" aria-label="Copy HTML, ${variant} form">${copyFace(false, "Copy HTML")}</button>`;
+}
+
+/** The Plain/Styled toggle drives the code, the rendered preview, and the Copy payload;
+ *  the name follows the live identity field. */
 export function mountSubscribe(root: HTMLElement, page: SettingsPage): SectionHandle {
   const appOrigin = appOriginOf(page);
-  const blockEl = $("#embedBlock", root);
-  const hintEl = $("#embedHint", root);
+  const codeEl = $("#embedCode", root);
+  const copyEl = $("#embedCopy", root);
   const previewEl = $("#embedPreview", root);
-  let mode: EmbedMode = "plain";
+  const lineEl = $("#subscribePageLine", root);
+  // Styled first: it pastes in looking like the hosted page anywhere, so the first form a
+  // publisher sees is their publication's, and Plain is the choice for one who'll style it.
+  let mode: EmbedMode = "styled";
   const name = () => page.state.name || page.fromDisplay;
   const rebuild = () => {
-    // The snippet as a labelled code block, its Copy on the label line (ui/copy.ts).
     const code = buildEmbed(mode, name(), appOrigin);
-    setHtml(blockEl, codeBlock(mode === "styled" ? "Styled" : "Plain HTML", html`${code}`, code));
-    hintEl.textContent = EMBED_HINTS[mode];
+    codeEl.textContent = code;
+    setHtml(copyEl, embedCopy(mode, code));
     setHtml(previewEl, embedPreview(mode, name()));
+    lineEl.textContent = pageLine(name());
   };
   const modeButtons = $$("[data-embed]", root);
   for (const b of modeButtons) {
@@ -120,7 +154,7 @@ export function mountSubscribe(root: HTMLElement, page: SettingsPage): SectionHa
   }
   wireCopy($(".set-sec-subscribe", root));
   rebuild();
-  // The page repaints every section on any change, but the snippet shows only the name:
+  // The page repaints every section on any change, but the section shows only the name:
   // rebuilt for anything else, its Copy would lose a check it had just shown.
   let shownName = name();
   return {

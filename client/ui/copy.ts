@@ -9,9 +9,11 @@ import { toast } from "./widgets";
 
 const COPIED_MS = 1500;
 
-/** The copy control's face: its word, then its glyph, a check once a copy has landed. */
-export function copyFace(copied = false): Html {
-  return html`<span>Copy</span>${icon(copied ? "check" : "copyout")}`;
+/** The copy control's face: its word, then its glyph, a check once a copy has landed. A
+ *  button whose word says what it copies ("Copy HTML") carries it as `data-copy-word`, so
+ *  the face it returns to after the check says it again. */
+export function copyFace(copied = false, word = "Copy"): Html {
+  return html`<span>${word}</span>${icon(copied ? "check" : "copyout")}`;
 }
 
 /** A Copy that puts `text` on the clipboard when clicked. `label` names what it copies,
@@ -40,12 +42,13 @@ export async function copyWith(button: HTMLElement, text: string): Promise<void>
   }
   const prior = pending.get(button);
   const label = prior?.label ?? button.getAttribute("aria-label") ?? "Copy";
+  const word = button.dataset.copyWord;
   window.clearTimeout(prior?.timer);
-  setHtml(button, copyFace(true));
+  setHtml(button, copyFace(true, word));
   button.setAttribute("aria-label", "Copied");
   button.classList.add("copied");
   const timer = window.setTimeout(() => {
-    setHtml(button, copyFace());
+    setHtml(button, copyFace(false, word));
     button.setAttribute("aria-label", label);
     button.classList.remove("copied");
     pending.delete(button);

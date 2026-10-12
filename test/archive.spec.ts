@@ -623,7 +623,13 @@ describe("reader routes gate the pill on config.devMode (§11)", () => {
         200,
         html,
       ],
-      ["subscribe form", subscribeForm, "/subscribe", [`Subscribe to ${publication}`], 200],
+      [
+        "subscribe form",
+        subscribeForm,
+        "/subscribe",
+        [`Subscribe to ${publication}`, "We’ll email you a link to confirm. Unsubscribe anytime."],
+        200,
+      ],
       [
         "subscribe (bad address)",
         subscribe,
