@@ -4735,7 +4735,7 @@ button.set-field-remove {
 .set-way + .set-way {
   border-top: 1px solid var(--line);
 }
-/* A control that switches what the band shows (the embed's Plain HTML | Styled) sits at
+/* A control that switches what the band shows (the embed's Styled | Plain HTML) sits at
    the head's right end, as the reader pages' width toggle does. */
 .set-way-head {
   display: flex;

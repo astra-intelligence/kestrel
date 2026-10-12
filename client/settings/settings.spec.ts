@@ -115,9 +115,9 @@ describe("settings view", () => {
     expect($$(".set-recip-chip").map((c) => c.textContent?.trim())).toEqual(["me@b.c"]);
     expect($(".set-addr").textContent).toBe("https://app.birds.example/subscribe");
     expect($("#embedCode").textContent).toContain(
-      `<form action="https://app.birds.example/subscribe" method="post">`,
+      `<form action="https://app.birds.example/subscribe" method="post" style=`,
     );
-    expect($("#embedPreview label").textContent?.trim()).toBe("Subscribe to Birds Weekly");
+    expect($("#embedPreview .l").textContent).toBe("Subscribe to Birds Weekly");
     // Blank wording previews as the built-in default, so the email is never wordless.
     expect($("#cePvSubject").textContent).toBe(DEFAULT_COPY.subject);
     expect($("#cePvButton").textContent).toBe("Confirm");
@@ -238,7 +238,7 @@ describe("settings view", () => {
     await open();
     typeInto($<HTMLInputElement>("#setName"), "Birds Monthly");
     expect(bar().classList.contains("show")).toBe(true);
-    expect($("#embedPreview label").textContent?.trim()).toBe("Subscribe to Birds Monthly"); // live
+    expect($("#embedPreview .l").textContent).toBe("Subscribe to Birds Monthly"); // live
     $("#savebarDiscard").click();
     expect($<HTMLInputElement>("#setName").value).toBe("Birds Weekly");
     expect(bar().classList.contains("show")).toBe(false);
@@ -486,21 +486,26 @@ describe("settings view", () => {
     expect($<HTMLInputElement>("#ceFooter").value).toBe(DEFAULT_COPY.reassurance);
   });
 
-  it("switches the embed snippet and copies it", async () => {
+  it("opens on the styled embed, copies it, and switches to plain", async () => {
     const writeText = stubClipboard();
     await open();
-    expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("true");
-    $("[data-embed='styled']").click();
+    // Styled is the default and comes first: it pastes in anywhere looking like the hosted page.
+    expect($$("[data-embed]").map((b) => b.dataset.embed)).toEqual(["styled", "plain"]);
     expect($("[data-embed='styled']").getAttribute("aria-pressed")).toBe("true");
-    expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("false");
-    expect($("#embedCode").textContent).toContain('style="max-width:460px');
-    // The toggle names the variant; the Copy at the band's foot says which it copies.
-    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Styled form");
     expect($("#embedPreview form").className).toBe("set-pf-styled");
     // Styled wears the hosted page's look: a Georgia headline over a sans body.
     expect($("#embedCode").textContent).toContain(
       `<div style="font:600 22px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-0.01em;margin-bottom:12px">Subscribe to Birds Weekly</div>`,
     );
+    // The reader learns what happens next in their own words, as on the hosted page.
+    expect($("#embedCode").textContent).toContain(
+      "We'll email you a link to confirm. Unsubscribe anytime.",
+    );
+    expect($(".set-pf-fine").textContent).toBe(
+      "We’ll email you a link to confirm. Unsubscribe anytime.",
+    );
+    // The toggle names the variant; the Copy at the band's foot says which it copies.
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Styled form");
     $("#embedCopy button").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Subscribe to Birds Weekly"));
@@ -509,6 +514,14 @@ describe("settings view", () => {
     expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copied");
     expect($("#embedCopy button span").textContent).toBe("Copy HTML");
     expect($("#toasts").textContent).toBe("");
+    $("[data-embed='plain']").click();
+    expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("true");
+    expect($("[data-embed='styled']").getAttribute("aria-pressed")).toBe("false");
+    expect($("#embedCode").textContent).toContain(
+      `<form action="https://app.birds.example/subscribe" method="post">\n`,
+    );
+    expect($("#embedCode").textContent).not.toContain("style=");
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Plain HTML form");
   });
 
   it("offers the two ways as parallel bands of one card, the page first, each saying what it is", async () => {
@@ -542,6 +555,7 @@ describe("settings view", () => {
 
   it("previews the plain form as its markup renders, the field inside its label", async () => {
     await open();
+    $("[data-embed='plain']").click();
     // The snippet wraps the field in its label and leaves the button beside it, so the
     // preview does too, rather than stacking them like the admin's own fields.
     expect($("#embedCode").textContent).toContain(
@@ -589,9 +603,13 @@ describe("settings view", () => {
     });
     unnamed.deployment.fromAddress = "hello@send.birds.example";
     await open([{ path: "/api/settings", reply: () => unnamed }]);
+    expect($("#embedPreview .l").textContent).toBe("Subscribe");
+    expect($("#embedCode").textContent).toContain('margin-bottom:12px">Subscribe</div>');
+    expect($("#embedCode").textContent).not.toContain("Subscribe to");
+    $("[data-embed='plain']").click();
     expect($("#embedPreview label").textContent?.trim()).toBe("Subscribe");
     expect($("#embedCode").textContent).toContain("\n    Subscribe\n");
-    expect($("#embedCode").textContent).not.toContain("Subscribe to");
+    $("[data-embed='styled']").click();
     expect($("#setName").nextElementSibling?.textContent).toBe(
       "Blank leaves the publication unnamed, since the email “From” has no name.",
     );

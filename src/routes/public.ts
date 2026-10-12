@@ -85,7 +85,7 @@ function subscribeFormHtml(): string {
     `<form class="r-form" method="post" action="/subscribe">` +
     `<input type="email" name="email" required placeholder="you@example.com" aria-label="Your email address">` +
     `<button class="r-btn" type="submit">Subscribe</button></form>` +
-    `<p class="r-fine">Double opt-in — we’ll email a confirmation link to finish. Unsubscribe anytime.</p>`
+    `<p class="r-fine">We’ll email you a link to confirm. Unsubscribe anytime.</p>`
   );
 }
 

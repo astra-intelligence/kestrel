@@ -31,7 +31,7 @@ export function buildEmbed(mode: EmbedMode, name: string, appOrigin: string): st
       `    <input type="email" name="email" required placeholder="you@example.com" aria-label="Email address" style="flex:1 1 220px;padding:11px 13px;border:1px solid #d6d3cc;border-radius:9px;background:#fff;color:#1b1a17;font:inherit">\n` +
       `    <button type="submit" style="padding:11px 20px;border:1px solid #1b1a17;border-radius:9px;background:#1b1a17;color:#fbfbfa;font:inherit;font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap">Subscribe</button>\n` +
       `  </div>\n` +
-      `  <p style="margin:12px 0 0;font-size:12.5px;color:#6b6a63">Double opt-in: we'll email a confirmation link. Unsubscribe anytime.</p>\n` +
+      `  <p style="margin:12px 0 0;font-size:12.5px;color:#6b6a63">We'll email you a link to confirm. Unsubscribe anytime.</p>\n` +
       `</form>`
     );
   }
@@ -52,7 +52,7 @@ export function buildEmbed(mode: EmbedMode, name: string, appOrigin: string): st
 function embedPreview(mode: EmbedMode, name: string): Html {
   const heading = embedHeading(name);
   if (mode === "styled") {
-    return html`<form class="set-pf-styled"><span class="l">${heading}</span><div class="rowf"><input type="email" placeholder="you@example.com" disabled><button type="button" class="sub-btn" tabindex="-1">Subscribe</button></div><p class="set-pf-fine">Double opt-in: we’ll email a confirmation link. Unsubscribe anytime.</p></form>`;
+    return html`<form class="set-pf-styled"><span class="l">${heading}</span><div class="rowf"><input type="email" placeholder="you@example.com" disabled><button type="button" class="sub-btn" tabindex="-1">Subscribe</button></div><p class="set-pf-fine">We’ll email you a link to confirm. Unsubscribe anytime.</p></form>`;
   }
   return html`<form class="set-pf-plain"><label>${heading} <input type="email" placeholder="you@example.com" disabled></label> <button type="button" tabindex="-1">Subscribe</button></form>`;
 }
@@ -105,8 +105,8 @@ export function subscribeSection(page: SettingsPage): Html {
           </div>
           <div class="set-embed-foot" id="embedCopy"></div>`,
         html`<span class="set-wtog" role="group" aria-label="Snippet style">
-            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
-            <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
+            <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="true">Styled</button>
+            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="false">Plain HTML</button>
           </span>`,
       )}
       </div>
@@ -128,7 +128,9 @@ export function mountSubscribe(root: HTMLElement, page: SettingsPage): SectionHa
   const copyEl = $("#embedCopy", root);
   const previewEl = $("#embedPreview", root);
   const lineEl = $("#subscribePageLine", root);
-  let mode: EmbedMode = "plain";
+  // Styled first: it pastes in looking like the hosted page anywhere, so the first form a
+  // publisher sees is their publication's, and Plain is the choice for one who'll style it.
+  let mode: EmbedMode = "styled";
   const name = () => page.state.name || page.fromDisplay;
   const rebuild = () => {
     const code = buildEmbed(mode, name(), appOrigin);
