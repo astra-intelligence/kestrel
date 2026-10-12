@@ -4206,7 +4206,7 @@ button.copied svg {
   padding: 18px;
 }
 
-/* Kestrel-accent links inside the settings cards (operator-guide links, Open ↗). */
+/* Kestrel-accent links inside the settings cards (operator-guide links). */
 .set-link {
   color: var(--accent);
   font-weight: 550;
