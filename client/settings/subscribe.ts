@@ -69,10 +69,10 @@ function pageLine(name: string): string {
     : "A public page with a sign-up form ready to go.";
 }
 
-/** One way to subscribe: its glyph, title, and line, then what it offers. The two ways
- *  share this head so they read as parallel options. */
+/** One way to subscribe, a band of the section's card: its glyph and title, its line,
+ *  then what it offers. The two ways share this head so they read as parallel options. */
 function way(glyph: IconName, title: string, line: Html, body: Html): Html {
-  return html`<div class="set-card set-way"><div class="set-way-head"><span class="set-way-ic">${icon(glyph)}</span><div><h3 class="set-way-title">${title}</h3><p class="set-way-line">${line}</p></div></div><div class="set-way-body">${body}</div></div>`;
+  return html`<div class="set-way"><div class="set-way-head"><h3 class="set-way-title">${icon(glyph)}${title}</h3><p class="set-way-line">${line}</p></div>${body}</div>`;
 }
 
 export function subscribeSection(page: SettingsPage): Html {
@@ -81,25 +81,27 @@ export function subscribeSection(page: SettingsPage): Html {
     <section class="set-sec set-sec-subscribe">
       ${secHead("Ways to subscribe", chip("copyout", "Copy-out"))}
       <p class="set-lede">Two ways for readers to join your list. Either way, a reader is added only once they confirm by email.</p>
+      <div class="set-card">
       ${way(
         "link",
         "Share the page",
         html`<span id="subscribePageLine"></span>`,
-        html`<div class="set-way-addr"><code class="set-addr">${subscribeUrl}</code>${copyButton(subscribeUrl, "Copy the subscribe page's address")}<a class="ghost-link" href="${subscribeUrl}" target="_blank" rel="noopener">Open&nbsp;↗</a></div>`,
+        html`<div class="set-way-body set-way-addr"><code class="set-addr">${subscribeUrl}</code>${copyButton(subscribeUrl, "Copy the subscribe page's address")}<a class="ghost-link" href="${subscribeUrl}" target="_blank" rel="noopener">Open&nbsp;↗</a></div>`,
       )}
       ${way(
         "code",
         "Embed a form",
         html`Put a sign-up form on another site you own.`,
-        html`<span class="set-wtog" role="group" aria-label="Snippet style">
+        html`<div class="set-preview-bar set-embed-bar"><span class="set-wtog" role="group" aria-label="Snippet style">
             <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
             <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
-          </span>
+          </span></div>
           <div class="set-embed">
             <div class="set-embed-preview" id="embedPreview"></div>
             <div class="set-embed-code" id="embedBlock"></div>
           </div>`,
       )}
+      </div>
     </section>`;
 }
 

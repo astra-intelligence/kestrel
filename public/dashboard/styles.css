@@ -4720,49 +4720,44 @@ button.set-field-remove {
   flex: 1;
 }
 
-/* --- ways to subscribe (DESIGN §5): two cards in reading order, the page then the form,
-   each with the same head (a glyph, a title, one line) so they read as two options. The
-   section's cards fold by their own width, since the sidebar decides how wide Settings is. --- */
+/* --- ways to subscribe (DESIGN §5): one card, the two ways as bands in reading order,
+   the page then the form, split by a full-width rule like the other cards' bands. Each
+   band has the same head (a glyph, a title, one line) so they read as two options. The
+   card folds by the section's own width, since the sidebar decides how wide Settings is. --- */
 .set-sec-subscribe {
   container-type: inline-size;
 }
+.set-way + .set-way {
+  border-top: 1px solid var(--line);
+}
 .set-way-head {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 16px 18px 0;
+  padding: 18px 18px 0;
 }
-.set-way-ic {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: var(--chip);
-  color: var(--muted);
-}
-.set-way-ic svg {
-  width: 16px;
-  height: 16px;
-  fill: currentColor;
-}
+/* Set like a field label, its glyph like a note's, so the band ranks with the other cards. */
 .set-way-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--fg);
 }
-.set-way-line {
-  margin: 2px 0 0;
-  font-size: 13px;
+.set-way-title svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: currentColor;
   color: var(--muted);
-  line-height: 1.45;
 }
-/* The body starts under the title, not the glyph, so a way's offer lines up with its name. */
+.set-way-line {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
 .set-way-body {
-  padding: 10px 18px 16px 60px;
-  min-width: 0;
+  padding: 10px 18px 18px;
 }
 /* The address is a value to copy, not a field: plain monospace, its Copy and Open beside it. */
 .set-way-addr {
@@ -4778,20 +4773,23 @@ button.set-field-remove {
   overflow-wrap: anywhere;
   margin-right: 4px;
 }
-/* The form as it will look beside the code that makes it, both always shown, under the
-   toggle that switches them on a line of its own. */
+/* The toggle on a strip of its own across the card, as the confirmation email's is, over
+   the form and code it switches. */
+.set-embed-bar {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  justify-content: flex-start;
+}
+/* The form as it will look beside the code that makes it, both always shown, edge to
+   edge in the card like the reader pages' outline beside its frame. */
 .set-embed {
-  margin-top: 10px;
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
 }
 .set-embed-preview {
   display: flex;
   align-items: center;
-  padding: 18px 16px;
+  padding: 18px;
   background: var(--sunken);
   border-right: 1px solid var(--line);
   min-width: 0;
@@ -4803,13 +4801,12 @@ button.set-field-remove {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--bg);
 }
 .set-embed-head {
   display: flex;
   align-items: center;
   gap: 4px 10px;
-  padding: 6px 6px 6px 12px;
+  padding: 7px 8px 7px 14px;
   border-bottom: 1px solid var(--line);
 }
 .set-embed-hint {
@@ -4825,7 +4822,7 @@ button.set-field-remove {
    whole in the column; the copied text is unchanged. */
 .set-embed-code pre {
   margin: 0;
-  padding: 10px 12px;
+  padding: 12px 14px;
   max-height: 220px;
   overflow: auto;
   font: 12px / 1.55 var(--mono);
@@ -4835,9 +4832,6 @@ button.set-field-remove {
   overflow-wrap: anywhere;
 }
 @container (max-width: 620px) {
-  .set-way-body {
-    padding-left: 18px;
-  }
   .set-embed {
     grid-template-columns: minmax(0, 1fr);
   }

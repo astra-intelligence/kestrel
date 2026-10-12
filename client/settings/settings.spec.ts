@@ -490,10 +490,10 @@ describe("settings view", () => {
     expect($("#toasts").textContent).toBe("");
   });
 
-  it("offers the two ways as parallel cards, the page first, each saying what it is", async () => {
+  it("offers the two ways as parallel bands of one card, the page first, each saying what it is", async () => {
     await open();
-    const ways = $$(".set-sec-subscribe .set-way");
-    expect(ways.map((w) => $(".set-way-title", w).textContent)).toEqual([
+    const ways = $$(".set-sec-subscribe .set-card > .set-way");
+    expect(ways.map((w) => $(".set-way-title", w).textContent?.trim())).toEqual([
       "Share the page",
       "Embed a form",
     ]);
@@ -506,9 +506,10 @@ describe("settings view", () => {
     expect($(".copy-btn", addr).dataset.copy).toBe("https://app.birds.example/subscribe");
     expect($<HTMLAnchorElement>("a", addr).href).toBe("https://app.birds.example/subscribe");
     // The toggle heads the form and code it switches, and "Plain HTML" is said once.
-    const body = $(".set-way-body", ways[1]);
-    expect(body.firstElementChild?.classList.contains("set-wtog")).toBe(true);
-    expect(body.textContent?.match(/Plain HTML/g)).toHaveLength(1);
+    const bar = $(".set-embed-bar", ways[1]);
+    expect($(".set-wtog", bar).textContent).toContain("Plain HTML");
+    expect(bar.nextElementSibling?.classList.contains("set-embed")).toBe(true);
+    expect(ways[1]?.textContent?.match(/Plain HTML/g)).toHaveLength(1);
     expect($("#embedHint").textContent).toBe("Bare markup. Style it to match your site.");
   });
 
