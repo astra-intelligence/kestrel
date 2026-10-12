@@ -2,9 +2,11 @@
 
 Every deploy-time setting: what it does, its default, and what the app refuses. Each environment's settings live in its block under `env` in `wrangler.jsonc`, and its secrets in Cloudflare.
 
-- **Vars** are public values in the block's `vars`, safe to commit.
+- **Vars** are public values in the block's `vars`, safe to commit. A change takes effect when you deploy.
 - **Secrets** are stored with `npx wrangler secret put NAME --env production`, and never committed. A secret takes effect as soon as you store it, with no redeploy.
 - **Bindings and triggers** connect the Worker to its database, its image bucket, and its schedule.
+
+In local development, `npm run dev` reads the top level of `wrangler.jsonc` and `.dev.vars`, which you copy from `.dev.vars.example`. Restart it after you change either.
 
 None of these can be read or changed from inside the app, by the editor or by Claude. Settings in the editor shows the public ones, read-only.
 
@@ -136,5 +138,12 @@ The app checks its configuration on every request. It refuses to run on one that
 - A real provider needs `FROM_ADDRESS`, and every secret the table marks for it. SES also needs `AWS_REGION`.
 - With a real provider, none of `APP_ORIGIN`, `ARCHIVE_ORIGIN`, `MEDIA_PUBLIC_BASE`, `SENDING_DOMAIN`, or `FROM_ADDRESS` may still be on `example.com`, the template's placeholder.
 - `SUBREQUEST_BUDGET`, `MIN_LEAD_SECONDS`, and `SES_MAX_SEND_RATE` must be whole numbers above zero. `MIN_LEAD_SECONDS` must also be within its bounds. Any other value is refused, never adjusted. The one exception is a `SUBREQUEST_BUDGET` below 30, which is raised to 30.
+- In local development, `SIMULATE_SENDS` must be `off`, or the provider a local send models, `resend`, `ses`, or `1` for a generic one, optionally followed by `:none` for no injected failures. A deployed instance ignores it.
+- `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set together or not at all. With only one, the app could verify no sign-in and would let no one into the editor, so it refuses and names the missing one.
 
-Until it's fixed, every request answers `500` with a body naming the variable, such as `{"error":"invalid_config","variable":"APP_ORIGIN",…}`. The Worker's log records it, and no sends go out. The editor's page still loads, since it's a static file, but everything it asks the API for fails the same way.
+Until it's fixed, no sends go out, and each place says what its reader can act on:
+
+- **The editor** shows a page naming the setting, what's wrong with it, and how to fix it, with a link to its section here. Its own Docs tab can't load until then, so the link opens the project's site.
+- **The API**, `/health`, and the webhooks answer `500` with a body naming the variable, such as `{"error":"invalid_config","variable":"APP_ORIGIN",…}`.
+- **The public pages readers see** answer `503` with a page saying the newsletter is temporarily unavailable. It names no setting.
+- **The Worker's log** records it as `config.invalid`.
