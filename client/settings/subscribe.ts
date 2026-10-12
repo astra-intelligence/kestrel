@@ -70,9 +70,16 @@ function pageLine(name: string): string {
 }
 
 /** One way to subscribe, a band of the section's card: its glyph and title, its line,
- *  then what it offers. The two ways share this head so they read as parallel options. */
-function way(glyph: IconName, title: string, line: Html, body: Html): Html {
-  return html`<div class="set-way"><div class="set-way-head"><h3 class="set-way-title">${icon(glyph)}${title}</h3><p class="set-way-line">${line}</p></div>${body}</div>`;
+ *  and any control at the head's right end, then what it offers. The two ways share
+ *  this head so they read as parallel options. */
+function way(
+  glyph: IconName,
+  title: string,
+  line: Html,
+  body: Html,
+  control: Html | null = null,
+): Html {
+  return html`<div class="set-way"><div class="set-way-head"><div class="set-way-name"><h3 class="set-way-title">${icon(glyph)}${title}</h3><p class="set-way-line">${line}</p></div>${control}</div>${body}</div>`;
 }
 
 export function subscribeSection(page: SettingsPage): Html {
@@ -92,14 +99,14 @@ export function subscribeSection(page: SettingsPage): Html {
         "code",
         "Embed a form",
         html`Put a sign-up form on another site you own.`,
-        html`<div class="set-preview-bar set-embed-bar"><span class="set-wtog" role="group" aria-label="Snippet style">
-            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
-            <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
-          </span></div>
-          <div class="set-embed">
+        html`<div class="set-embed">
             <div class="set-embed-preview" id="embedPreview"></div>
             <div class="set-embed-code" id="embedBlock"></div>
           </div>`,
+        html`<span class="set-wtog" role="group" aria-label="Snippet style">
+            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
+            <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
+          </span>`,
       )}
       </div>
     </section>`;

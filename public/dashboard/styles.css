@@ -4730,8 +4730,19 @@ button.set-field-remove {
 .set-way + .set-way {
   border-top: 1px solid var(--line);
 }
+/* A control that switches what the band shows (the embed's Plain HTML | Styled) sits at
+   the head's right end, as the reader pages' width toggle does. */
 .set-way-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
   padding: 18px 18px 0;
+}
+/* The name takes the room the control leaves, so the control keeps its size. */
+.set-way-name {
+  flex: 1 1 0;
+  min-width: 0;
 }
 /* Set like a field label, its glyph like a note's, so the band ranks with the other cards. */
 .set-way-title {
@@ -4773,18 +4784,13 @@ button.set-field-remove {
   overflow-wrap: anywhere;
   margin-right: 4px;
 }
-/* The toggle on a strip of its own across the card, as the confirmation email's is, over
-   the form and code it switches. */
-.set-embed-bar {
-  margin-top: 14px;
-  border-top: 1px solid var(--line);
-  justify-content: flex-start;
-}
 /* The form as it will look beside the code that makes it, both always shown, edge to
    edge in the card like the reader pages' outline beside its frame. */
 .set-embed {
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
 }
 .set-embed-preview {
   display: flex;
@@ -4832,6 +4838,13 @@ button.set-field-remove {
   overflow-wrap: anywhere;
 }
 @container (max-width: 620px) {
+  /* No room beside the title: the toggle drops under the band's line, at its left. */
+  .set-way-head {
+    flex-direction: column;
+  }
+  .set-way-name {
+    flex-basis: auto;
+  }
   .set-embed {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -505,10 +505,12 @@ describe("settings view", () => {
     const addr = $(".set-way-addr", ways[0]);
     expect($(".copy-btn", addr).dataset.copy).toBe("https://app.birds.example/subscribe");
     expect($<HTMLAnchorElement>("a", addr).href).toBe("https://app.birds.example/subscribe");
-    // The toggle heads the form and code it switches, and "Plain HTML" is said once.
-    const bar = $(".set-embed-bar", ways[1]);
-    expect($(".set-wtog", bar).textContent).toContain("Plain HTML");
-    expect(bar.nextElementSibling?.classList.contains("set-embed")).toBe(true);
+    // The toggle sits at the right end of the embed's head, right above the form and code it
+    // switches, and "Plain HTML" is said once.
+    const head = $(".set-way-head", ways[1]);
+    expect(head.lastElementChild?.classList.contains("set-wtog")).toBe(true);
+    expect(head.nextElementSibling?.classList.contains("set-embed")).toBe(true);
+    expect($(".set-way-head", ways[0]).querySelector(".set-wtog")).toBeNull();
     expect(ways[1]?.textContent?.match(/Plain HTML/g)).toHaveLength(1);
     expect($("#embedHint").textContent).toBe("Bare markup. Style it to match your site.");
   });
