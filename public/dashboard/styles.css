@@ -4735,7 +4735,7 @@ button.set-field-remove {
 .set-way + .set-way {
   border-top: 1px solid var(--line);
 }
-/* A control that switches what the band shows (the embed's Styled | Plain HTML) sits at
+/* A control that switches what the band shows (the embed's Styled | Plain) sits at
    the head's right end, as the reader pages' width toggle does. */
 .set-way-head {
   display: flex;
@@ -4790,10 +4790,12 @@ button.set-field-remove {
   margin-right: 4px;
 }
 /* The form as it will look beside the code that makes it, both always shown, edge to
-   edge in the card like the reader pages' outline beside its frame. */
+   edge in the card like the reader pages' outline beside its frame. The preview grows to
+   480px, near the styled form's own 460px cap, so it shows the form about as wide as a
+   site will; the code keeps 280px, so on a narrower card the preview gives way first. */
 .set-embed {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 480px) minmax(280px, 1fr);
   margin-top: 16px;
   border-top: 1px solid var(--line);
 }

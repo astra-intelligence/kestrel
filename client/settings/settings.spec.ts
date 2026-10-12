@@ -521,7 +521,7 @@ describe("settings view", () => {
       `<form action="https://app.birds.example/subscribe" method="post">\n`,
     );
     expect($("#embedCode").textContent).not.toContain("style=");
-    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Plain HTML form");
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Plain form");
   });
 
   it("offers the two ways as parallel bands of one card, the page first, each saying what it is", async () => {
@@ -540,12 +540,12 @@ describe("settings view", () => {
     expect($(".copy-btn", addr).dataset.copy).toBe("https://app.birds.example/subscribe");
     expect($<HTMLAnchorElement>("a", addr).href).toBe("https://app.birds.example/subscribe");
     // The toggle sits at the right end of the embed's head, right above the form and code it
-    // switches, and "Plain HTML" is said once.
+    // switches, and "Plain" is said once.
     const head = $(".set-way-head", ways[1]);
     expect(head.lastElementChild?.classList.contains("set-wtog")).toBe(true);
     expect(head.nextElementSibling?.classList.contains("set-embed")).toBe(true);
     expect($(".set-way-head", ways[0]).querySelector(".set-wtog")).toBeNull();
-    expect(ways[1]?.textContent?.match(/Plain HTML/g)).toHaveLength(1);
+    expect(ways[1]?.textContent?.match(/Plain/g)).toHaveLength(1);
     // The band ends in its one act: Copy HTML, a Secondary button, after the form and code.
     const copy = $<HTMLButtonElement>("#embedCopy button", ways[1]);
     expect(copy.classList.contains("secondary")).toBe(true);

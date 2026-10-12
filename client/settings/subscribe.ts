@@ -106,7 +106,7 @@ export function subscribeSection(page: SettingsPage): Html {
           <div class="set-embed-foot" id="embedCopy"></div>`,
         html`<span class="set-wtog" role="group" aria-label="Snippet style">
             <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="true">Styled</button>
-            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="false">Plain HTML</button>
+            <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="false">Plain</button>
           </span>`,
       )}
       </div>
@@ -116,7 +116,7 @@ export function subscribeSection(page: SettingsPage): Html {
 /** The embed's one act, copying the snippet, as a Secondary button rather than the quiet
  *  Copy a code block wears, since here copying is what the band is for (DESIGN §1). */
 function embedCopy(mode: EmbedMode, code: string): Html {
-  const variant = mode === "styled" ? "Styled" : "Plain HTML";
+  const variant = mode === "styled" ? "Styled" : "Plain";
   return html`<button type="button" class="secondary set-embed-copy" data-copy="${code}" data-copy-word="Copy HTML" aria-label="Copy the ${variant} form">${copyFace(false, "Copy HTML")}</button>`;
 }
 
