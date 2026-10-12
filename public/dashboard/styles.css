@@ -4808,39 +4808,37 @@ button.set-field-remove {
 .set-embed-preview > form {
   width: 100%;
 }
-.set-embed-code {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.set-embed-head {
-  display: flex;
-  align-items: center;
-  gap: 4px 10px;
-  padding: 7px 8px 7px 14px;
-  border-bottom: 1px solid var(--line);
-}
-.set-embed-hint {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-.set-embed-head button.copy-btn {
-  flex: 0 0 auto;
-}
 /* The code wraps rather than scrolling sideways, so the Styled snippet's long lines read
    whole in the column; the copied text is unchanged. */
-.set-embed-code pre {
+.set-embed-code {
   margin: 0;
+  min-width: 0;
   padding: 12px 14px;
   max-height: 220px;
   overflow: auto;
   font: 12px / 1.55 var(--mono);
 }
-.set-embed-code pre code {
+.set-embed-code code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* The band ends in its one act: read top to bottom, choose, see the form and its code,
+   then copy. A strip across the card's foot, as Notifications ends in its test row. */
+.set-embed-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+}
+/* Copy HTML is Secondary with the shared Copy's word and glyph, as the setup step's is. */
+button.set-embed-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+button.set-embed-copy svg {
+  width: 14px;
+  height: 14px;
 }
 @container (max-width: 620px) {
   /* No room beside the title: the toggle drops under the band's line, at its left. */

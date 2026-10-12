@@ -2,18 +2,13 @@
 // paste into the publisher's own site. Both post to the public /subscribe and start the
 // double opt-in, never an auto-confirm (I1).
 
-import { copyButton, wireCopy } from "../ui/copy";
+import { copyButton, copyFace, wireCopy } from "../ui/copy";
 import { $, $$ } from "../ui/dom";
 import { escapeHtml, type Html, html, setHtml } from "../ui/html";
 import { type IconName, icon } from "../ui/icons";
 import { chip, type SectionHandle, type SettingsPage, secHead } from "./page";
 
 type EmbedMode = "plain" | "styled";
-
-const EMBED_HINTS: Record<EmbedMode, string> = {
-  styled: "Carries its own styles, so it pastes in anywhere.",
-  plain: "Bare markup. Style it to match your site.",
-};
 
 /** The embed's heading: "Subscribe to <name>", or "Subscribe" with no name (SPEC §9). */
 function embedHeading(name: string): string {
@@ -101,8 +96,9 @@ export function subscribeSection(page: SettingsPage): Html {
         html`Put a sign-up form on another site you own.`,
         html`<div class="set-embed">
             <div class="set-embed-preview" id="embedPreview"></div>
-            <div class="set-embed-code" id="embedBlock"></div>
-          </div>`,
+            <pre class="set-embed-code"><code id="embedCode"></code></pre>
+          </div>
+          <div class="set-embed-foot" id="embedCopy"></div>`,
         html`<span class="set-wtog" role="group" aria-label="Snippet style">
             <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
             <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
@@ -112,24 +108,27 @@ export function subscribeSection(page: SettingsPage): Html {
     </section>`;
 }
 
-/** The snippet beside its form: the variant's hint and its Copy on the head line, so the
- *  toggle's name isn't said twice (DESIGN §5). */
-function embedCode(mode: EmbedMode, code: string): Html {
+/** The embed's one act, copying the snippet, as a Secondary button rather than the quiet
+ *  Copy a code block wears, since here copying is what the band is for (DESIGN §1). */
+function embedCopy(mode: EmbedMode, code: string): Html {
   const variant = mode === "styled" ? "Styled" : "Plain HTML";
-  return html`<div class="set-embed-head"><span class="set-embed-hint" id="embedHint">${EMBED_HINTS[mode]}</span>${copyButton(code, `Copy the ${variant} form`)}</div><pre><code>${code}</code></pre>`;
+  return html`<button type="button" class="secondary set-embed-copy" data-copy="${code}" data-copy-word="Copy HTML" aria-label="Copy the ${variant} form">${copyFace(false, "Copy HTML")}</button>`;
 }
 
-/** The Plain/Styled toggle drives the code, the hint, the rendered preview, and the Copy
- *  payload; the name follows the live identity field. */
+/** The Plain/Styled toggle drives the code, the rendered preview, and the Copy payload;
+ *  the name follows the live identity field. */
 export function mountSubscribe(root: HTMLElement, page: SettingsPage): SectionHandle {
   const appOrigin = appOriginOf(page);
-  const blockEl = $("#embedBlock", root);
+  const codeEl = $("#embedCode", root);
+  const copyEl = $("#embedCopy", root);
   const previewEl = $("#embedPreview", root);
   const lineEl = $("#subscribePageLine", root);
   let mode: EmbedMode = "plain";
   const name = () => page.state.name || page.fromDisplay;
   const rebuild = () => {
-    setHtml(blockEl, embedCode(mode, buildEmbed(mode, name(), appOrigin)));
+    const code = buildEmbed(mode, name(), appOrigin);
+    codeEl.textContent = code;
+    setHtml(copyEl, embedCopy(mode, code));
     setHtml(previewEl, embedPreview(mode, name()));
     lineEl.textContent = pageLine(name());
   };

@@ -114,7 +114,7 @@ describe("settings view", () => {
     expect($(".set-pill").textContent).toBe("default: app origin"); // archive on the app origin
     expect($$(".set-recip-chip").map((c) => c.textContent?.trim())).toEqual(["me@b.c"]);
     expect($(".set-addr").textContent).toBe("https://app.birds.example/subscribe");
-    expect($("#embedBlock code").textContent).toContain(
+    expect($("#embedCode").textContent).toContain(
       `<form action="https://app.birds.example/subscribe" method="post">`,
     );
     expect($("#embedPreview label").textContent).toBe("Subscribe to Birds Weekly");
@@ -493,17 +493,17 @@ describe("settings view", () => {
     $("[data-embed='styled']").click();
     expect($("[data-embed='styled']").getAttribute("aria-pressed")).toBe("true");
     expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("false");
-    expect($("#embedBlock code").textContent).toContain('style="max-width:420px');
-    expect($("#embedHint").textContent).toBe("Carries its own styles, so it pastes in anywhere.");
-    // The toggle names the variant; the code's head carries its hint and a Copy that says which.
-    expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copy the Styled form");
+    expect($("#embedCode").textContent).toContain('style="max-width:420px');
+    // The toggle names the variant; the Copy at the band's foot says which it copies.
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copy the Styled form");
     expect($("#embedPreview form").className).toBe("set-pf-styled");
-    $("#embedBlock .copy-btn").click();
+    $("#embedCopy button").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Subscribe to Birds Weekly"));
     expect(writeText.mock.calls[0]?.[0]).toContain("style=");
-    // It says so where it sits: the check, and no toast.
-    expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copied");
+    // It says so where it sits: the check, its word kept, and no toast.
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copied");
+    expect($("#embedCopy button span").textContent).toBe("Copy HTML");
     expect($("#toasts").textContent).toBe("");
   });
 
@@ -529,7 +529,11 @@ describe("settings view", () => {
     expect(head.nextElementSibling?.classList.contains("set-embed")).toBe(true);
     expect($(".set-way-head", ways[0]).querySelector(".set-wtog")).toBeNull();
     expect(ways[1]?.textContent?.match(/Plain HTML/g)).toHaveLength(1);
-    expect($("#embedHint").textContent).toBe("Bare markup. Style it to match your site.");
+    // The band ends in its one act: Copy HTML, a Secondary button, after the form and code.
+    const copy = $<HTMLButtonElement>("#embedCopy button", ways[1]);
+    expect(copy.classList.contains("secondary")).toBe(true);
+    expect($("span", copy).textContent).toBe("Copy HTML");
+    expect($(".set-embed", ways[1]).nextElementSibling?.id).toBe("embedCopy");
   });
 
   it("names the publication in the page's line only while it has a name, live", async () => {
@@ -553,13 +557,13 @@ describe("settings view", () => {
   it("keeps the embed's Copy as it is while other fields change, and rebuilds it for the name", async () => {
     stubClipboard();
     await open();
-    $("#embedBlock .copy-btn").click();
+    $("#embedCopy button").click();
     await vi.advanceTimersByTimeAsync(0);
     typeInto($<HTMLInputElement>("#notifyTo"), "me@example.com");
     // The snippet doesn't show the notifications address, so its block is left alone.
-    expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copied");
+    expect($("#embedCopy button").getAttribute("aria-label")).toBe("Copied");
     typeInto($<HTMLInputElement>("#setName"), "Owls Monthly");
-    expect($("#embedBlock code").textContent).toContain("Subscribe to Owls Monthly");
+    expect($("#embedCode").textContent).toContain("Subscribe to Owls Monthly");
   });
 
   it("offers an embed that reads whole when the publication has no name (SPEC §9)", async () => {
@@ -570,12 +574,12 @@ describe("settings view", () => {
     unnamed.deployment.fromAddress = "hello@send.birds.example";
     await open([{ path: "/api/settings", reply: () => unnamed }]);
     expect($("#embedPreview label").textContent).toBe("Subscribe");
-    expect($("#embedBlock code").textContent).toContain("\n    Subscribe\n");
-    expect($("#embedBlock code").textContent).not.toContain("Subscribe to");
+    expect($("#embedCode").textContent).toContain("\n    Subscribe\n");
+    expect($("#embedCode").textContent).not.toContain("Subscribe to");
     expect($("#setName").nextElementSibling?.textContent).toBe(
       "Blank leaves the publication unnamed, since the email “From” has no name.",
     );
-    $("#embedBlock .copy-btn").click();
+    $("#embedCopy button").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText.mock.calls[0]?.[0]).not.toContain("Your publication");
   });

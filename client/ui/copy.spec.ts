@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { $, resetShell, stubClipboard } from "../test/support";
-import { codeBlock, copyButton, copyWith, wireCopy } from "./copy";
+import { codeBlock, copyButton, copyFace, copyWith, wireCopy } from "./copy";
 import { html, setHtml } from "./html";
 
 describe("copy (DESIGN §1)", () => {
@@ -32,6 +32,21 @@ describe("copy (DESIGN §1)", () => {
     await vi.advanceTimersByTimeAsync(1500);
     expect(b.getAttribute("aria-label")).toBe("Copy curl");
     expect(b.classList.contains("copied")).toBe(false);
+  });
+
+  it("keeps a button's own word through the check and back", async () => {
+    stubClipboard();
+    setHtml(
+      root,
+      html`<button type="button" class="secondary" data-copy-word="Copy HTML" aria-label="Copy the form">${copyFace(false, "Copy HTML")}</button>`,
+    );
+    const b = $<HTMLButtonElement>("button", root);
+    await copyWith(b, "<form></form>");
+    expect($("span", b).textContent).toBe("Copy HTML");
+    expect(b.classList.contains("copied")).toBe(true);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect($("span", b).textContent).toBe("Copy HTML");
+    expect(b.getAttribute("aria-label")).toBe("Copy the form");
   });
 
   it("restarts the moment on a second copy, and still restores the original name", async () => {
