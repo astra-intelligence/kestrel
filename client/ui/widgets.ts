@@ -1,6 +1,6 @@
-// Small shared widgets, each independent of the others: the toast, the clipboard copy
-// with its toast, the status badge, the modal, the info tooltip, the row-action menu, the
-// busy state on a button, and the error view with its retry. The tooltip's document
+// Small shared widgets, each independent of the others: the toast, the status badge, the
+// modal, the info tooltip, the row-action menu, the busy state on a button, and the error
+// view with its retry. The tooltip's document
 // listeners are wired by installTooltips() when boot calls it.
 
 import { toasts } from "../shell";
@@ -56,15 +56,6 @@ function leaveToast(t: HTMLElement): void {
   t.classList.add("leaving");
   t.style.height = "0";
   setTimeout(() => t.remove(), TOAST_LEAVE_MS);
-}
-
-export async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast("Copied");
-  } catch {
-    toast("Couldn't copy to clipboard");
-  }
 }
 
 /** A status pill; the status doubles as its class. */

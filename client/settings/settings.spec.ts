@@ -87,7 +87,8 @@ describe("settings view", () => {
     expect($<HTMLInputElement>("#setTagline").value).toBe("Owls & more");
     // Nothing scheduled: the note says where the identity shows up, and no more.
     expect($(".set-note span").textContent).toBe("Shown in every email.");
-    expect($$(".set-inbox-from")[0]?.textContent).toBe("Birds");
+    // The sender's inbox row, in its read-only card.
+    expect($(".set-card.sunken .set-inbox-from").textContent).toBe("Birds");
     expect($(".set-inbox-addr").textContent).toBe("hello@send.birds.example");
     const facts = $$(".set-kv-v").map((v) => v.textContent?.trim());
     expect(facts).toContain("Amazon SES");
@@ -96,7 +97,7 @@ describe("settings view", () => {
     expect($(".set-pill").textContent).toBe("default: app origin"); // archive on the app origin
     expect($$(".set-recip-chip").map((c) => c.textContent?.trim())).toEqual(["me@b.c"]);
     expect($(".pub-val").textContent).toBe("https://app.birds.example/subscribe");
-    expect($("#embedCode").textContent).toContain(
+    expect($("#embedBlock code").textContent).toContain(
       `<form action="https://app.birds.example/subscribe" method="post">`,
     );
     expect($("#embedPreview label").textContent).toBe("Subscribe to Birds Weekly");
@@ -109,6 +110,37 @@ describe("settings view", () => {
     expect($("#logoRemove").hidden).toBe(true);
     expect(bar().hidden).toBe(true);
     expect(fake.unhandled).toEqual([]);
+  });
+
+  it("orders the sections by whom they serve, editable first and set at deploy last", async () => {
+    await open();
+    // Each group keeps its sections together, with no heading of its own.
+    const groups = $$(".set-group").map((g) => $$(".set-sec-title", g).map((t) => t.textContent));
+    expect(groups).toEqual([
+      ["Publication identity"],
+      ["Ways to subscribe", "Confirmation email", "Reader pages"],
+      ["Email template", "Default test recipients"],
+      ["Notifications"],
+      ["Email sender", "Instance"],
+    ]);
+    expect($$(".set-sec-title").every((h) => h.tagName === "H2")).toBe(true);
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("shows the template as a sample email, with the way to the Template page", async () => {
+    const signed = "<div>{{ .Post.Body }}<p>{{ .Publication.Name }}</p></div>";
+    await open([
+      { path: "/api/settings", reply: () => response({ settings: { emailTemplate: signed } }) },
+    ]);
+    const frame = $<HTMLIFrameElement>("#tplPreview");
+    frame.dispatchEvent(new Event("load"));
+    const sample = () => frame.contentDocument?.querySelector(".kestrel-email")?.textContent;
+    expect(sample()).toContain("Birds Weekly");
+    // The sample follows the name as it is typed.
+    typeInto($<HTMLInputElement>("#setName"), "Owls Monthly");
+    expect(sample()).toContain("Owls Monthly");
+    $("#tplEditLink").click();
+    expect(location.hash).toBe("#/template");
   });
 
   it("reflects the minimum lead and a local send simulation read-only, as deploy config", async () => {
@@ -440,14 +472,34 @@ describe("settings view", () => {
   it("switches the embed snippet and copies it", async () => {
     const writeText = stubClipboard();
     await open();
+    expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("true");
     $("[data-embed='styled']").click();
-    expect($("#embedCode").textContent).toContain('style="max-width:420px');
-    expect($("#embedHint").textContent).toMatch(/Self-contained/);
+    expect($("[data-embed='styled']").getAttribute("aria-pressed")).toBe("true");
+    expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("false");
+    expect($("#embedBlock code").textContent).toContain('style="max-width:420px');
+    expect($("#embedHint").textContent).toBe("Carries its own styles, so it pastes in anywhere.");
+    // The block's label follows the toggle.
+    expect($("#embedBlock .block-label").textContent).toBe("Styled");
     expect($("#embedPreview form").className).toBe("set-pf-styled");
-    $("#embedCopy").click();
+    $("#embedBlock .copy-btn").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Subscribe to Birds Weekly"));
     expect(writeText.mock.calls[0]?.[0]).toContain("style=");
+    // It says so where it sits: the check, and no toast.
+    expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copied");
+    expect($("#toasts").textContent).toBe("");
+  });
+
+  it("keeps the embed's Copy as it is while other fields change, and rebuilds it for the name", async () => {
+    stubClipboard();
+    await open();
+    $("#embedBlock .copy-btn").click();
+    await vi.advanceTimersByTimeAsync(0);
+    typeInto($<HTMLInputElement>("#notifyTo"), "me@example.com");
+    // The snippet doesn't show the notifications address, so its block is left alone.
+    expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copied");
+    typeInto($<HTMLInputElement>("#setName"), "Owls Monthly");
+    expect($("#embedBlock code").textContent).toContain("Subscribe to Owls Monthly");
   });
 
   it("offers an embed that reads whole when the publication has no name (SPEC §9)", async () => {
@@ -458,12 +510,12 @@ describe("settings view", () => {
     unnamed.deployment.fromAddress = "hello@send.birds.example";
     await open([{ path: "/api/settings", reply: () => unnamed }]);
     expect($("#embedPreview label").textContent).toBe("Subscribe");
-    expect($("#embedCode").textContent).toContain("\n    Subscribe\n");
-    expect($("#embedCode").textContent).not.toContain("Subscribe to");
+    expect($("#embedBlock code").textContent).toContain("\n    Subscribe\n");
+    expect($("#embedBlock code").textContent).not.toContain("Subscribe to");
     expect($("#setName").nextElementSibling?.textContent).toBe(
       "Blank leaves the publication unnamed, since the email “From” has no name.",
     );
-    $("#embedCopy").click();
+    $("#embedBlock .copy-btn").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(writeText.mock.calls[0]?.[0]).not.toContain("Your publication");
   });
