@@ -96,7 +96,7 @@ describe("settings view", () => {
     expect(facts).toContain("Not configured");
     expect($(".set-pill").textContent).toBe("default: app origin"); // archive on the app origin
     expect($$(".set-recip-chip").map((c) => c.textContent?.trim())).toEqual(["me@b.c"]);
-    expect($(".pub-val").textContent).toBe("https://app.birds.example/subscribe");
+    expect($(".set-addr").textContent).toBe("https://app.birds.example/subscribe");
     expect($("#embedBlock code").textContent).toContain(
       `<form action="https://app.birds.example/subscribe" method="post">`,
     );
@@ -478,8 +478,8 @@ describe("settings view", () => {
     expect($("[data-embed='plain']").getAttribute("aria-pressed")).toBe("false");
     expect($("#embedBlock code").textContent).toContain('style="max-width:420px');
     expect($("#embedHint").textContent).toBe("Carries its own styles, so it pastes in anywhere.");
-    // The block's label follows the toggle.
-    expect($("#embedBlock .block-label").textContent).toBe("Styled");
+    // The toggle names the variant; the code's head carries its hint and a Copy that says which.
+    expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copy the Styled form");
     expect($("#embedPreview form").className).toBe("set-pf-styled");
     $("#embedBlock .copy-btn").click();
     await vi.advanceTimersByTimeAsync(0);
@@ -488,6 +488,46 @@ describe("settings view", () => {
     // It says so where it sits: the check, and no toast.
     expect($("#embedBlock .copy-btn").getAttribute("aria-label")).toBe("Copied");
     expect($("#toasts").textContent).toBe("");
+  });
+
+  it("offers the two ways as parallel cards, the page first, each saying what it is", async () => {
+    await open();
+    const ways = $$(".set-sec-subscribe .set-way");
+    expect(ways.map((w) => $(".set-way-title", w).textContent)).toEqual([
+      "Share the page",
+      "Embed a form",
+    ]);
+    expect(ways.map((w) => $(".set-way-line", w).textContent)).toEqual([
+      "A public page with your publication’s name and a sign-up form ready to go.",
+      "Put a sign-up form on another site you own.",
+    ]);
+    // The address is a value beside its Copy and Open, not a field.
+    const addr = $(".set-way-addr", ways[0]);
+    expect($(".copy-btn", addr).dataset.copy).toBe("https://app.birds.example/subscribe");
+    expect($<HTMLAnchorElement>("a", addr).href).toBe("https://app.birds.example/subscribe");
+    // The toggle heads the form and code it switches, and "Plain HTML" is said once.
+    const body = $(".set-way-body", ways[1]);
+    expect(body.firstElementChild?.classList.contains("set-wtog")).toBe(true);
+    expect(body.textContent?.match(/Plain HTML/g)).toHaveLength(1);
+    expect($("#embedHint").textContent).toBe("Bare markup. Style it to match your site.");
+  });
+
+  it("names the publication in the page's line only while it has a name, live", async () => {
+    await open();
+    typeInto($<HTMLInputElement>("#setName"), "");
+    // The sender's display name stands in, so the page still has a name.
+    expect($("#subscribePageLine").textContent).toContain("your publication’s name");
+    const unnamed = response({
+      settings: { publication: { ...settings().publication, name: "" } },
+    });
+    unnamed.deployment.fromAddress = "hello@send.birds.example";
+    unmount();
+    await open([{ path: "/api/settings", reply: () => unnamed }]);
+    expect($("#subscribePageLine").textContent).toBe(
+      "A public page with a sign-up form ready to go.",
+    );
+    typeInto($<HTMLInputElement>("#setName"), "Owls Monthly");
+    expect($("#subscribePageLine").textContent).toContain("your publication’s name");
   });
 
   it("keeps the embed's Copy as it is while other fields change, and rebuilds it for the name", async () => {

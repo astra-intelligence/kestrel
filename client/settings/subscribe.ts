@@ -2,9 +2,10 @@
 // paste into the publisher's own site. Both post to the public /subscribe and start the
 // double opt-in, never an auto-confirm (I1).
 
-import { codeBlock, copyButton, wireCopy } from "../ui/copy";
+import { copyButton, wireCopy } from "../ui/copy";
 import { $, $$ } from "../ui/dom";
 import { escapeHtml, type Html, html, setHtml } from "../ui/html";
+import { type IconName, icon } from "../ui/icons";
 import { chip, type SectionHandle, type SettingsPage, secHead } from "./page";
 
 type EmbedMode = "plain" | "styled";
@@ -60,36 +61,53 @@ function appOriginOf(page: SettingsPage): string {
   return page.data.deployment.appOrigin || location.origin;
 }
 
+/** The page's line names the publication only when it has a name, since the page then
+ *  reads "Subscribe" (SPEC §9). */
+function pageLine(name: string): string {
+  return name
+    ? "A public page with your publication’s name and a sign-up form ready to go."
+    : "A public page with a sign-up form ready to go.";
+}
+
+/** One way to subscribe: its glyph, title, and line, then what it offers. The two ways
+ *  share this head so they read as parallel options. */
+function way(glyph: IconName, title: string, line: Html, body: Html): Html {
+  return html`<div class="set-card set-way"><div class="set-way-head"><span class="set-way-ic">${icon(glyph)}</span><div><h3 class="set-way-title">${title}</h3><p class="set-way-line">${line}</p></div></div><div class="set-way-body">${body}</div></div>`;
+}
+
 export function subscribeSection(page: SettingsPage): Html {
   const subscribeUrl = `${appOriginOf(page)}/subscribe`;
   return html`
     <section class="set-sec set-sec-subscribe">
       ${secHead("Ways to subscribe", chip("copyout", "Copy-out"))}
-      <div class="set-card set-card-pad">
-        <div class="set-field">
-          <label>Public subscribe page</label>
-          <div class="pub-row">
-            <code class="pub-val">${subscribeUrl}</code>
-            ${copyButton(subscribeUrl, "Copy the subscribe page's address")}
-            <a class="ghost-link" href="${subscribeUrl}" target="_blank" rel="noopener">Open&nbsp;↗</a>
-          </div>
-          <p class="field-hint">The double opt-in page Kestrel hosts. Share it directly, or embed the form below.</p>
-        </div>
-        <div class="set-embed-head" style="margin-top:18px">
-          <label style="margin:0">Embeddable subscribe form</label>
-          <span class="set-wtog" role="group" aria-label="Snippet style">
+      <p class="set-lede">Two ways for readers to join your list. Either way, a reader is added only once they confirm by email.</p>
+      ${way(
+        "link",
+        "Share the page",
+        html`<span id="subscribePageLine"></span>`,
+        html`<div class="set-way-addr"><code class="set-addr">${subscribeUrl}</code>${copyButton(subscribeUrl, "Copy the subscribe page's address")}<a class="ghost-link" href="${subscribeUrl}" target="_blank" rel="noopener">Open&nbsp;↗</a></div>`,
+      )}
+      ${way(
+        "code",
+        "Embed a form",
+        html`Put a sign-up form on another site you own.`,
+        html`<span class="set-wtog" role="group" aria-label="Snippet style">
             <button type="button" class="wtog-btn" data-embed="plain" aria-pressed="true">Plain HTML</button>
             <button type="button" class="wtog-btn" data-embed="styled" aria-pressed="false">Styled</button>
           </span>
-        </div>
-        <p class="field-hint" id="embedHint" style="margin:0 0 10px"></p>
-        <div class="set-embed-preview">
-          <div class="set-embed-cap">Rendered preview</div>
-          <div id="embedPreview"></div>
-        </div>
-        <div class="set-embed" id="embedBlock"></div>
-      </div>
+          <div class="set-embed">
+            <div class="set-embed-preview" id="embedPreview"></div>
+            <div class="set-embed-code" id="embedBlock"></div>
+          </div>`,
+      )}
     </section>`;
+}
+
+/** The snippet beside its form: the variant's hint and its Copy on the head line, so the
+ *  toggle's name isn't said twice (DESIGN §5). */
+function embedCode(mode: EmbedMode, code: string): Html {
+  const variant = mode === "styled" ? "Styled" : "Plain HTML";
+  return html`<div class="set-embed-head"><span class="set-embed-hint" id="embedHint">${EMBED_HINTS[mode]}</span>${copyButton(code, `Copy the ${variant} form`)}</div><pre><code>${code}</code></pre>`;
 }
 
 /** The Plain/Styled toggle drives the code, the hint, the rendered preview, and the Copy
@@ -97,16 +115,14 @@ export function subscribeSection(page: SettingsPage): Html {
 export function mountSubscribe(root: HTMLElement, page: SettingsPage): SectionHandle {
   const appOrigin = appOriginOf(page);
   const blockEl = $("#embedBlock", root);
-  const hintEl = $("#embedHint", root);
   const previewEl = $("#embedPreview", root);
+  const lineEl = $("#subscribePageLine", root);
   let mode: EmbedMode = "plain";
   const name = () => page.state.name || page.fromDisplay;
   const rebuild = () => {
-    // The snippet as a labelled code block, its Copy on the label line (ui/copy.ts).
-    const code = buildEmbed(mode, name(), appOrigin);
-    setHtml(blockEl, codeBlock(mode === "styled" ? "Styled" : "Plain HTML", html`${code}`, code));
-    hintEl.textContent = EMBED_HINTS[mode];
+    setHtml(blockEl, embedCode(mode, buildEmbed(mode, name(), appOrigin)));
     setHtml(previewEl, embedPreview(mode, name()));
+    lineEl.textContent = pageLine(name());
   };
   const modeButtons = $$("[data-embed]", root);
   for (const b of modeButtons) {
@@ -120,7 +136,7 @@ export function mountSubscribe(root: HTMLElement, page: SettingsPage): SectionHa
   }
   wireCopy($(".set-sec-subscribe", root));
   rebuild();
-  // The page repaints every section on any change, but the snippet shows only the name:
+  // The page repaints every section on any change, but the section shows only the name:
   // rebuilt for anything else, its Copy would lose a check it had just shown.
   let shownName = name();
   return {
