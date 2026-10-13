@@ -186,7 +186,8 @@ describe("SIMULATE_SENDS", () => {
 
 describe("a profile per provider, with the real adapter's traits", () => {
   it("takes batch size, idempotency, key memory, and send rate from SesProvider and ResendProvider", () => {
-    // An account allowed three messages a second: the SES profile paces to the same rate.
+    // An account allowed three messages a second: the SES profile batches the same three a
+    // request, at SES's one request a second.
     const sesVars = { ...SES_DEPLOY, SES_MAX_SEND_RATE: "3" };
     const ses: EmailProvider = new sesAdapter.SesProvider(
       getConfig(withVars(sesVars)),
@@ -210,7 +211,8 @@ describe("a profile per provider, with the real adapter's traits", () => {
       expect(sim.maxRequestRate).toBe(real.maxRequestRate);
       expect(sim.name).toBe("fake"); // a fake-family transport: nothing reaches an inbox
     }
-    expect(ses.maxRequestRate).toBe(3);
+    expect(ses.maxBatch).toBe(3);
+    expect(ses.maxRequestRate).toBe(1);
   });
 
   it("builds a profile when a simulation is set up, not ahead of it", () => {
@@ -319,7 +321,9 @@ describe("the SES profile reaches what an SES failure leads to", { timeout: 60_0
       vi.spyOn(console, "warn"),
       vi.spyOn(console, "error"),
     ];
-    const vars = { SIMULATE_SENDS: "ses", SUBREQUEST_BUDGET: "10000" };
+    // An account allowed three a second, so the 30 readers go as ten requests of three: enough
+    // for the quota and the lost request to fall where the profile places them.
+    const vars = { SIMULATE_SENDS: "ses", SUBREQUEST_BUDGET: "10000", SES_MAX_SEND_RATE: "3" };
     const e = withVars(vars);
     const emails = await seedReaders(30);
     const sendId = await dueSendUnder(e, "Kestrels");
@@ -344,8 +348,8 @@ describe("the SES profile reaches what an SES failure leads to", { timeout: 60_0
     expect(row.halt_error).toMatch(/TooManyRequestsException: Daily message quota exceeded/);
     expect(row.c_unsent).toBe(0);
     expect(row.c_in_flight).toBe(0);
-    expect(row.c_accepted).toBeGreaterThanOrEqual(1); // the group's first request, alone
-    expect(row.c_accepted).toBeLessThanOrEqual(3); // the quota runs out by the 4th
+    expect(row.c_accepted).toBeGreaterThanOrEqual(2); // the first request, alone (one may be refused)
+    expect(row.c_accepted).toBeLessThanOrEqual(9); // the quota runs out by the 4th
     expect(row.c_pending).toBe(30 - row.c_accepted);
     expect(sentTo()).toEqual(new Set(await addresses("accepted")));
     expect(fakeOutbox()).toHaveLength(row.c_accepted);
@@ -362,13 +366,15 @@ describe("the SES profile reaches what an SES failure leads to", { timeout: 60_0
 
     // At its first step (five minutes) it is, and the quota has lifted: the send resumes,
     // and a few requests in, one is lost in flight, in this run rather than the halted one.
-    while (row.halt_reason !== null && Date.now() - haltedAt < 10 * 60_000) {
+    while (row.halt_cause === "quota" && Date.now() - haltedAt < 10 * 60_000) {
       vi.setSystemTime(Date.now() + 60_000);
       await sweep(e);
       row = (await sends.getSend(env.DB, sendId))!;
     }
     expect(Date.now() - haltedAt).toBe(5 * 60_000);
-    expect(row.halt_reason).toBeNull();
+    // The lost request holds the send for an outage's first step, a minute, rather than
+    // strand another batch at once.
+    expect([row.halt_reason, row.halt_cause]).toEqual(["unavailable", "outage"]);
     expect(fakeOutbox().length).toBeGreaterThan(beforeQuota);
     // At least one: SES's own rare loss can add another to the one the profile guarantees.
     expect(row.c_in_flight).toBeGreaterThanOrEqual(1);

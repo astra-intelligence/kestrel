@@ -59,10 +59,11 @@ export interface SendLoopResult {
 const MAX_CHUNK = 500;
 
 /**
- * The fewest recipients one hand-off write covers. A provider that takes one recipient a
- * request (SES) would otherwise pay a whole batch's D1 writes for each recipient, so its
- * requests go in groups this size that share the writes: about half a D1 statement a
- * recipient instead of five. It is also the most recipients a run cut off mid-group can
+ * The fewest recipients one hand-off write covers. A provider that takes fewer recipients a
+ * request than this (SES on an account allowed fewer than this many a second) would
+ * otherwise pay a whole batch's D1 writes for every few recipients, so its requests go in
+ * groups this size that share the writes: about half a D1 statement a recipient instead
+ * of five at one recipient a request. It is also the most recipients a run cut off mid-group can
  * leave waiting for Resolve on such a provider, which has no idempotency key to re-send
  * under (SPEC §12). A provider that batches this many or more sends one batch a group.
  */
@@ -89,6 +90,14 @@ const CLOSE_COST = 4;
 /** The least a run needs to be worth starting: its opening, one group of one request,
  *  and its close. */
 export const MIN_RUN_COST = OPEN_COST + GROUP_COST + 1 + CLOSE_COST;
+
+/** The halt a group records: an account refusal outranks a provider that is only
+ *  unavailable, since it is the one the publisher has to act on. */
+function worseHalt(current: BatchHalt | null, next: BatchHalt): BatchHalt {
+  return !current || (current.reason === "unavailable" && next.reason === "account")
+    ? next
+    : current;
+}
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -266,11 +275,12 @@ export async function runSend(
     const [first, ...rest] = sent;
     const answers = first ? [await send(first)] : [];
     const probe = answers[0]?.answer;
-    if (probe?.kind === "answered") {
+    if (probe?.kind === "answered" && !probe.halt) {
       answers.push(...(await Promise.all(rest.map(send))));
     } else {
-      // Handed off but never sent: back to the queue with the halted one, no key kept
-      // (none of them reached the provider on this attempt).
+      // Handed off but never sent: back to the queue, no key kept (none of them reached the
+      // provider on this attempt), since the first request found the provider refusing,
+      // down, or not answering.
       for (const call of rest) {
         held.push({
           key: call.batch.key,
@@ -295,12 +305,32 @@ export async function runSend(
           };
         } else {
           unknown += call.recipients.length; // stays in flight, awaiting Resolve (§12)
+          // The provider may be down or unreachable: the send waits out the outage's
+          // backoff rather than strand a fresh batch every tick. Only the halt is taken;
+          // this batch stays in flight.
+          halt = worseHalt(halt, {
+            reason: "unavailable",
+            cause: "outage",
+            error: lost ?? "no answer",
+            mayHaveSent: true,
+          });
         }
       } else if (answer.kind === "halted") {
         complete = false;
         batchHalt = answer.halt;
       } else {
-        answered = true;
+        // An answer that took or settled someone is progress, which ends a halt the send
+        // carried; one that only held recipients back is not.
+        if (answer.results.some((r) => r.accepted || r.held !== true)) {
+          answered = true;
+        }
+        // Recipients the provider held back for its own reasons go back with no attempt
+        // spent, and the send records why, as for a halted batch. Only the halt is taken:
+        // the batch's other rows were answered, or are in flight with their fate unknown.
+        if (answer.halt) {
+          halt = worseHalt(halt, answer.halt);
+          complete = false; // the provider is refusing for now, so the run stops here
+        }
         let answeredFor = 0;
         for (const r of answer.results) {
           const id = byAddress.get(r.email);
@@ -317,6 +347,7 @@ export async function runSend(
               status: "pending",
               error: r.error,
               keepKey: provider.idempotentRetry,
+              ...(r.held ? { attempt: false as const } : {}),
             });
             result.requeued += 1;
           } else {
@@ -334,11 +365,7 @@ export async function runSend(
         });
         requeued += batch.members.length;
         heldCount += call.recipients.length;
-        // An account refusal outranks a provider that is only unavailable: it is the one
-        // the publisher has to act on.
-        if (!halt || (halt.reason === "unavailable" && batchHalt.reason === "account")) {
-          halt = batchHalt;
-        }
+        halt = worseHalt(halt, batchHalt);
       }
     }
 
@@ -362,14 +389,16 @@ export async function runSend(
 
     const count = (status: DeliveryOutcome["status"]) =>
       outcomes.filter((o) => o.status === status).length;
+    // Recipients the provider held back for its own reasons count as held, not retried.
+    const heldBack = outcomes.filter((o) => o.status === "pending" && o.attempt === false).length;
     log.info("send.batch", {
       ...tags,
       requests: answers.length,
       recipients: batches.reduce((n, b) => n + b.members.length, 0),
       accepted: count("accepted"),
       unsent: count("unsent"),
-      retried: count("pending"),
-      held: heldCount,
+      retried: count("pending") - heldBack,
+      held: heldCount + heldBack,
       unknown,
       latencyMs,
     });

@@ -17,6 +17,7 @@ import { guardD1 } from "./support/d1_guard";
 import { addresses, dueSend, resetDatabase, seedConfirmed, tick, ticks } from "./support/fixtures";
 import { allowErrorLogs } from "./support/log";
 import { ResendLikeProvider, SesLikeProvider } from "./support/resend_like";
+import { answerSes, entryOk } from "./support/ses";
 import { viewOf } from "./support/view";
 
 // A failure that is the provider's or the account's halts the send's run, not its
@@ -162,6 +163,28 @@ describe("a provider outage", () => {
       "backing-off",
       true,
     ]);
+  });
+});
+
+describe("a request with no answer on a provider without a key", () => {
+  it("waits out an outage's backoff rather than strand a fresh batch every tick (SPEC §12)", async () => {
+    allowErrorLogs("send.ambiguous", "send.wedged");
+    await seedConfirmed(addresses(3));
+    const send = await dueSend();
+    const ses = new SesLikeProvider();
+    vi.mocked(providers.getProvider).mockReturnValue(ses);
+    ses.loseAnswers = 1;
+
+    await sweep(capped());
+
+    const row = (await sends.getSend(env.DB, send.id))!;
+    expect([row.halt_reason, row.halt_cause]).toEqual(["unavailable", "outage"]);
+    expect(row.halt_retry_at).toBeGreaterThan(Date.now());
+    expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ dispatched: 1, pending: 2 });
+    await sweep(capped()); // the same minute: the retry isn't due
+    expect(ses.requests).toBe(1);
+    await untilSent(send.id, 5); // later ticks send the rest; the lost one waits for Resolve
+    expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ dispatched: 1, accepted: 2 });
   });
 });
 
@@ -564,8 +587,8 @@ describe("the real adapters, end to end through the loop", () => {
     expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ unsent: 3 });
   });
 
-  // The adapter paces its requests to the account's send rate; these specs are about which
-  // requests go out, not how fast, so a high rate keeps them from waiting it out for real.
+  // An account allowed 1,000 a second takes a full 50 a request, so each spec's batch is
+  // one request and none waits out SES's one request a second.
   const sesEnv = {
     ...env,
     AWS_ACCESS_KEY_ID: "AKIATESTTESTTEST",
@@ -574,39 +597,20 @@ describe("the real adapters, end to end through the loop", () => {
   } as AppEnv;
   const sesAdapter = () => new SesProvider(getConfig(sesEnv), sesEnv);
 
-  /** SES answers per recipient; `answer` decides each request, and `mailed` counts accepts. */
-  function sesAnswers(answer: (to: string) => Response) {
-    const mailed = new Map<string, number>();
-    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const req = input as Request;
-      const to = (JSON.parse(await req.text()) as { Destination: { ToAddresses: string[] } })
-        .Destination.ToAddresses[0]!;
-      const res = answer(to);
-      if (res.ok) {
-        mailed.set(to, (mailed.get(to) ?? 0) + 1);
-      }
-      return res;
-    });
-    return { spy, mailed };
-  }
-  // Each message gets its own id, as SES gives it: a delivery's provider id is unique.
-  const sesOk = () =>
-    new Response(JSON.stringify({ MessageId: crypto.randomUUID() }), { status: 200 });
-
-  it("an SES SendingPausedException halts after one request instead of one per recipient", async () => {
+  it("an SES SendingPausedException halts the send without consuming anyone, then resumes", async () => {
     const emails = addresses(20);
     await seedConfirmed(emails);
     const send = await dueSend();
     vi.mocked(providers.getProvider).mockReturnValue(sesAdapter());
 
     let paused = true;
-    const { spy, mailed } = sesAnswers(() =>
+    const { spy, mailed } = answerSes(undefined, () =>
       paused
         ? new Response(
             JSON.stringify({ __type: "SendingPausedException", message: "Account is paused" }),
             { status: 400 },
           )
-        : sesOk(),
+        : null,
     );
     const result = await runSend(capped(), send.id, new Budget(1000));
 
@@ -623,21 +627,63 @@ describe("the real adapters, end to end through the loop", () => {
     expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ accepted: 20 });
   });
 
-  it("an SES bad address is still that recipient's alone: recorded unsent, the rest delivered", async () => {
-    const emails = addresses(4);
+  it("SES holding back part of a batch for a spent quota spends no attempt, and the send says why (SPEC §12)", async () => {
+    const emails = addresses(20);
     await seedConfirmed(emails);
     const send = await dueSend();
     vi.mocked(providers.getProvider).mockReturnValue(sesAdapter());
-    sesAnswers((to) =>
-      to === emails[1]
-        ? new Response(JSON.stringify({ __type: "BadRequestException", message: "bad" }), {
-            status: 400,
-          })
-        : sesOk(),
+    const taken = new Set(emails.slice(0, 2));
+    const { spy } = answerSes((to) =>
+      taken.has(to)
+        ? entryOk()
+        : { Status: "ACCOUNT_DAILY_QUOTA_EXCEEDED", Error: "Daily message quota exceeded." },
     );
 
     const result = await runSend(capped(), send.id, new Budget(1000));
 
+    expect(spy).toHaveBeenCalledTimes(1); // the run stops at the refusal
+    expect(result.halt).toBe("account");
+    const row = (await sends.getSend(env.DB, send.id))!;
+    expect([row.halt_reason, row.halt_cause]).toEqual(["account", "quota"]);
+    expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ accepted: 2, pending: 18 });
+    const held = (await rows(send.id)).filter((r) => r.status === "pending");
+    expect(held.every((r) => r.attempts === 0)).toBe(true);
+  });
+
+  it("a group whose first request SES partly held back sends nothing more that tick", async () => {
+    // An account allowed three a second: batches of three, three batches a group.
+    const slow = { ...sesEnv, SES_MAX_SEND_RATE: "3" } as AppEnv;
+    const emails = addresses(9);
+    await seedConfirmed(emails);
+    const send = await dueSend();
+    vi.mocked(providers.getProvider).mockReturnValue(new SesProvider(getConfig(slow), slow));
+    let first = true;
+    const { spy } = answerSes(() => {
+      const answer = first
+        ? entryOk()
+        : { Status: "ACCOUNT_DAILY_QUOTA_EXCEEDED", Error: "Daily message quota exceeded." };
+      first = false;
+      return answer;
+    });
+
+    await runSend(capped(), send.id, new Budget(1000));
+
+    expect(spy).toHaveBeenCalledTimes(1); // the probe alone; the rest of the group waits
+    expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ accepted: 1, pending: 8 });
+    expect((await rows(send.id)).every((r) => r.attempts === 0)).toBe(true);
+    expect((await sends.getSend(env.DB, send.id))!.halt_cause).toBe("quota");
+  });
+
+  it("an SES entry rejected for its own address is that recipient's alone: recorded unsent, the rest delivered", async () => {
+    const emails = addresses(4);
+    await seedConfirmed(emails);
+    const send = await dueSend();
+    vi.mocked(providers.getProvider).mockReturnValue(sesAdapter());
+    answerSes((to) =>
+      to === emails[1] ? { Status: "MESSAGE_REJECTED", Error: "bad" } : entryOk(),
+    );
+
+    const result = await runSend(capped(), send.id, new Budget(1000));
     expect(result.finished).toBe(true);
     expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ accepted: 3, unsent: 1 });
   });
