@@ -45,11 +45,19 @@ import {
   newLogoKey,
   publicationLogoUrl,
   resolveConfirmationEmail,
+  SettingsFieldError,
   type SettingsPatch,
   withPublicationLogo,
 } from "../db/settings";
 import type { Config } from "../env";
-import { type JsonObject, optObject, optString, optStringList, readJsonObject } from "../lib/body";
+import {
+  fieldError,
+  type JsonObject,
+  optObject,
+  optString,
+  optStringList,
+  readJsonObject,
+} from "../lib/body";
 import { badRequest, HttpError, json } from "../lib/errors";
 import { mediaType, RASTER_IMAGE_TYPES } from "../lib/image_types";
 import { unwrap } from "../lib/unwrap";
@@ -234,12 +242,16 @@ export async function update(c: RequestContext): Promise<Response> {
     warnings = v.warnings;
   }
   // Validate the patch against the current settings up front, so a bad field is a 400
-  // before any refusal about scheduled sends (applyPatch throws plain Errors). The read
+  // before any refusal about scheduled sends (applyPatch throws SettingsFieldError, naming
+  // the field; any other Error is still a 400 rather than a 500). The read
   // stays outside the catch: a database failure is a 500, never reported as a bad request.
   const current = await getSettings(c.env.DB);
   try {
     applyPatch(current, patch);
   } catch (e) {
+    if (e instanceof SettingsFieldError) {
+      throw fieldError(e.field, e.message);
+    }
     throw badRequest(e instanceof Error ? e.message : "invalid settings");
   }
   const { settings, remade } = await saveSettingsRemaking(
