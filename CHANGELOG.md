@@ -10,6 +10,12 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+**Upgrading from 1.8.0.** One database migration: run `npm run sync-migrations`, then `npx wrangler d1 migrations apply DB --remote --env production` (and `--local` for local development) before deploying. It (`0005_imports`) adds the record of each import and how each subscriber joined, reading every existing subscriber as joined through Kestrel's double opt-in, and rebuilds the notifications table so an import can be told to you.
+
+### Added
+
+- Bring an existing list in, and take the whole list out, through the API, in one documented format, `kestrel-subscribers/1` (a CSV, or a plain `.txt` list of addresses). A plan shows what the import would do to every address before anything changes; the commit applies it whole, with your attestation that everyone imported as subscribed opted in, and imports them as confirmed with how and where they joined, never reversing an unsubscribe (even for a reader the subscribe form has put back to pending) or lifting a suppression here, and sending no email. Each subscriber now records how they joined beside their state; Claude may attest for you, and you're emailed when it does, but only a person can let an import grow a scheduled send. The export writes the same format, so another instance imports it back; in the CSV, a value a spreadsheet would run as a formula is written as text. One import takes up to 10,000 rows, or 1,000 on the Workers Free plan's limits (`SUBREQUEST_BUDGET` unset). The format's reference is in the Docs tab and at `GET /api/imports/format` (SPEC §7, §8).
+
 ### Changed
 
 - The API's refusals and render warnings that the editor shows read as sentences that name the next step, with typographic apostrophes and no em dashes: a save or image upload on a scheduled post, a test with no recipients or too many, an address Settings won't take, a scheduling or Resolve refusal, a warning such as an image with no alt text. A template test's refusals about its recipients now name `to` as their `field`, and a save, delete, or image change on a post that isn't a draft is refused as 409 `post_not_draft` instead of `conflict`, saying whether canceling the schedule would unlock it or its send has already started.
