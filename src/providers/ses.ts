@@ -108,6 +108,13 @@ const ACCOUNT_ERROR_TYPES = new Map<string, HaltCause>([
   ["SendingPausedException", "suspended"],
   ["AccountSuspendedException", "suspended"],
   ["MailFromDomainNotVerifiedException", "sender"],
+  // A resource the request names doesn't exist. Kestrel names only its configuration set
+  // (SES_CONFIGURATION_SET), so this is a typo, a set deleted after setup, or the wrong
+  // region: the deployment's to fix, and the same for every recipient, so it holds the send
+  // rather than marking each one failed. Without a configuration set the request names no
+  // resource that could be missing, so a 404 then isn't expected, and the advice still points
+  // at the one setting that would cause it.
+  ["NotFoundException", "configuration"],
   // The credentials themselves: unknown, wrongly signed, expired, or not permitted (a key
   // whose policy lacks `ses:SendBulkEmail` among them).
   ["UnrecognizedClientException", "credentials"],
@@ -120,7 +127,8 @@ const ACCOUNT_ERROR_TYPES = new Map<string, HaltCause>([
 /**
  * Whether an SES error response halts the batch, and why; null when it is about the
  * message (a rejected message, an invalid request), which no retry changes. The
- * account-level types, any 401 or 403, and a rejection because the sender's own identity
+ * account-level types, any 401 or 403, a 404 (a configuration set SES can't find, whatever
+ * type it carries), and a rejection because the sender's own identity
  * is not verified (`senderUnverified`, which the caller works out from the message) need
  * the operator, as does a spent daily quota, which SES reports as the same throttle as its
  * per-second rate and tells apart only by the message: it won't lift for up to a day, so
@@ -138,6 +146,7 @@ export function classifySesError(
   const throttled = status === 429 || /throttl|toomany/i.test(type);
   const cause =
     ACCOUNT_ERROR_TYPES.get(type) ??
+    (status === 404 ? "configuration" : undefined) ??
     (senderUnverified
       ? "sender"
       : throttled && /daily message quota/i.test(message)
@@ -166,18 +175,18 @@ const unavailable = (cause: HaltCause): Omit<BatchHalt, "error"> => ({
 
 /** Entry statuses that are about SES, the account, or the deployment's settings, never the
  *  recipient. A configuration set, sending pool, or template SES can't find is the
- *  deployment's to fix, in its secrets. */
+ *  deployment's to fix, in its settings, not the key's. */
 const ENTRY_HALTS = new Map<string, Omit<BatchHalt, "error">>([
   ["ACCOUNT_SUSPENDED", account("suspended")],
   ["ACCOUNT_SENDING_PAUSED", account("suspended")],
   ["CONFIGURATION_SET_SENDING_PAUSED", account("suspended")],
   ["MAIL_FROM_DOMAIN_NOT_VERIFIED", account("sender")],
   ["ACCOUNT_DAILY_QUOTA_EXCEEDED", account("quota")],
-  ["CONFIGURATION_SET_DOES_NOT_EXIST", account("credentials")],
-  ["CONFIGURATION_SET_NOT_FOUND", account("credentials")],
-  ["INVALID_SENDING_POOL_NAME", account("credentials")],
-  ["TEMPLATE_DOES_NOT_EXIST", account("credentials")],
-  ["TEMPLATE_NOT_FOUND", account("credentials")],
+  ["CONFIGURATION_SET_DOES_NOT_EXIST", account("configuration")],
+  ["CONFIGURATION_SET_NOT_FOUND", account("configuration")],
+  ["INVALID_SENDING_POOL_NAME", account("configuration")],
+  ["TEMPLATE_DOES_NOT_EXIST", account("configuration")],
+  ["TEMPLATE_NOT_FOUND", account("configuration")],
   ["ACCOUNT_THROTTLED", unavailable("rate_limit")],
   ["TRANSIENT_FAILURE", unavailable("outage")],
 ]);
