@@ -64,6 +64,16 @@ const subs = [
   }),
 ];
 
+// Open a row's ⋯ menu and choose an item by its label.
+function pick(id: string, label: string): void {
+  $(`tr[data-id='${id}'] [data-menu]`).click();
+  const item = $$(".menu .menu-item").find((b) => b.textContent === label);
+  if (!item) {
+    throw new Error(`no ${label} in ${id}'s menu`);
+  }
+  item.click();
+}
+
 describe("subscribers view", () => {
   let fake: FakeApi;
   beforeEach(() => {
@@ -101,8 +111,10 @@ describe("subscribers view", () => {
       document.querySelector<HTMLElement>(".menu-overlay")?.click();
       return items;
     };
-    expect(menuOf("s1")).toEqual(["View subscriber", "Unsubscribe", "Erase"]);
-    expect(menuOf("s3")).toEqual(["View subscriber", "Erase"]); // pending: nothing to unsubscribe
+    expect(menuOf("s1")).toEqual(["View subscriber", "Unsubscribe", "Block", "Erase"]);
+    // Bounced: already suppressed, so nothing to block, and a bounce isn't unblocked here.
+    expect(menuOf("s2")).toEqual(["View subscriber", "Unsubscribe", "Erase"]);
+    expect(menuOf("s3")).toEqual(["View subscriber", "Block", "Erase"]); // pending: nothing to unsubscribe
     expect(fake.unhandled).toEqual([]);
   });
 
@@ -128,13 +140,128 @@ describe("subscribers view", () => {
     ]);
     await mount((r, s) => renderSubscribers(undefined, r, s));
     await settle();
-    $("tr[data-id='s3'] [data-menu]").click();
-    $(".menu .danger-item").click();
+    pick("s3", "Erase");
     expect($(".modal h3").textContent).toBe("Erase this subscriber?");
     $("#eGo").click();
     await settle();
     expect($("#toasts").textContent).toMatch(/Erased <script>@b\.c/);
     expect($$("tr[data-id]")).toHaveLength(2);
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("frames Unsubscribe as the reader's request, and points the publisher's own decision to Block (SPEC §7)", async () => {
+    fake = fakeApi([
+      { path: "/api/subscribers", reply: () => ({ counts, subscribers: subs, page }) },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    pick("s1", "Unsubscribe");
+    expect($(".modal .hint").textContent).toBe(
+      "Use this when a@b.c asks you to take them off the list. They stop receiving posts immediately, and can rejoin by subscribing again. To stop mailing them on your own judgment, block the address instead.",
+    );
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("blocks an address as the publisher's own decision, after the dialog's confirmation", async () => {
+    let blocked = false;
+    fake = fakeApi([
+      {
+        path: "/api/subscribers",
+        reply: () => ({
+          counts,
+          subscribers: blocked
+            ? [{ ...subs[0], suppressed: true, suppression_reason: "manual" }, subs[1], subs[2]]
+            : subs,
+          page,
+        }),
+      },
+      {
+        method: "POST",
+        path: "/api/suppressions",
+        reply: (req) => {
+          blocked = true;
+          return {
+            suppression: {
+              email: (req.json() as { email: string }).email,
+              reason: "manual",
+              detail: null,
+              created_at: 1,
+            },
+            added: true,
+          };
+        },
+      },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    pick("s1", "Block");
+    expect($(".modal h3").textContent).toBe("Block this address?");
+    expect($(".modal .hint").textContent).toBe(
+      "Stops all mail to a@b.c, whatever their status, which stays as it is. Use this when you decide yourself to stop mailing them; if they asked to leave, unsubscribe them instead. You can unblock it later.",
+    );
+    $("#bGo").click();
+    await settle();
+    expect(fake.calls.find((c) => c.method === "POST")?.json()).toEqual({ email: "a@b.c" });
+    expect($("#toasts").textContent).toMatch(/Blocked a@b\.c/);
+    expect($("tr[data-id='s1'] .row-flag").textContent).toBe("blocked");
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("says what stands when the address was suppressed before the block landed", async () => {
+    fake = fakeApi([
+      { path: "/api/subscribers", reply: () => ({ counts, subscribers: subs, page }) },
+      {
+        method: "POST",
+        path: "/api/suppressions",
+        reply: () => ({
+          suppression: { email: "a@b.c", reason: "bounce", detail: null, created_at: 1 },
+          added: false,
+        }),
+      },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    pick("s1", "Block");
+    $("#bGo").click();
+    await settle();
+    expect($("#toasts").textContent).toMatch(/a@b\.c was already suppressed \(bounced\)/);
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("unblocks only the publisher's own block, saying whether they'll be mailed again", async () => {
+    fake = fakeApi([
+      {
+        path: "/api/subscribers",
+        reply: () => ({
+          counts,
+          subscribers: [
+            { ...subs[0], suppressed: true, suppression_reason: "manual" },
+            { ...subs[2], suppressed: true, suppression_reason: "manual" },
+          ],
+          page,
+        }),
+      },
+      {
+        method: "DELETE",
+        path: /^\/api\/suppressions\/a%40b\.c$/,
+        reply: () => ({ email: "a@b.c", cleared: true }),
+      },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    pick("s3", "Unblock");
+    expect($(".modal .hint").textContent).toBe(
+      "Undoes the block on <script>@b.c. They’ll receive posts again only once they’re confirmed.",
+    );
+    $("#ubCancel").click();
+    pick("s1", "Unblock");
+    expect($(".modal .hint").textContent).toBe(
+      "Undoes the block on a@b.c. They’re confirmed, so they’ll receive your posts again.",
+    );
+    $("#ubGo").click();
+    await settle();
+    expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
+    expect($("#toasts").textContent).toMatch(/Unblocked a@b\.c/);
     expect(fake.unhandled).toEqual([]);
   });
 
@@ -194,11 +321,15 @@ describe("subscribers view", () => {
     expect(toggle.getAttribute("aria-controls")).toBe("subLegend");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(legend.hidden).toBe(true);
-    // Each pill as the list draws it (its classes), beside its definition.
-    const rows = $$("#subLegend dt").map((dt) => {
-      const pill = dt.querySelector(".badge")!;
-      return [pill.className, pill.textContent, dt.nextElementSibling!.textContent];
-    });
+    // Each pill as the list draws it (its classes), beside its definition; then each act.
+    const lists = $$("#subLegend dl");
+    expect(lists).toHaveLength(3);
+    const rows = $$("dt", lists[0])
+      .concat($$("dt", lists[1]))
+      .map((dt) => {
+        const pill = dt.querySelector(".badge")!;
+        return [pill.className, pill.textContent, dt.nextElementSibling!.textContent];
+      });
     expect(rows).toEqual([
       [
         "badge confirmed",
@@ -206,7 +337,7 @@ describe("subscribers view", () => {
         "Receives your posts. They confirmed here, or opted in at the service you imported them from.",
       ],
       ["badge pending", "pending", "Subscribed but hasn’t clicked the confirmation email."],
-      ["badge unsubscribed", "unsubscribed", "Opted out."],
+      ["badge unsubscribed", "unsubscribed", "Opted out, themselves or by asking you."],
       [
         "badge suppressed",
         "bounced",
@@ -217,17 +348,38 @@ describe("subscribers view", () => {
         "complaint",
         "Marked as spam, here or at the service it was imported from.",
       ],
-      ["badge suppressed", "blocked", "Suppressed by hand."],
+      [
+        "badge suppressed",
+        "blocked",
+        "Stopped by hand, by you or at the service it was imported from. You can unblock it.",
+      ],
       [
         "badge suppressed",
         "erased",
-        "A do-not-contact marker kept after an erasure. Only the person’s own confirmation lifts it.",
+        "Erased at their request, then signed up again. Only their confirmation email is sent, and confirming lifts this.",
       ],
     ]);
-    expect($$("#subLegend h2").map((h) => h.textContent)).toEqual(["Status", "Suppressed"]);
-    expect($("#subLegend p").textContent).toBe(
-      "The address isn’t mailed, whatever its status, which stays as it was. The red flag beside the address says why:",
-    );
+    expect(
+      $$("dt", lists[2]).map((dt) => [dt.textContent, dt.nextElementSibling!.textContent]),
+    ).toEqual([
+      [
+        "Unsubscribe",
+        "When they ask you to take them off the list. They can rejoin by subscribing again.",
+      ],
+      [
+        "Block",
+        "When you decide yourself to stop mailing an address. Their status stays as it was, and you can unblock it.",
+      ],
+      ["Erase", "When they ask you to delete their data. It can’t be undone."],
+    ]);
+    expect($$("#subLegend h2").map((h) => h.textContent)).toEqual([
+      "Status",
+      "Suppressed",
+      "What you can do",
+    ]);
+    expect($$("#subLegend p").map((p) => p.textContent)).toEqual([
+      "The address isn’t sent your posts, whatever its status. The status stays as it was, greyed while the suppression keeps it from taking effect. The red flag beside the address says why:",
+    ]);
     toggle.click();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(legend.hidden).toBe(false);
