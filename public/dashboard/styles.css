@@ -1492,12 +1492,18 @@ td a:hover {
   text-decoration: underline;
 }
 
+/* A badge is a plain label, so it shows the default cursor rather than the text one. In a
+   row or card that opens on click it keeps the container's pointer. */
 .badge {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
   border: 1px solid var(--line);
+  cursor: default;
+}
+.clickable .badge {
+  cursor: inherit;
 }
 .badge.draft {
   background: var(--status-draft-bg);
@@ -1562,6 +1568,95 @@ td a:hover {
   padding: 1px 7px;
   font-size: 11px;
   vertical-align: middle;
+}
+
+/* The Subscribers summary: the counts, with the Legend toggle at the card's right edge
+   (at the end of the counts' last line when they wrap), and the legend opening below
+   across the card. The legend is in the page's own colors (not an inverted tooltip),
+   each pill drawn as the list draws it beside its definition. */
+.sub-summary-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+#subCounts {
+  gap: 8px 24px;
+}
+/* The padding and equal negative margin give a 24px target without moving the label. */
+.sub-legend-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  border-radius: 4px;
+}
+.sub-legend-toggle:hover {
+  color: var(--fg);
+}
+.sub-legend-toggle::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.sub-legend-toggle[aria-expanded="true"]::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
+}
+/* One grid for every group, each list a subgrid, so every definition starts at the same
+   edge. Each group is named by an h2 in the app's label style, and the panel has no title of
+   its own: the Legend toggle already names it. Its headings are a step smaller and more
+   widely tracked than the base label, and set apart by space alone (a group's break, 28px,
+   is three and a half rows'), so the one rule in the panel is the divider under the counts.
+   A paragraph keeps the app's 1rem beneath it. The panel carries the divider across the
+   card; its body is the container that caps the line length, once, for everything in it. */
+.sub-legend {
+  margin-top: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sub-legend-body {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 16px;
+  max-width: 88ch;
+}
+.sub-legend h2 {
+  grid-column: 1 / -1;
+  margin: 28px 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.sub-legend h2:first-child {
+  margin-top: 0;
+}
+.sub-legend dl {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  row-gap: 8px;
+  align-items: baseline;
+  margin: 0;
+}
+.sub-legend dd {
+  margin: 0;
+}
+.sub-legend p {
+  grid-column: 1 / -1;
+  margin: 0 0 1rem;
+  color: var(--muted);
 }
 
 /* list views (posts / subscribers / sends): search on the left, filters pinned right */
@@ -3029,18 +3124,6 @@ textarea.is-invalid {
 .info:focus::after {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
-}
-/* Drop the tip below the icon instead of above it. The default opens upward,
-   which clips against the top of the viewport when the icon sits at the top of a
-   page (e.g. the Subscribers counts card); this variant opens downward there. */
-.info.tip-below::after {
-  top: calc(100% + 8px);
-  bottom: auto;
-  transform: translateY(-2px);
-}
-.info.tip-below:hover::after,
-.info.tip-below:focus::after {
   transform: translateY(0);
 }
 /* The "Auto-generate from subject" toggle, grouped just under the slug field. */

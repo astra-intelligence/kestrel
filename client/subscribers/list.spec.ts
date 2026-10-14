@@ -87,9 +87,10 @@ describe("subscribers view", () => {
     expect($$("tr[data-id]")).toHaveLength(3);
     const flag = $("tr[data-id='s2'] .row-flag");
     expect(flag.textContent).toBe("bounced");
-    expect(flag.getAttribute("title")).toMatch(/Hard bounce.*\(550 no such user\)/);
     // A suppressed row keeps its consent status, greyed; an unsuppressed one is not.
     expect($("tr[data-id='s2'] .badge.confirmed").classList.contains("held")).toBe(true);
+    // The pills are plain labels: no hover tooltip, which keyboard and touch can't reach.
+    expect($$("tr[data-id] .badge[title]")).toHaveLength(0);
     expect($("tr[data-id='s1'] .badge.confirmed").classList.contains("held")).toBe(false);
     expect($("tr[data-id='s3'] td").textContent).toBe("<script>@b.c"); // shown as text
     // A wrapping address breaks before its "@", not mid-word.
@@ -137,6 +138,28 @@ describe("subscribers view", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
+  it("shows a suppressed address's flag and the provider's words in View subscriber", async () => {
+    fake = fakeApi([
+      { path: "/api/subscribers", reply: () => ({ counts, subscribers: subs, page }) },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    $("tr[data-id='s2'] [data-menu]").click();
+    $$<HTMLElement>(".menu .menu-item")
+      .find((b) => b.textContent === "View subscriber")!
+      .click();
+    const dt = $$(".modal .sub-dl dt").find((d) => d.textContent === "Suppressed")!;
+    expect(dt.nextElementSibling!.textContent).toBe("bounced: 550 no such user");
+    $("#vsClose").click();
+    // An address that isn't suppressed has no such line.
+    $("tr[data-id='s1'] [data-menu]").click();
+    $$<HTMLElement>(".menu .menu-item")
+      .find((b) => b.textContent === "View subscriber")!
+      .click();
+    expect($$(".modal .sub-dl dt").map((d) => d.textContent)).not.toContain("Suppressed");
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("says how each subscriber joined, keyed on the import, never the file's claim (SPEC §7)", async () => {
     fake = fakeApi([
       { path: "/api/subscribers", reply: () => ({ counts, subscribers: subs, page }) },
@@ -159,6 +182,69 @@ describe("subscribers view", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
+  it("defines every pill in a legend the reader opens, which stays as it is while the list reloads", async () => {
+    fake = fakeApi([
+      { path: "/api/subscribers", reply: () => ({ counts, subscribers: subs, page }) },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    const toggle = $(".sub-summary #subLegendToggle");
+    const legend = $("#subLegend");
+    expect(toggle.textContent).toBe("Legend");
+    expect(toggle.getAttribute("aria-controls")).toBe("subLegend");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(legend.hidden).toBe(true);
+    // Each pill as the list draws it (its classes), beside its definition.
+    const rows = $$("#subLegend dt").map((dt) => {
+      const pill = dt.querySelector(".badge")!;
+      return [pill.className, pill.textContent, dt.nextElementSibling!.textContent];
+    });
+    expect(rows).toEqual([
+      [
+        "badge confirmed",
+        "confirmed",
+        "Receives your posts. They confirmed here, or opted in at the service you imported them from.",
+      ],
+      ["badge pending", "pending", "Subscribed but hasn’t clicked the confirmation email."],
+      ["badge unsubscribed", "unsubscribed", "Opted out."],
+      [
+        "badge suppressed",
+        "bounced",
+        "Mail to the address failed, here or at the service it was imported from.",
+      ],
+      [
+        "badge suppressed",
+        "complaint",
+        "Marked as spam, here or at the service it was imported from.",
+      ],
+      ["badge suppressed", "blocked", "Suppressed by hand."],
+      [
+        "badge suppressed",
+        "erased",
+        "A do-not-contact marker kept after an erasure. Only the person’s own confirmation lifts it.",
+      ],
+    ]);
+    expect($$("#subLegend h2").map((h) => h.textContent)).toEqual(["Status", "Suppressed"]);
+    expect($("#subLegend p").textContent).toBe(
+      "The address isn’t mailed, whatever its status, which stays as it was. The red flag beside the address says why:",
+    );
+    toggle.click();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(legend.hidden).toBe(false);
+    // A reload repaints only the counts, so a legend the reader opened stays open.
+    const status = $<HTMLSelectElement>(".lt-status");
+    status.value = "pending";
+    status.dispatchEvent(new Event("change"));
+    await settle();
+    expect(fake.calls.map((c) => c.url.searchParams.get("status"))).toEqual([null, "pending"]);
+    expect($("#subLegend")).toBe(legend);
+    expect(legend.hidden).toBe(false);
+    toggle.click();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(legend.hidden).toBe(true);
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("names an erased address's flag, for one that subscribed again", async () => {
     fake = fakeApi([
       {
@@ -176,9 +262,30 @@ describe("subscribers view", () => {
     await settle();
     const flag = $("tr[data-id='s3'] .row-flag");
     expect(flag.textContent).toBe("erased");
-    expect(flag.getAttribute("title")).toMatch(/^Erased at the person’s request/);
+    expect(flag.hasAttribute("title")).toBe(false);
     // Their confirmation lifts the marker, so the pending status is live, not greyed.
     expect($("tr[data-id='s3'] .badge.pending").classList.contains("held")).toBe(false);
+  });
+
+  it("flags a bounce or complaint an import brought as bounced or complaint, like one seen here", async () => {
+    fake = fakeApi([
+      {
+        path: "/api/subscribers",
+        reply: () => ({
+          counts,
+          subscribers: [
+            { ...subs[0], suppressed: true, suppression_reason: "import_bounce" },
+            { ...subs[1], suppressed: true, suppression_reason: "import_complaint" },
+          ],
+          page,
+        }),
+      },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    expect($("tr[data-id='s1'] .row-flag").textContent).toBe("bounced");
+    expect($("tr[data-id='s2'] .row-flag").textContent).toBe("complaint");
+    expect($("tr[data-id='s1'] .badge.confirmed").classList.contains("held")).toBe(true);
   });
 
   it("greys a confirmed status under an erasure's marker, which no confirmation lifts", async () => {
@@ -195,6 +302,7 @@ describe("subscribers view", () => {
     await mount((r, s) => renderSubscribers(undefined, r, s));
     await settle();
     expect($("tr[data-id='s1'] .badge.confirmed").classList.contains("held")).toBe(true);
+    expect($("tr[data-id='s1'] .badge.confirmed").hasAttribute("title")).toBe(false);
   });
 
   it("points a list with no subscribers (suppressions alone count for none) at the import, and opens the import from the head", async () => {

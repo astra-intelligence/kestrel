@@ -15,7 +15,7 @@ import {
   wireSort,
   wireToolbar,
 } from "../ui/list_controls";
-import { badge, busy, infoTip, type MenuItem, openMenu, renderError, toast } from "../ui/widgets";
+import { badge, busy, type MenuItem, openMenu, renderError, toast } from "../ui/widgets";
 import {
   addSubscriberModal,
   confirmErase,
@@ -64,7 +64,7 @@ export async function renderSubscribers(
     root,
     html`
     <div class="spread page-head"><h1>Subscribers</h1><span class="row"><button type="button" class="ghost" id="importSubs">Import</button><button type="button" class="ghost" id="exportSubs">Export</button><button class="primary" id="addSub">Add subscriber</button></span></div>
-    <div id="subCounts" class="muted">Loading…</div>
+    <div class="card sub-summary"><div class="sub-summary-head"><div id="subCounts" class="row muted">Loading…</div><button type="button" class="sub-legend-toggle" id="subLegendToggle" aria-expanded="false" aria-controls="subLegend">Legend</button></div>${legend()}</div>
     ${listToolbar({ statuses: SUB_STATUSES, suppressible: true, searchPlaceholder: "Search email…" })}
     <div id="subList" class="muted">Loading…</div>
     <div id="subPager"></div>`,
@@ -79,14 +79,12 @@ export async function renderSubscribers(
         signal,
       });
       const c = data.counts;
-      // The counts card stays a global by-status summary (independent of the active
-      // filter); the page total below reflects the filtered roster.
+      // The counts stay a global by-status summary (independent of the active filter);
+      // the page total below reflects the filtered roster. Only the counts repaint, so
+      // the legend stays open or closed across a reload.
       setHtml(
         $("#subCounts"),
-        html`<div class="card row" style="gap:24px"><span><strong>${c.confirmed}</strong> confirmed</span><span>${c.pending} pending</span><span>${c.unsubscribed} unsubscribed</span><span>${c.suppressed} suppressed</span>${infoTip(
-          "Pending: subscribed but hasn’t clicked the confirmation email. Confirmed: agreed to receive your posts, here or at the service they were imported from, and receives them. Unsubscribed: opted out. Suppressed: bounced, complained, blocked, or erased, and never mailed, whatever their status.",
-          { below: true },
-        )}</div>`,
+        html`<span><strong>${c.confirmed}</strong> confirmed</span><span>${c.pending} pending</span><span>${c.unsubscribed} unsubscribed</span><span>${c.suppressed} suppressed</span>`,
       );
       // Suppressions alone are no subscribers, so a list of only them still points the way in.
       const listEmpty = c.pending + c.confirmed + c.unsubscribed === 0;
@@ -97,6 +95,12 @@ export async function renderSubscribers(
     }
   }
 
+  const legendToggle = $("#subLegendToggle");
+  legendToggle.onclick = () => {
+    const open = legendToggle.getAttribute("aria-expanded") !== "true";
+    legendToggle.setAttribute("aria-expanded", String(open));
+    $("#subLegend").hidden = !open;
+  };
   $("#addSub").onclick = () => addSubscriberModal(load, signal);
   $("#importSubs").onclick = () => {
     location.hash = "#/subscribers/import";
@@ -117,32 +121,66 @@ export async function renderSubscribers(
 }
 
 // The inline suppression flag rides next to the email (suppression is a deliverability
-// overlay, not a consent status) and names WHY: bounced / complaint / blocked, with the
-// provider detail in the tooltip. Reasons come from the webhook (bounce, complaint) or a
-// manual block; anything unrecognized falls back to a generic label.
-const SUPPRESSION_LABELS: Record<string, string> = {
-  bounce: "bounced",
-  complaint: "complaint",
-  manual: "blocked",
-  erased: "erased",
+// overlay, not a consent status) and names WHY: bounced / complaint / blocked / erased.
+// Reasons come from the webhook (bounce, complaint), an import that brought a bounce or
+// complaint from the previous service (shown as the same flag), a manual block, or an
+// erasure; anything unrecognized falls back to a generic label. The pills carry no hover tooltip,
+// which keyboard, screen-reader, and touch users can't reach: the legend under the counts
+// defines each label once, and a subscriber's own detail belongs on their page.
+const SUPPRESSIONS: Record<string, { label: string; means: string }> = {
+  bounce: {
+    label: "bounced",
+    means: "Mail to the address failed, here or at the service it was imported from.",
+  },
+  complaint: {
+    label: "complaint",
+    means: "Marked as spam, here or at the service it was imported from.",
+  },
+  manual: { label: "blocked", means: "Suppressed by hand." },
+  erased: {
+    label: "erased",
+    means:
+      "A do-not-contact marker kept after an erasure. Only the person’s own confirmation lifts it.",
+  },
 };
-const SUPPRESSION_TIPS: Record<string, string> = {
-  bounce: "Hard bounce: mail to this address failed, so it won’t be mailed again.",
-  complaint: "Marked as spam, so it won’t be mailed again, whatever their status.",
-  manual: "Manually blocked, so it won’t be mailed.",
-  erased:
-    "Erased at the person’s request, then subscribed again. Not mailed until they confirm, which lifts the erasure.",
+const IMPORTED_AS: Record<string, string> = {
+  import_bounce: "bounce",
+  import_complaint: "complaint",
 };
+function flagLabel(s: SubscriberListItem): string {
+  const reason = s.suppression_reason ?? "";
+  return SUPPRESSIONS[IMPORTED_AS[reason] ?? reason]?.label || "suppressed";
+}
 function suppressionFlag(s: SubscriberListItem): Html | null {
   if (!s.suppressed) {
     return null;
   }
-  const reason = s.suppression_reason ?? "";
-  const label = SUPPRESSION_LABELS[reason] || "suppressed";
-  const base =
-    SUPPRESSION_TIPS[reason] || "Suppressed, so it won’t be mailed, whatever their status.";
-  const tip = s.suppression_detail ? `${base} (${s.suppression_detail})` : base;
-  return html` <span class="badge suppressed row-flag" title="${tip}">${label}</span>`;
+  return html` <span class="badge suppressed row-flag">${flagLabel(s)}</span>`;
+}
+
+// The legend: what each label a row can show means (DESIGN §3), every pill drawn as the
+// list draws it beside its definition, so it also says what the colors mean. Its toggle
+// sits at the right of the counts and the legend opens below the whole card, a layout a
+// <details> can't give, so the toggle is a button carrying aria-expanded.
+const STATUS_MEANS: Record<string, string> = {
+  pending: "Subscribed but hasn’t clicked the confirmation email.",
+  confirmed:
+    "Receives your posts. They confirmed here, or opted in at the service you imported them from.",
+  unsubscribed: "Opted out.",
+};
+function legendRow(pill: Html, means: string): Html {
+  return html`<dt>${pill}</dt><dd>${means}</dd>`;
+}
+function legend(): Html {
+  return html`<div class="sub-legend" id="subLegend" role="region" aria-labelledby="subLegendToggle" hidden><div class="sub-legend-body">
+    <h2>Status</h2>
+    <dl>${SUB_STATUSES.map(({ value }) => legendRow(badge(value), STATUS_MEANS[value] ?? ""))}</dl>
+    <h2>Suppressed</h2>
+    <p>The address isn’t mailed, whatever its status, which stays as it was. The red flag beside the address says why:</p>
+    <dl>${Object.values(SUPPRESSIONS).map(({ label, means }) =>
+      legendRow(html`<span class="badge suppressed">${label}</span>`, means),
+    )}</dl>
+  </div></div>`;
 }
 
 // A suppressed address keeps its consent status, but the status isn't in effect while the
@@ -154,7 +192,7 @@ function statusBadge(s: SubscriberListItem): Html {
   if (!s.suppressed || (s.suppression_reason === "erased" && s.status === "pending")) {
     return badge(s.status);
   }
-  return html`<span class="badge ${s.status} held" title="Not mailed while suppressed">${s.status}</span>`;
+  return html`<span class="badge ${s.status} held">${s.status}</span>`;
 }
 
 // An address that has to wrap breaks before its "@", keeping the mailbox and the domain
@@ -204,7 +242,17 @@ function renderSubTable(
       // Anyone can be viewed and anyone can be erased (SPEC §7); only a
       // confirmed subscriber has anything to unsubscribe from.
       const items: MenuItem[] = [
-        { label: "View subscriber", onClick: () => viewSubscriberModal(row, signal) },
+        {
+          label: "View subscriber",
+          onClick: () =>
+            viewSubscriberModal(
+              row,
+              signal,
+              row.suppressed
+                ? { label: flagLabel(row), detail: row.suppression_detail }
+                : undefined,
+            ),
+        },
       ];
       if (row.status === "confirmed") {
         items.push({
