@@ -1,8 +1,8 @@
-# Your list: importing and exporting
+# Bring your existing list
 
-Almost no one starts a newsletter with an empty list. Kestrel brings your existing subscribers over from another service with the consent they gave there, and lets you take the whole list out again at any time, in the same format.
+Almost no one starts a newsletter with an empty list. If your readers are on another service, bring them over before your first post, with the consent they gave there. It's the **Bring your existing list** step on your dashboard, and **Import** starts it. If you're starting fresh, skip this step: new readers join through [Share your subscribe link](09-share-your-subscribe-link.md).
 
-This page covers the file Kestrel reads, what an import does and why, the limits, and getting your list back out. The dashboard's **Subscribers → Import** walks you through an import, and Claude reads this same page through the API.
+This page covers the file Kestrel reads, what an import does and why, and the limits. It also covers taking your whole list out again at any time, in the same format. The dashboard's **Subscribers → Import** walks you through an import, and Claude reads this same page through the API.
 
 ## The file Kestrel reads
 
@@ -16,7 +16,7 @@ Kestrel reads one documented format, `kestrel-subscribers/1`: a CSV file with a 
 | `origin` | Where consent was collected, as a short name such as `sendy` or `mailchimp`. |
 | `subscribed_at` | When they subscribed, with its time zone, such as `2024-03-01T09:30:00Z`. Optional. |
 
-The optional columns carry the rest: a bounce or complaint (`suppression`), when someone confirmed or left, and `evidence`, the old service's own consent details, such as a signup IP or a form name. [Import format](../reference/03-import-format.md) describes every column and value.
+The optional columns carry the rest: a bounce or complaint (`suppression`), when someone confirmed or left, and `evidence`, the old service's own consent details, such as a signup IP or a form name. [Import format](08-import-format.md) describes every column and value.
 
 The import screen's **Download example file (CSV)** gives you `kestrel-import-example.csv`, a few rows that show each case. Open it in a spreadsheet to see the shape, and save your file as CSV UTF-8.
 
@@ -73,12 +73,14 @@ In the subscriber list, imported subscribers are **Confirmed** and receive your 
 
 Kestrel only sends mail. A reader who replies to a post writes to your From address, so replies reach you once that address forwards to an inbox you read. Whoever runs your Kestrel sets that up outside Kestrel.
 
-When a reader replies asking to be taken off the list, carrying it out is up to you, since Kestrel never sees the reply. Find them under **Subscribers**, and choose **Unsubscribe** from their ⋯ menu. It takes effect at once.
+When a reader replies asking to be taken off the list, carrying it out is up to you, since Kestrel never sees the reply. Find them under **Subscribers**, and choose **Unsubscribe** from their ⋯ menu. It takes effect at once. **Unsubscribe** is there for confirmed readers; one who never confirmed gets no posts, and **Erase** removes them.
 
-When a reader asks you to delete their data, choose **Erase** from their ⋯ menu instead. It removes the subscriber and how they joined, and can't be undone. It keeps only a do-not-contact marker, or the bounce, complaint, or block the address already had, so the address is never mailed again. The reader can still rejoin by subscribing and confirming themselves.
+When a reader asks you to delete their data, choose **Erase** from their ⋯ menu instead. It removes the subscriber and how they joined, and can't be undone. Past send records show an erased recipient in their place. Kestrel keeps only a do-not-contact marker, or the bounce, complaint, or block the address already had, so the address is never mailed again. The reader can still rejoin by subscribing and confirming themselves.
 
 ## Taking your list out
 
 **Subscribers → Export** downloads your whole list as one CSV in the same format: every subscriber with their state, how they joined and the evidence, and every bounced, complained, blocked, or erased address. It's yours to keep as a backup, or to import into another Kestrel, which carries the list over as it is. A value a spreadsheet would run as a formula is written as text, so the file is safe to open.
 
 Claude can read the same export a page at a time through the API, at `GET /api/subscribers/export`.
+
+Next, [Write your first post](04-write-a-post.md).

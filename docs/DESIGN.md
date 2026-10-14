@@ -68,7 +68,7 @@ The editor, the web version, the docs, and the walls hide the sidebar: writing w
 | Import subscribers | `#/subscribers/import` | What bringing a list in would do, before it does it. |
 | Template | `#/template` | The one email template every post is sent in. |
 | Settings | `#/settings` | The publication's preferences, and the deploy facts read-only. |
-| Docs and API | `#/docs`, `#/reference` | The setup guide, the publisher's pages, and the API reference, served by the instance. |
+| Docs and API | `#/docs`, `#/reference` | The docs, as two sets (Publishing and Self-hosting), and the API reference, served by the instance. |
 
 The admin UI may link out to public pages (View publication, Archive ↗, View published post ↗). No public page links or redirects into `/dashboard` (SPEC §11), apart from the dev-only pill above.
 
@@ -118,7 +118,7 @@ The landing page, ordered by urgency:
 6. **Sent**: the latest five sends that have started, with Delivered (§8) and Archive ↗.
 7. **Quick actions**, **Publication** (the home page's address with Copy, and **View publication ↗**; the archive and every post are a click from there), and **API access**, which invites the publisher to connect Claude or says Claude is connected.
 
-**First run.** With no posts and no subscribers, the body is a setup checklist instead of a wall of zero tiles: name the publication; connect a provider, or once one is connected, confirm the sending domain; write the first post; share the subscribe link. Writing comes after the provider because a first post ends the first-run page, and a step left below it would never be seen.
+**First run.** Until the first post, the body is a setup checklist instead of a wall of zero tiles: name the publication; connect a provider, or once one is connected, check the setup, opening the publisher's page on testing and on how Kestrel reports problems; bring an existing list; write the first post; share the subscribe link. Writing comes late because a first post ends the first-run page, and a step left below it would never be seen. Subscribers don't end it, so an import leaves the steps after it on screen: the list step then reads as done, with a check for its number and the count of confirmed and pending subscribers, and a fresh publication simply skips it. The Publishing docs' section of the same name follows these steps.
 
 ### Drafts
 
@@ -247,7 +247,7 @@ The one email template every post is sent in (SPEC §9). The head carries the **
 - **A note** stating the rule: one template serves every post; a change while posts are scheduled applies to their emails too, after you confirm; sent emails never change.
 - **Variables**: every placeholder and what it means.
 
-The page saves through the save bar (§6). A save that leaves a problem the template can live with, such as a mailing address the template doesn't print, saves with a warning under the editor, naming Settings without linking there.
+The page saves through the save bar (§6). A save that leaves a problem the template can live with, such as a mailing address the template doesn't print, saves with a warning under the editor, naming Settings without linking there. The mailing-address warning is followed by **When to provide a mailing address ↗**, the docs section that answers it, opening in a new tab so the editor stays as it was; the API's warning stays plain text.
 
 ### Settings
 
@@ -266,7 +266,7 @@ The groups have no headings, only a wider gap: each section's title, its **inten
 **Publication identity.** Its note says it is "Shown in every email" and, while posts are scheduled, how many emails a save would update and that the publisher confirms first, and, while one is about to send, when it sends and that you can save once it has. The sample email beside it shows which fields the template prints, so the note doesn't list them. It carries no in-use chip, since the identity is in every email.
 
 - **Logo.** Shown square everywhere, so the upload makes it square: a picked image is cropped to its centered square and scaled in the browser, then saved at once. The tile is the preview, a toast says when edges were cropped, and Replace is the way back. A logo that isn't square (one set through the API) carries a warning under the tile until it's replaced.
-- **Mailing address.** Optional (SPEC §9), so with none saved it isn't an empty field, which would read as a missing required value. It's an **Add a mailing address** button with a hint beside it. A saved address is an open field with **Remove**, and no status line, which would be untrue under a custom template that prints the address somewhere else. While an address is set and the template doesn't print it, an amber line under the field says so, with no link and no mention of removing it, since Remove sits beside it. The Template page carries the same fact as a save warning, one on each side of the pair that disagrees.
+- **Mailing address.** Optional (SPEC §9), so with none saved it isn't an empty field, which would read as a missing required value. It's an **Add a mailing address** button with a hint beside it. A saved address is an open field with **Remove**, and no status line, which would be untrue under a custom template that prints the address somewhere else. While an address is set and the template doesn't print it, an amber line under the field says so, with no link to the template and no mention of removing it, since Remove sits beside it. Each of the three, the Add row's hint, the open field's only hint, and the amber line, ends with **When to provide a mailing address ↗**, the section of Name your publication, the publisher's docs page for this card, opening in a new tab so a half-edited form stays as it was. The Template page carries the same fact as a save warning, one on each side of the pair that disagrees.
 
 **Ways to subscribe** offers two ways onto the list as two bands of one card, in reading order. Each band has the same head: a title, a small glyph, and one line on what it's for.
 
@@ -285,9 +285,9 @@ The groups have no headings, only a wider gap: each section's title, its **inten
 
 ### Docs and API
 
-The setup guide and the API reference share one room with its own bar (back to the dashboard, a Docs or API switch, and close) over a contents rail and the page. The build stamp sits at the rail's foot, and nowhere on the publication's screens: it's for a bug report, not the publisher's day.
+The docs and the API reference share one room with its own bar (back to the dashboard, a Docs or API switch, and close) over a contents rail and the page. The build stamp sits at the rail's foot, and nowhere on the publication's screens: it's for a bug report, not the publisher's day.
 
-- **Docs** renders the setup guide and the publisher's pages, one doc per page. The index lists the main path first, numbered because its pages are steps taken in order, then the guides, the reference, and the publisher's pages, unnumbered because a reader picks from them. A doc's Previous and Next stay within its section, so the main path ends at its last step.
+- **Docs** renders two sets, one doc per page: **Publishing**, for the publisher, and **Self-hosting**, for whoever runs the instance. Each set has its own index, under one header: **Kestrel docs**, one intro describing both sets and who each is for, then a tab per set (**Publishing**, **Self-hosting**), an underlined strip with the current set in the foreground over an accent rule, so it reads as something to switch. The tabs are links, since each index is its own address, and they choose what you read, never who you are. The sections follow the tabs directly. A set's own intro, written for its index file where it links the other set for a reader of the raw file, isn't repeated in the app, since the header already says it; the set's title is the tab's tooltip. `#/docs` opens on Publishing, since the Docs tab is read once Kestrel runs, mostly by the publisher; `#/docs/self-hosting` is the setup guide's index. The set stays a choice inside Docs, never a third tab in the room's bar, which chooses between kinds of document (guides, or the API). An index lists its sections in order. Each set opens with a numbered section of steps taken in order: Publishing's Set up your publication, which follows the dashboard's first-run checklist of that name, and Self-hosting's Get started. Every other section is picked from. A doc's eyebrow names its own set, linking back to that set's index, so the set always sits in the one slot over the title; the rail holds only the doc's own headings. A doc's Previous and Next stay within its section, so the main path ends at its last step.
 - **API reference** lists each tier's routes under the resource they act on, whose heading stays pinned while its routes scroll by. Each route is one row (method badge, path, summary) that opens in place to its parameters, body types, JSON examples, and a curl command for this instance carrying the credential its tier needs. A filter above the first tier narrows the whole list, rail included, and `/` focuses it.
 
 ---
@@ -371,7 +371,7 @@ Two states have no real provider (SPEC §9), and each is worded for who meets it
 
 **A deployment partway through setup is not connected.** It refuses every send, so there's nothing to confirm; the operator needs the way out. Every mention names the state ("No email provider connected"), says what it stops, and links **Connect Amazon SES** to the guide. It is a standing state, true every time the reader looks, so it is never dismissible. It shows wherever a send would be refused, before the publisher tries:
 
-- **Dashboard and Sent**: an amber line, the one health line with no send behind it. The first-run checklist's provider step replaces the sending-domain step, and its subscribe-link step says signups open once a provider is connected.
+- **Dashboard and Sent**: an amber line, the one health line with no send behind it. The first-run checklist's provider step replaces its check-your-setup step, and its subscribe-link step says signups open once a provider is connected.
 - **A draft's page**: the same amber line above the actions, "No email provider connected: you can write and preview, not send", so the publisher knows before opening a dialog.
 - **A scheduled send**: the dashboard's card and the editor's banner keep their countdown, since the window is real and still cancelable, and add "Will be held: no email provider is connected." On the white card the line is amber. On the banner it is a line under the countdown like the daily-writes one, in the banner's own violet led by an amber ⚠️, since amber words on violet are hard to read and would mix two of the color meanings. It keeps a heavier weight than the daily-writes line, because a held send doesn't go out.
 - **Every dialog that would send** (both test dialogs, Schedule, Add subscriber): an amber line, the act disabled, and the fields it would need left out, so there's nothing to fill in. Focus lands on Cancel.
@@ -461,7 +461,7 @@ The roles differ by fill, border, and weight, **never by height**: every labelle
 
 - **Toggles and tabs** (**Edit | Preview**, **Styled | Plain**, **Desktop | Phone**, **Failures | Delivered | All**, **Full list | Plain list**) switch what you're looking at; they never commit an act. A plain list's **Subscribed | Unsubscribed | Bounced** is one too: it changes what the plan shows, and planning writes nothing. So are the Subscribers summary's counts, each choosing its slice of the list. The small pill toggles mark the pressed segment in the Secondary palette, and a section's main toggle is a step more prominent than one that only changes a preview's width.
 - **The text link** (`linkbtn`) is an act styled as a link, for a choice that must read as clearly demoted below even Ghost: Send now → in the Schedule dialog. Use a real role anywhere a demotion isn't the point.
-- **Copy** is a utility on a value, not an act on the publication: the word and a glyph that turns to a check for a moment when the copy lands. It says it worked where it sits, never with a toast, unless the browser refuses the clipboard. The setup guide's code blocks still carry an older word-only button that reads "Copied".
+- **Copy** is a utility on a value, not an act on the publication: the word and a glyph that turns to a check for a moment when the copy lands. It says it worked where it sits, never with a toast, unless the browser refuses the clipboard. The docs' code blocks still carry an older word-only button that reads "Copied".
 - **Mockups** of reader controls (the embeddable form's Subscribe button) are inert and unfocusable, filled with the reader's ink rather than any role's color, because they show the reader's chrome rather than offer an act.
 
 ---

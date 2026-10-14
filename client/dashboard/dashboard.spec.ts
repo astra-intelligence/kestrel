@@ -364,7 +364,7 @@ describe("dashboard", () => {
     expect($("a", health).getAttribute("href")).toBe("#/sent/x1");
   });
 
-  it("shows the first-run checklist when nothing is written and no one is on the list, and its New post creates one", async () => {
+  it("shows the first-run checklist when nothing is written yet, and its New post creates one", async () => {
     fake = world([], sendServer(), none, [
       {
         method: "POST",
@@ -385,6 +385,48 @@ describe("dashboard", () => {
     expect(location.hash).toBe("#/edit/p9");
   });
 
+  it("offers bringing an existing list before writing, as a step a fresh publication skips", async () => {
+    fake = world([], sendServer(), none);
+    await mount(renderDashboard);
+    await vi.advanceTimersByTimeAsync(0);
+    const step = $(".setup-list");
+    expect(step.classList.contains("setup-done")).toBe(false);
+    expect($("strong", step).textContent).toBe("Bring your existing list");
+    expect($(".muted", step).textContent).toMatch(/Skip this if you’re starting fresh\.$/);
+    expect($("button", step).dataset.nav).toBe("#/subscribers/import");
+    expect($("button", step).textContent).toBe("Import");
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("keeps the checklist after an import until the first post, with the list step done", async () => {
+    // The first-run page ends at the first post, not the first subscriber, so the steps
+    // after bringing a list in stay on screen.
+    fake = world([], sendServer(), counts);
+    await mount(renderDashboard);
+    await vi.advanceTimersByTimeAsync(0);
+    expect($(".setup-title").textContent).toBe("Set up your publication");
+    expect(document.querySelector(".tiles")).toBeNull();
+    const step = $(".setup-list");
+    expect(step.classList.contains("setup-done")).toBe(true);
+    // Confirmed and pending: the people a send can reach once they confirm.
+    expect($(".muted", step).textContent).toBe("43 subscribers on your list.");
+    expect($("button", step).dataset.nav).toBe("#/subscribers");
+    expect(document.querySelector(".setup [data-act='new-post']")).not.toBeNull();
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("keeps offering the import while no one on the list can be sent to", async () => {
+    // Only confirmed and pending subscribers count: an import that brought in only people
+    // who left or bounced leaves the step open, since a send would reach no one.
+    fake = world([], sendServer(), { pending: 0, confirmed: 0, unsubscribed: 12, suppressed: 3 });
+    await mount(renderDashboard);
+    await vi.advanceTimersByTimeAsync(0);
+    const step = $(".setup-list");
+    expect(step.classList.contains("setup-done")).toBe(false);
+    expect($("button", step).dataset.nav).toBe("#/subscribers/import");
+    expect(fake.unhandled).toEqual([]);
+  });
+
   // SPEC §9, DESIGN §4: a deployment with no provider connected says so where the
   // developer lands, as a standing state, and its checklist puts connecting one first.
   const steps = () => $$(".setup-steps li strong").map((s) => s.textContent);
@@ -402,6 +444,7 @@ describe("dashboard", () => {
       expect(steps()).toEqual([
         "Name your publication",
         "Connect Amazon SES",
+        "Bring your existing list",
         "Write your first post",
         "Share your subscribe link",
       ]);
@@ -493,11 +536,14 @@ describe("dashboard", () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(steps(), provider).toEqual([
           "Name your publication",
-          "Confirm your sending domain",
+          "Check your setup",
+          "Bring your existing list",
           "Write your first post",
           "Share your subscribe link",
         ]);
         expect($(".setup-url").textContent, provider).toBe("https://app.birds.example/subscribe");
+        // Checking the setup is the publisher's step, so it opens the publisher's page.
+        expect($(".setup-check button").dataset.nav, provider).toBe("#/docs/check-your-setup");
         unmount();
         fake.restore();
         fake = world([post()], sendServer([scheduled()]), counts);

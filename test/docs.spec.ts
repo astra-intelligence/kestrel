@@ -1,29 +1,38 @@
 /// <reference types="vite/client" />
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import readme from "../docs/README.md";
+import publishingIndex from "../docs/publishing/README.md";
+import selfHostingIndex from "../docs/README.md";
 import { type DocsResponse, headingAnchors } from "../shared/docs";
-import { bundledPages, renderDocs } from "../src/docs";
+import { bundledPages, docMarkdown, markdownLinksForAgents, renderDocs } from "../src/docs";
 import { AUTH, base } from "./support/http";
 
-describe("docs registry (docs/README.md and the section folders it lists)", () => {
-  it("renders the guide in the README's order with titles from each doc's H1 and an HTML fragment", () => {
+describe("docs registry (the two sets' index files and the pages they list)", () => {
+  it("renders the docs in the indexes' order, Publishing first, with titles from each doc's H1 and an HTML fragment", () => {
     const { docs } = renderDocs();
-    expect(docs.map((d) => `${d.section}/${d.slug}`)).toEqual([
-      "get-started/deploy",
-      "get-started/access",
-      "get-started/ses",
-      "get-started/verify",
-      "get-started/go-live",
-      "guides/connect-claude",
-      "guides/try-locally",
-      "guides/notifications",
-      "guides/rate-limit",
-      "guides/upgrade",
-      "reference/configuration",
-      "reference/sending-domain-dns",
-      "reference/import-format",
-      "publishing/your-list",
+    expect(docs.map((d) => `${d.set}/${d.section}/${d.slug}`)).toEqual([
+      "publishing/set-up-your-publication/name-your-publication",
+      "publishing/set-up-your-publication/check-your-setup",
+      "publishing/set-up-your-publication/your-list",
+      "publishing/set-up-your-publication/write-a-post",
+      "publishing/set-up-your-publication/share-your-subscribe-link",
+      "publishing/sending/scheduling-and-sending",
+      "publishing/sending/after-a-send",
+      "publishing/sending/sending-rules",
+      "publishing/more/working-with-claude",
+      "publishing/more/import-format",
+      "self-hosting/get-started/deploy",
+      "self-hosting/get-started/access",
+      "self-hosting/get-started/ses",
+      "self-hosting/get-started/verify",
+      "self-hosting/get-started/go-live",
+      "self-hosting/guides/connect-claude",
+      "self-hosting/guides/try-locally",
+      "self-hosting/guides/notifications",
+      "self-hosting/guides/rate-limit",
+      "self-hosting/guides/upgrade",
+      "self-hosting/reference/configuration",
+      "self-hosting/reference/sending-domain-dns",
     ]);
     // Titles are extracted from the markdown, not hard-coded here.
     expect(docs.find((d) => d.slug === "access")?.title).toBe("Lock the dashboard with Access");
@@ -34,38 +43,70 @@ describe("docs registry (docs/README.md and the section folders it lists)", () =
     }
   });
 
-  it("reads the landing page from the README: its title, intro, and sections", () => {
-    const { landing } = renderDocs();
-    expect(landing.title).toBe("Set up and run Kestrel");
-    expect(landing.intro).toMatch(/^<p>.+<\/p>/s);
-    expect(landing.sections.map((s) => [s.id, s.title, s.numbered])).toEqual([
-      ["get-started", "Get started", true],
-      ["guides", "Guides", false],
-      ["reference", "Reference", false],
-      ["publishing", "For publishers", false],
+  it("reads each set's landing from its index file: its title, intro, and sections", () => {
+    const { sets } = renderDocs();
+    expect(sets.map((s) => [s.id, s.name, s.title])).toEqual([
+      ["publishing", "Publishing", "Publishing with Kestrel"],
+      ["self-hosting", "Self-hosting", "Self-hosting Kestrel"],
     ]);
-    for (const s of landing.sections) {
-      expect(s.blurb, s.title).toMatch(/^<p>.+<\/p>/s);
+    expect(sets.map((s) => s.sections.map((sec) => [sec.id, sec.title, sec.numbered]))).toEqual([
+      [
+        ["set-up-your-publication", "Set up your publication", true],
+        ["sending", "Sending", false],
+        ["more", "More", false],
+      ],
+      [
+        ["get-started", "Get started", true],
+        ["guides", "Guides", false],
+        ["reference", "Reference", false],
+      ],
+    ]);
+    for (const s of sets) {
+      expect(s.intro, s.id).toMatch(/^<p>.+<\/p>/s);
     }
+    // A link in an index never names an empty slug: a same-page anchor resolves against the
+    // set's own route.
+    for (const set of sets) {
+      for (const html of [set.intro, ...set.sections.map((sec) => sec.blurb)]) {
+        expect(html, set.id).not.toContain('href="#/docs//');
+      }
+    }
+    // Each intro links the other set's index, which the room serves at the set's id.
+    expect(sets[0]?.intro).toContain('href="#/docs/self-hosting"');
+    expect(sets[1]?.intro).toContain('href="#/docs/publishing"');
   });
 
-  it("lists every bundled page in the README exactly once, each in its own section's folder", () => {
-    // The README is written by hand, so a page added without listing it, listed twice,
-    // listed under another section's heading, or linked by a path no import provides would
-    // quietly drop out of the guide or land in the wrong place.
-    const { landing, docs } = renderDocs();
-    const listed = [...readme.matchAll(/\]\(([a-z0-9-]+\/\d{2}-[a-z0-9-]+\.md)\)/g)].map(
-      ([, path]) => path,
-    );
+  it("lists every bundled page in exactly one index once, Publishing's pages in its folder", () => {
+    // The indexes are written by hand, so a page added without listing it, listed twice, or
+    // linked by a path no import provides would quietly drop out of the docs.
+    const { sets, docs } = renderDocs();
+    const listed = [
+      ...[...publishingIndex.matchAll(/\]\((\d{2}-[a-z0-9-]+\.md)\)/g)].map(
+        ([, f]) => `publishing/${f}`,
+      ),
+      ...[...selfHostingIndex.matchAll(/\]\(([a-z0-9-]+\/\d{2}-[a-z0-9-]+\.md)\)/g)].map(
+        ([, path]) => path,
+      ),
+    ];
     expect(listed.sort()).toEqual(bundledPages().sort());
-    expect(new Set(docs.map((d) => d.slug)).size).toBe(docs.length);
-    const ids = landing.sections.map((s) => s.id);
+    expect(docs.filter((d) => d.set === "publishing").length).toBe(
+      bundledPages().filter((p) => p.startsWith("publishing/")).length,
+    );
+    // A slug names a page's route and its Markdown, and a set's id names its index's, so all
+    // of them are unique together.
+    const names = [...docs.map((d) => d.slug), ...sets.map((s) => s.id)];
+    expect(new Set(names).size).toBe(names.length);
     for (const d of docs) {
-      expect(ids, d.slug).toContain(d.section);
+      const set = sets.find((s) => s.id === d.set);
+      expect(
+        set?.sections.map((sec) => sec.id),
+        d.slug,
+      ).toContain(d.section);
     }
-    // A section's pages are one run, so Previous/Next and the index agree on the order.
-    const seen = docs.map((d) => ids.indexOf(d.section));
-    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+    // A set's pages are one run, and a section's within it, so Previous/Next and the index agree.
+    const order = docs.map((d) => `${d.set}/${d.section}`);
+    const runs = order.filter((key, i) => key !== order[i - 1]);
+    expect(new Set(runs).size).toBe(runs.length);
   });
 
   it("turns every link between guide pages into the doc's in-app route", () => {
@@ -85,6 +126,13 @@ describe("docs registry (docs/README.md and the section folders it lists)", () =
     expect(start?.html).toContain('href="#/docs/configuration"');
     // An anchor rides along as the route's last segment, for the room to scroll to.
     expect(start?.html).toContain('href="#/docs/sending-domain-dns/choose-your-sending-name"');
+    // Across sets: a publisher page to the setup guide, and back.
+    expect(docs.find((d) => d.slug === "your-list")?.html).toContain(
+      'href="#/docs/go-live/as-your-list-grows"',
+    );
+    expect(docs.find((d) => d.slug === "connect-claude")?.html).toContain(
+      'href="#/docs/import-format"',
+    );
   });
 
   it("lands every link to a heading, from the guide or the editor, on a heading that exists", () => {
@@ -114,6 +162,54 @@ describe("docs registry (docs/README.md and the section folders it lists)", () =
       "ses",
       "3-receive-replies-at-your-from-address",
     ]);
+  });
+});
+
+describe("each doc as Markdown, for an agent (docMarkdown)", () => {
+  it("serves a page's Markdown with its links pointed at the other docs' Markdown", () => {
+    const md = docMarkdown("your-list") ?? "";
+    expect(md).toMatch(/^# Bring your existing list/);
+    expect(md).toContain("](import-format.md)");
+    expect(md).toContain("](go-live.md#as-your-list-grows)");
+    expect(md).not.toMatch(/\]\([^)]*\d{2}-[a-z0-9-]+\.md/);
+  });
+
+  it("serves a set's index by its id, linking its pages and the other set", () => {
+    const md = docMarkdown("publishing") ?? "";
+    expect(md).toMatch(/^# Publishing with Kestrel/);
+    expect(md).toContain("](your-list.md)");
+    expect(md).toContain("](self-hosting.md)");
+    expect(docMarkdown("self-hosting")).toContain("](publishing.md)");
+  });
+
+  it("leaves every link between docs resolvable, in every doc", () => {
+    const { sets, docs } = renderDocs();
+    const names = new Set([...docs.map((d) => d.slug), ...sets.map((s) => s.id)]);
+    for (const name of names) {
+      const md = docMarkdown(name) ?? "";
+      for (const [, target] of md.matchAll(/\]\(([^)\s#:/]+)\.md(?:#[^)\s]*)?\)/g)) {
+        expect(names, `${name} links to ${target}`).toContain(target);
+      }
+      // No relative link to a Markdown file is left unrewritten.
+      expect(md, name).not.toMatch(/\]\((?:\.\.\/|[a-z-]+\/)[^)]*\.md/);
+    }
+    expect(docMarkdown("nope")).toBeNull();
+  });
+
+  it("leaves link syntax inside code as written", () => {
+    const md = [
+      "See [Deploy](../get-started/02-deploy.md#check-it).",
+      "",
+      "Write `[Deploy](02-deploy.md)` to link a page.",
+      "",
+      "```",
+      "[Notifications](../guides/03-notifications.md)",
+      "```",
+    ].join("\n");
+    const out = markdownLinksForAgents(md, "publishing/01-your-list.md");
+    expect(out).toContain("See [Deploy](deploy.md#check-it).");
+    expect(out).toContain("Write `[Deploy](02-deploy.md)` to link a page.");
+    expect(out).toContain("[Notifications](../guides/03-notifications.md)\n```");
   });
 });
 
@@ -154,9 +250,11 @@ function decodeEntities(text: string): string {
 }
 
 describe("docs API is gated like the rest of the authoring API", () => {
-  it("401s the guide without a token", async () => {
-    const res = await SELF.fetch(`${base}/api/docs`);
-    expect(res.status).toBe(401);
+  it("401s the docs, a doc's Markdown, and the reference's without a token", async () => {
+    for (const path of ["/api/docs", "/api/docs/your-list.md", "/api/reference.md"]) {
+      const res = await SELF.fetch(`${base}${path}`);
+      expect(res.status, path).toBe(401);
+    }
   });
 
   it("401s with a wrong token", async () => {
@@ -167,7 +265,7 @@ describe("docs API is gated like the rest of the authoring API", () => {
   });
 });
 
-describe("docs API serves the setup content when authed", () => {
+describe("docs API serves the docs when authed", () => {
   it("returns the whole guide as sanitized HTML fragments in reading order", async () => {
     const res = await SELF.fetch(`${base}/api/docs`, { headers: AUTH });
     expect(res.status).toBe(200);
@@ -184,5 +282,16 @@ describe("docs API serves the setup content when authed", () => {
       expect(d.html).not.toContain("<script");
       expect(d.html).not.toContain("<!doctype");
     }
+  });
+
+  it("serves a doc, or a set's index, as Markdown, and 404s a name that is neither", async () => {
+    const res = await SELF.fetch(`${base}/api/docs/sending-rules.md`, { headers: AUTH });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(await res.text()).toBe(docMarkdown("sending-rules"));
+    const index = await SELF.fetch(`${base}/api/docs/self-hosting.md`, { headers: AUTH });
+    expect(await index.text()).toMatch(/^# Self-hosting Kestrel/);
+    const missing = await SELF.fetch(`${base}/api/docs/nope.md`, { headers: AUTH });
+    expect(missing.status).toBe(404);
   });
 });
