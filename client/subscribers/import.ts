@@ -160,7 +160,7 @@ export async function renderImport(root: HTMLElement, signal: AbortSignal): Prom
       <div class="table-wrap"><table class="imp-sample"><thead><tr>${SAMPLE_COLUMNS.map((c) => html`<th><code>${c}</code></th>`)}</tr></thead>
       <tbody>${rows.map((r) => html`<tr>${SAMPLE_COLUMNS.map((c) => html`<td>${r[c] ?? ""}</td>`)}</tr>`)}</tbody></table></div>
       <p class="field-hint">Optional columns: ${optional.map((n, i) => html`${i ? ", " : ""}<code>${n}</code>`)}.</p>
-      <div class="row imp-links"><button type="button" class="ghost" data-template="csv">Download example file (CSV)</button><a class="ghost-link" href="#/docs/import-format">Import format reference →</a></div>`;
+      <div class="row imp-links"><button type="button" class="ghost" data-template="csv">Download example file (CSV)</button><a class="ghost-link" href="#/docs/your-list/the-file-format">Import format reference →</a></div>`;
   }
 
   function plainSample(): Html {

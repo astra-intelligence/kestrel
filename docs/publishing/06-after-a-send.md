@@ -79,7 +79,7 @@ Each notification links straight to the page it's about. Each event is told once
 
 The **Last notification** row in the same section says whether the latest one was **Delivered** or **Not delivered**. Notifications are separate from your newsletter: one that fails never delays or changes a send.
 
-Whoever runs your Kestrel chooses how notifications are sent. By default they go through your newsletter's own email provider. Then the one about your provider refusing your account can't reach you, since that provider would refuse it too. Whoever runs your Kestrel can send them another way that avoids this, as [Notifications through Cloudflare's email](../guides/03-notifications.md) describes.
+Whoever manages your Kestrel instance chooses how notifications are sent. By default they go through your newsletter's own email provider. Then the one about your provider refusing your account can't reach you, since that provider would refuse it too. Whoever manages your Kestrel instance can send them another way that avoids this, as [Notifications through Cloudflare's email](../guides/03-notifications.md) describes.
 
 ## Seeing what's happening
 

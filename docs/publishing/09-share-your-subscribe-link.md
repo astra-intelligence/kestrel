@@ -60,11 +60,11 @@ Pick a page from the list: the subscribe form and its check-your-inbox page, or 
 
 ## When signups aren't open yet
 
-**The form takes no addresses until whoever runs your Kestrel connects email.**
+**The form takes no addresses until whoever manages your Kestrel instance connects email.**
 
 Until then, the subscribe page says the newsletter isn't taking subscribers yet, and the dashboard and Settings say so too. You can still share the link, and it opens once email is connected. [Connect Amazon SES](../get-started/04-ses.md) is that step.
 
-Whoever runs your Kestrel can also limit how often anyone submits the form, which slows down abuse. [Rate-limit the subscribe form](../guides/05-rate-limit.md) covers it.
+Whoever manages your Kestrel instance can also limit how often anyone submits the form, which slows down abuse. [Rate-limit the subscribe form](../guides/05-rate-limit.md) covers it.
 
 ## Already have a list somewhere else
 

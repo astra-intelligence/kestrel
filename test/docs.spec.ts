@@ -20,7 +20,6 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       "publishing/sending/after-a-send",
       "publishing/sending/sending-rules",
       "publishing/more/working-with-claude",
-      "publishing/more/import-format",
       "self-hosting/get-started/deploy",
       "self-hosting/get-started/access",
       "self-hosting/get-started/ses",
@@ -131,7 +130,7 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       'href="#/docs/go-live/as-your-list-grows"',
     );
     expect(docs.find((d) => d.slug === "connect-claude")?.html).toContain(
-      'href="#/docs/import-format"',
+      'href="#/docs/your-list/the-file-format"',
     );
   });
 
@@ -169,9 +168,14 @@ describe("each doc as Markdown, for an agent (docMarkdown)", () => {
   it("serves a page's Markdown with its links pointed at the other docs' Markdown", () => {
     const md = docMarkdown("your-list") ?? "";
     expect(md).toMatch(/^# Bring your existing list/);
-    expect(md).toContain("](import-format.md)");
+    expect(md).toContain("](your-list.md#the-file-format)");
     expect(md).toContain("](go-live.md#as-your-list-grows)");
     expect(md).not.toMatch(/\]\([^)]*\d{2}-[a-z0-9-]+\.md/);
+  });
+
+  it("serves a merged page under its former slug, which an earlier release's operator context names", () => {
+    expect(docMarkdown("import-format")).toBe(docMarkdown("your-list"));
+    expect(docMarkdown("import-format")).toMatch(/^# Bring your existing list/);
   });
 
   it("serves a set's index by its id, linking its pages and the other set", () => {

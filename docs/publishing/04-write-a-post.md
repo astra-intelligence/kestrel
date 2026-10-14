@@ -14,7 +14,7 @@ To remove a draft, choose **Delete draft** from its ⋯ menu under **Drafts**. I
 
 The **Subject** is the email's subject line. It also names the post in your lists and sets its web address. A post needs a subject before you can schedule it.
 
-The **Slug** is the last part of the post's public address. Every post you send gets a permanent page in your publication's archive, and every email links to it. With the default setup, a post with the slug `spring-update` lives at `newsletter.example.com/archive/spring-update`. Whoever runs your Kestrel chose the part before the slug, as [Configuration](../reference/01-configuration.md#archive_base_path) describes.
+The **Slug** is the last part of the post's public address. Every post you send gets a permanent page in your publication's archive, and every email links to it. With the default setup, a post with the slug `spring-update` lives at `newsletter.example.com/archive/spring-update`. Whoever manages your Kestrel instance chose the part before the slug, as [Configuration](../reference/01-configuration.md#archive_base_path) describes.
 
 While **Auto-generate from subject** is checked, the slug follows the subject, so "Spring update" becomes `spring-update`. Type a slug of your own to set it by hand, and it stops following the subject. Clear the field, or check the box again, to have it follow the subject.
 
@@ -91,7 +91,7 @@ A few links in a test behave differently from the real send:
 - **Unsubscribe.** A test carries an unsubscribe link and the one-click unsubscribe header, so you can check both. Neither unsubscribes anyone. The link opens the page a subscriber sees, marked as a test and showing a sample address.
 - **View in browser.** The link points at the post's public address, which shows a page saying the post appears there once it's sent. It works once the send starts.
 
-A test needs an email provider. Until whoever runs your Kestrel connects one, the editor lets you write and preview but not send tests. [Connect Amazon SES](../get-started/04-ses.md) is their step.
+A test needs an email provider. Until whoever manages your Kestrel instance connects one, the editor lets you write and preview but not send tests. [Connect Amazon SES](../get-started/04-ses.md) is their step.
 
 ## Next
 

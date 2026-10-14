@@ -8,7 +8,7 @@ This page covers scheduling, what it freezes, canceling, moving the send time, a
 
 **Schedule** at the foot of the editor opens a dialog where you pick a time under **Send at**, then confirm with **Schedule**. The post goes out at that time, and until then you can cancel it or move it.
 
-The time you pick must be at least the minimum lead away. That's five minutes, unless whoever runs your Kestrel set it differently ([Configuration](../reference/01-configuration.md#min_lead_seconds)). A time closer than that is refused under the picker, with the reason. The lead isn't a setting in the dashboard, and Claude can't change it either. So every send gets a window to catch a mistake, including one Claude prepared.
+The time you pick must be at least the minimum lead away. That's five minutes, unless whoever manages your Kestrel instance set it differently ([Configuration](../reference/01-configuration.md#min_lead_seconds)). A time closer than that is refused under the picker, with the reason. The lead isn't a setting in the dashboard, and Claude can't change it either. So every send gets a window to catch a mistake, including one Claude prepared.
 
 Send times are to the minute. A time with seconds is rounded up to the next whole minute, which only lengthens the window.
 
@@ -56,7 +56,7 @@ So the recipient count the **Send now?** view shows is a snapshot, not a promise
 
 The Schedule dialog warns you about two things before you schedule.
 
-- **No email provider connected.** The dialog says the post can't be scheduled yet, and its buttons are unavailable. Connecting a provider is for whoever runs your Kestrel, as [Connect Amazon SES](../get-started/04-ses.md) describes. If the provider goes after a post is scheduled, its banner reads "Will be held: no email provider is connected." The post stays cancelable, and goes out once a provider is connected.
+- **No email provider connected.** The dialog says the post can't be scheduled yet, and its buttons are unavailable. Connecting a provider is for whoever manages your Kestrel instance, as [Connect Amazon SES](../get-started/04-ses.md) describes. If the provider goes after a post is scheduled, its banner reads "Will be held: no email provider is connected." The post stays cancelable, and goes out once a provider is connected.
 - **Daily database writes.** On the free hosting plan, a large send may use up the day's database writes, and the dialog warns you without stopping you. [Bring your existing list](01-your-list.md#limits) explains the limit and the warning.
 
 ## When it sends
@@ -65,7 +65,7 @@ At the send time, the post moves from the editor to its send page under **Sent**
 
 A send goes out a slice at a time. A large list takes several slices, and between them the send still reads **Sending**, with "Paused between ticks. It resumes on the next sweep."
 
-If your email provider refuses to take more, for example because your account's daily sending quota is spent, the send waits. Nobody is marked unsent, and it tries again on its own, picking up where it stopped once the quota frees up. Raising the quota is for whoever runs your Kestrel ([As your list grows](../get-started/06-go-live.md#as-your-list-grows)).
+If your email provider refuses to take more, for example because your account's daily sending quota is spent, the send waits. Nobody is marked unsent, and it tries again on its own, picking up where it stopped once the quota frees up. Raising the quota is for whoever manages your Kestrel instance ([As your list grows](../get-started/06-go-live.md#as-your-list-grows)).
 
 Whatever interrupts a send, it resumes rather than starting over. No reader is ever mailed the same post twice.
 

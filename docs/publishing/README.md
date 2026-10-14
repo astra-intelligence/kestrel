@@ -23,4 +23,3 @@ Scheduling a post, what happens when it goes out, and the rules every send keeps
 ## More
 
 - [Working with Claude](07-working-with-claude.md)
-- [Subscriber import format](08-import-format.md)

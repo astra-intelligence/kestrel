@@ -39,7 +39,6 @@ import writeAPost from "../../docs/publishing/04-write-a-post.md";
 import schedulingAndSending from "../../docs/publishing/05-scheduling-and-sending.md";
 import afterASend from "../../docs/publishing/06-after-a-send.md";
 import workingWithClaude from "../../docs/publishing/07-working-with-claude.md";
-import importFormat from "../../docs/publishing/08-import-format.md";
 import shareYourSubscribeLink from "../../docs/publishing/09-share-your-subscribe-link.md";
 import checkYourSetup from "../../docs/publishing/10-check-your-setup.md";
 import publishingIndex from "../../docs/publishing/README.md";
@@ -65,7 +64,6 @@ const PAGES: Record<string, string> = {
   "publishing/05-scheduling-and-sending.md": schedulingAndSending,
   "publishing/06-after-a-send.md": afterASend,
   "publishing/07-working-with-claude.md": workingWithClaude,
-  "publishing/08-import-format.md": importFormat,
   "publishing/09-share-your-subscribe-link.md": shareYourSubscribeLink,
   "publishing/10-check-your-setup.md": checkYourSetup,
   "get-started/02-deploy.md": deploy,
@@ -286,11 +284,17 @@ const MD_LINK = /\]\(([^)\s#:]+\.md)(#[^)\s]*)?\)/g;
 // inline span.
 const MD_CODE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$|`[^`\n]+`/gm;
 
-/** A doc's Markdown for an agent to read (SPEC §11): a page by its slug, or a set's index by
- *  its id, with its links pointed at the other docs' Markdown routes. Null for a name that is
- *  neither. */
+// Slugs a released page had before it merged into another, so an agent that still names the
+// old one, such as an instance's operator context written by an earlier release, reads the
+// page that now holds its content.
+const FORMER_SLUGS = new Map([["import-format", "your-list"]]);
+
+/** A doc's Markdown for an agent to read (SPEC §11): a page by its slug or a former slug, or a
+ *  set's index by its id, with its links pointed at the other docs' Markdown routes. Null for
+ *  a name that is none of these. */
 export function docMarkdown(name: string): string | null {
-  const doc = DOCS.find((d) => d.slug === name);
+  const slug = FORMER_SLUGS.get(name) ?? name;
+  const doc = DOCS.find((d) => d.slug === slug);
   const set = SET_SOURCES.find((s) => s.id === name);
   const from = doc?.path ?? set?.path;
   const markdown = doc?.markdown ?? set?.index;

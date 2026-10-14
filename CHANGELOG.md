@@ -10,6 +10,11 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+### Changed
+
+- The import format reference is now the last section of the publisher page "Bring your existing list", The file format, so the format is explained in one place. The page opens with the import and, for a list of more than about 5,000, the advice to move to the paid hosting plan first. The import screen's **Import format reference →** opens that section, and `GET /api/docs/import-format.md` still answers, with the merged page (SPEC §11).
+- The operator's Claude context's `/migrate-list` reads the import format from the merged page, `GET /api/docs/your-list.md`, since the separate import format page is gone. `npm run check-context` offers the change to an existing instance.
+
 ## [1.10.0] - 2026-10-14
 
 **Upgrading from 1.9.0.** No database migrations. Run `npm run check-context` in your instance's repository: this release changes the operator's Claude context (a new `/migrate-list` skill, and rules for erasing, for choosing between unsubscribing and blocking, and for reading the docs as Markdown), and a copy you've edited is merged by hand. Three API changes can break a script of yours, listed under Breaking. One that adds suppressions sends `reason: "manual"` or none, reads what was stored from the answer's `suppression`, and takes a 200 with `added: false` as already suppressed. One that clears suppressions takes a 409 `erasure_marker` on an erased address as final. One that reads `GET /api/docs` reads `sets` in place of `landing`.

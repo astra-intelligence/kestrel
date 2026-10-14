@@ -29,7 +29,7 @@ The docs are two sets, each with its own landing: **Publishing** (`docs/publishi
 
 ## Structure
 
-- **Publishing:** the Docs tab opens on it, since it's read once Kestrel is running, mostly by the publisher. Three sections. **Set up your publication**, numbered, follows the dashboard's first-run checklist of the same name step for step and word for word: Name your publication, Check your setup, Bring your existing list, Write your first post, Share your subscribe link. While no provider is connected, the dashboard's second step is Connect Amazon SES instead, the operator's, and Check your setup says so and links it. A change to that checklist changes this section. **Sending** (Scheduling and sending, After a send, Sending rules). **More** (Working with Claude, the import format). The import format lives here because publishers, and Claude converting a list for them, are its readers. A legal question that comes up at one setting, such as whether you need a mailing address, is answered on that setting's page, where Settings links it; Sending rules holds the rest.
+- **Publishing:** the Docs tab opens on it, since it's read once Kestrel is running, mostly by the publisher. Three sections. **Set up your publication**, numbered, follows the dashboard's first-run checklist of the same name step for step and word for word: Name your publication, Check your setup, Bring your existing list, Write your first post, Share your subscribe link. While no provider is connected, the dashboard's second step is Connect Amazon SES instead, the operator's, and Check your setup says so and links it. A change to that checklist changes this section. **Sending** (Scheduling and sending, After a send, Sending rules). **More** (Working with Claude). The import format is the last section of Bring your existing list, The file format, because it serves that page's goal, and publishers and Claude converting a list for them are its readers. A legal question that comes up at one setting, such as whether you need a mailing address, is answered on that setting's page, where Settings links it; Sending rules holds the rest.
 - **Get started:** the main path, numbered: Deploy the app, Lock the dashboard with Access, Connect Amazon SES, Verify it works, Go live. There is no overview page: what the whole path needs opens Deploy the app as its Before you begin, and the docs landing lists the steps.
 - **Guides:** picked from, not read in order: Connect Claude, trying Kestrel locally first, notifications through Cloudflare's email, rate limiting, upgrading. The docs landing's list sets the order, not the file prefixes. Possible guides wait as GitHub issues until they've been run end to end, such as staging and the archive on your website.
 - **Reference:** the detail and the why: configuration, sending-domain DNS.
@@ -38,12 +38,16 @@ The docs are two sets, each with its own landing: **Publishing** (`docs/publishi
 
 ## Publishing pages
 
-A publisher's page is a task page, not a procedure, and it works for a writer someone else set Kestrel up for.
+The Publishing set gets a publisher going, and tells them about the decisions to make or be aware of before they hit them. Its reader is the publisher, who may or may not also manage the instance. Write simply and well, and be technical where the precise term is the technical one; never talk down.
 
-- **Answer first.** The page, and a section a link lands on, opens with the short answer, then the reasons. No Before you begin, numbered steps, or Check it.
-- **Shape:** what it's for; what Kestrel does and what you do; where to click, by the dashboard's own words in bold (**Subscribers → Import**); the limits; links onward.
+- **Each page has one goal,** a task the publisher does or a question they bring. A page whose content serves another page's goal belongs in that page, as a later section.
+- **Answer first.** The page, and a section a link lands on, opens with the short answer: what to do, and where to click, by the dashboard's own words in bold (**Subscribers → Import**). No page overview, Before you begin, numbered steps, or Check it.
+- **A decision that comes before the work comes right after the answer,** in bold, such as moving to the paid hosting plan before importing a large list. When it's the operator's, say what to ask for and link the setup guide page that makes the change, which is where a publisher who also manages the instance goes.
+- **Only what changes what the publisher does.** The dashboard explains itself as they go, so a page doesn't walk it screen by screen. Exact rules, edge cases, and the API go in a reference section at the page's end, under its own heading, or in the API reference.
+- **Each fact once.** One page holds it, and the others link there in a line.
+- **Short.** The task part of a page fits in a screen or two.
 - **Facts come from the app, not the documents alone.** Check a label against the UI's source as well as DESIGN, and a behavior against the code as well as SPEC. Where they disagree, describe what the app does and flag the gap to the maintainer.
-- **No deploy vocabulary.** Never assume the reader touched Cloudflare, wrangler, or AWS. A fact that belongs to whoever deploys (Workers Paid, reply forwarding, the From address) is named as theirs, "whoever runs your Kestrel", with a link into the setup guide for the detail, never restated.
+- **No deploy vocabulary.** Never assume the reader touched Cloudflare, wrangler, or AWS. A fact that belongs to whoever deploys (the paid hosting plan, reply forwarding, the From address) is named as theirs, "whoever manages your Kestrel instance", with a link into the setup guide for the detail, never restated. Name the plans as the free and the paid hosting plan.
 - **Settled facts, cited and hedged.** A legal claim links its source and says whose law it is. Where the law is judgment, say "usually" or "probably". A page with legal content says it's general information, not legal advice.
 - **Headings are link targets.** The editor links a section by its heading's exact words, and a spec fails when a linked heading changes, so rename a linked heading only with its links.
 
@@ -67,7 +71,7 @@ A setup guide page, after Linode's guides:
 ## Voice
 
 - Second person, present tense: "This step creates…", not "will create". Break the rule only where present tense reads wrong.
-- Sentences of 25 words or fewer. Oxford comma. No em dashes.
+- Sentences of 25 words or fewer. Oxford comma. No em dashes. No rhetorical questions: state the condition ("If you're starting fresh, …").
 - Plain words over internal vocabulary: "the public pages readers see", not "the reader surface".
 - Recommendations, not commands, where the app doesn't enforce the rule.
 - No time estimates.
