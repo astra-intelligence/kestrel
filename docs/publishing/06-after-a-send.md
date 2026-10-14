@@ -57,7 +57,7 @@ When a recent send's bounces reach about 5% of its recipients, the dashboard war
 
 Kestrel never lifts a suppression on its own, and neither does an import. Only you can, deliberately. Do it only when you know the address works again, such as a reader who tells you their mailbox is fixed. Mailing an address that keeps bouncing, or a reader who marked you as spam, can hurt every send after it.
 
-A block is yours to lift: **Unblock** in the subscriber's ⋯ menu, which asks you to confirm. It's offered for a block you made, or one an import brought. The dashboard has no control for lifting a bounce or a complaint, but Claude can do it for you through the API, as [Working with Claude](07-working-with-claude.md) describes. Lifting a suppression changes nothing on past records: the bounce or complaint stays where it happened.
+A block is yours to lift: **Unblock** in the subscriber's ⋯ menu, which asks you to confirm. It's offered for a block you made, or one an import brought. The dashboard has no control for lifting a bounce or a complaint. Claude can do it for you through the API, as [Working with Claude](07-working-with-claude.md) describes. Lifting a suppression changes nothing on past records: the bounce or complaint stays where it happened.
 
 ## Notifications
 

@@ -26,13 +26,13 @@ So the post is locked while it's scheduled. It opens on **Preview**, which shows
 
 To change the post's content, cancel the schedule, edit, test again, and schedule it again. That resets your review, so your last test is always of the copy that sends.
 
-A change to your template, or to a publication detail the template shows, is different. It re-makes the email of every scheduled post, at the same send times, with the same content. Kestrel asks before it saves, in a dialog confirmed with **Save and apply**. Afterwards each re-made post's banner asks you to send a new test. The dashboard's card reads "Look changed since your last test" until you do. A save like this is refused while any scheduled post is within the minimum lead of its send time. The refusal says when to try again. [Name your publication](03-name-your-publication.md) covers the template and those details.
+A change to your template, or to a publication detail it shows, re-makes every scheduled post's email, with the same content and send time. Kestrel asks before it saves, and each re-made post then asks you to send a new test. [Changes and scheduled posts](03-name-your-publication.md#changes-and-scheduled-posts) covers what changes and when a save is refused.
 
 ## Canceling
 
 **Cancel** on the scheduled banner, or on the **Scheduled** card on **Sent**, stops the send at once. No confirmation is asked, since nothing is lost: the post is a draft again, editable, and you can schedule it again whenever you like.
 
-You can cancel until the send time itself. From then the banner reads "Preparing to send…" and its buttons are unavailable, because the email is going out. A cancel that arrives just after the send time is refused with "Too late to cancel: the send time has passed, so this email is going out."
+You can cancel until the send time itself. From then the banner reads "Preparing to send…" and its buttons are unavailable, because the email is going out. A cancel that arrives just after the send time is refused. It says "Too late to cancel: the send time has passed, so this email is going out."
 
 ## Moving the send time
 
@@ -57,7 +57,7 @@ So the recipient count the **Send now?** view shows is a snapshot, not a promise
 The Schedule dialog warns you about two things before you schedule.
 
 - **No email provider connected.** The dialog says the post can't be scheduled yet, and its buttons are unavailable. Connecting a provider is for whoever runs your Kestrel, as [Connect Amazon SES](../get-started/04-ses.md) describes. If the provider goes after a post is scheduled, its banner reads "Will be held: no email provider is connected." The post stays cancelable, and goes out once a provider is connected.
-- **Daily database writes.** On the Workers Free plan's limits, a large send may use up the day's database writes, which stops your newsletter until midnight UTC. The dialog warns you, and the post's banner repeats the warning for as long as it's scheduled. It never stops you from scheduling. [Bring your existing list](01-your-list.md#limits) explains the limit and when it's worth moving to Workers Paid.
+- **Daily database writes.** On the free hosting plan, a large send may use up the day's database writes, and the dialog warns you without stopping you. [Bring your existing list](01-your-list.md#limits) explains the limit and the warning.
 
 ## When it sends
 

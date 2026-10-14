@@ -96,7 +96,7 @@ When you save, a dialog lists the scheduled posts by subject and send time. Each
 Afterwards, each of those posts says its look changed since your last test. The mark shows in the editor and on the dashboard until you send a fresh test. Send one, since your earlier test no longer shows what goes out. [Scheduling and sending](05-scheduling-and-sending.md) covers tests of a scheduled post.
 
 - **Changing a part the template doesn't print** asks nothing, since it doesn't change any email.
-- **A post about to send** blocks the change. Kestrel says when you can try again, once that post has gone out.
+- **A post about to send,** within the minimum lead of its send time, blocks the change. Kestrel says when you can try again, once that post has gone out.
 - **Posts already sending or sent** never change.
 
 ## Who sets the From name and address

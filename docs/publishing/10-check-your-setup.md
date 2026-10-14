@@ -2,7 +2,7 @@
 
 Before your readers get anything, see it arrive yourself, and make sure a problem will reach you without your watching for it. Send yourself a test, subscribe yourself, and set where Kestrel emails you. It's the second step of **Set up your publication** on your dashboard.
 
-This page covers whether email is connected, what to check in a test, how Kestrel tells you something's wrong, and what changes as your list grows.
+This page covers whether email is connected and what to check in a test. It also covers how Kestrel tells you something's wrong, and what changes as your list grows.
 
 ## Email is connected
 
@@ -41,7 +41,7 @@ A growing list meets a few limits, and Kestrel tells you before or when it reach
 
 - **Your provider's daily sending quota.** A send that hits it waits, and the dashboard shows why. It resumes on its own once the quota frees up, and nobody is mailed twice. Amazon SES reports a spent quota as refusing your account, so its email reaches you only if your notifications go another way ([Notifications](06-after-a-send.md#notifications)).
 - **How long a send takes.** It grows with your list, and depends on your provider's sending rate and the hosting plan whoever runs your Kestrel chose. [Go live](../get-started/06-go-live.md#as-your-list-grows) gives the rates.
-- **Daily database writes on the free hosting plan.** A large send or import can use up the day's writes. Then the whole app stops until midnight UTC. On that plan, Kestrel warns you before a send to more than 5,000 recipients. It also warns you before an import that would use most of the day's writes. Neither warning stops you. [Bring your existing list](01-your-list.md#limits) explains more.
+- **Daily database writes on the free hosting plan.** A large send or import can use them up, stopping the whole app until midnight UTC. [Bring your existing list](01-your-list.md#limits) explains the limit and how Kestrel warns you first.
 
 From about 5,000 subscribers, it's recommended that whoever runs your Kestrel moves to the paid hosting plan, which has no daily limit on writes.
 

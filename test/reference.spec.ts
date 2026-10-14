@@ -219,10 +219,12 @@ describe("the reference as Markdown, for an agent (/api/reference.md)", () => {
 
   it("gives every registered route its own heading, under its tier and resource, from the same groups", () => {
     const md = referenceMarkdown(buildReference(defs), "https://newsletter.example.com");
-    const headings = [...md.matchAll(/^### (\S+) (\S+)$/gm)].map(([, m, p]) => `${m} ${p}`);
+    const headings = [...md.matchAll(/^#### (\S+) (\S+)$/gm)].map(([, m, p]) => `${m} ${p}`);
     expect(headings.sort()).toEqual(defs.map((d) => `${d.method} ${d.path}`).sort());
     expect(md).toContain("Base URL `https://newsletter.example.com`");
-    expect(md).toContain("## Admin: Posts");
+    // Tiers, then their resources, then routes, each a level down.
+    expect(md).toMatch(/^## Admin\n\n[^#][\s\S]*?^### Posts\n\n#### \S+ \/api\/posts\S*$/m);
+    expect(md).not.toMatch(/^## \S+: /m);
     // A route's query table and example come through.
     expect(md).toMatch(/\| Query parameter \| Description \|/);
     expect(md).toContain("Example response:");
@@ -234,7 +236,7 @@ describe("the reference as Markdown, for an agent (/api/reference.md)", () => {
     expect(res.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
     const md = await res.text();
     expect(md).toMatch(/^# API reference/);
-    expect(md).toContain("### GET /api/docs/:name.md");
+    expect(md).toContain("\n#### GET /api/docs/:name.md\n");
     expect(md).toContain(`Base URL \`${base}\``);
   });
 });

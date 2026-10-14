@@ -18,8 +18,8 @@ import { roomShell } from "./shell";
 // The docs, authored as two sets (docs/publishing/README.md and docs/README.md, each an index
 // over its pages), and served read-only by the authed GET /api/docs route as sanitized HTML
 // fragments. `#/docs` is the first set's index (Publishing: the Docs tab is read once Kestrel
-// runs, mostly by the publisher) and `#/docs/:set` either set's — an intro over its
-// sections, a numbered section shown as steps; `#/docs/:slug` is one doc, and
+// runs, mostly by the publisher) and `#/docs/:set` either set's: an intro over its
+// sections, a numbered section shown as steps. `#/docs/:slug` is one doc, and
 // `#/docs/:slug/:anchor` one heading on it; its rail a back-link to the index
 // plus that doc's "On this page" (never a tree of all docs). No iframe: the content is
 // trusted (repo markdown, hygiene-passed), so injecting the fragments is safe. Fetched once

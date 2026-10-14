@@ -2,7 +2,7 @@
  * In-app docs (the publisher's pages and the setup guide), served read-only to the admin
  * surface. Authed exactly like the rest of the authoring API (mounted under `/api` in app.ts),
  * so the SPA's bearer/Access-JWT fetch reaches it in both dev and prod, and Claude's service
- * token reaches it too. The content is bundled from docs/ (see src/docs/index.ts) — nothing
+ * token reaches it too. The content is bundled from docs/ (see src/docs/index.ts), and nothing
  * is editable.
  *
  *   GET /api/docs           → the two sets and every doc as sanitized HTML fragments, in

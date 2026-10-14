@@ -4,7 +4,7 @@
  * (`docs/README.md` and the section folders it lists) is for whoever deploys and runs the
  * instance. The Markdown is bundled into the Worker as Text modules (the `rules` entry in
  * wrangler.jsonc) and served read-only through the authed docs API. The Markdown in `docs/` is
- * the single source of truth — the pages are NOT editable in the app.
+ * the single source of truth, and the pages are NOT editable in the app.
  *
  * Each set's index file is its landing page and its table of contents both: its H1 and
  * intro, then a `##` heading per section with a blurb and a list of the section's pages,
@@ -265,7 +265,7 @@ function renderSets(): DocSet[] {
   }));
 }
 
-/** The sets, and every doc in reading order — slug, title, set, section, and rendered
+/** The sets, and every doc in reading order: slug, title, set, section, and rendered
  *  fragment. */
 export function renderDocs(): DocsResponse {
   return {

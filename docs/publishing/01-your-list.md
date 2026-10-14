@@ -16,7 +16,7 @@ Kestrel reads one documented format, `kestrel-subscribers/1`: a CSV file with a 
 | `origin` | Where consent was collected, as a short name such as `sendy` or `mailchimp`. |
 | `subscribed_at` | When they subscribed, with its time zone, such as `2024-03-01T09:30:00Z`. Optional. |
 
-The optional columns carry the rest: a bounce or complaint (`suppression`), when someone confirmed or left, and `evidence`, the old service's own consent details, such as a signup IP or a form name. [Import format](08-import-format.md) describes every column and value.
+The optional columns carry the rest: a bounce or complaint (`suppression`), and when someone confirmed or left. `evidence` holds the old service's own consent details, such as a signup IP or a form name. [Import format](08-import-format.md) describes every column and value.
 
 The import screen's **Download example file (CSV)** gives you `kestrel-import-example.csv`, a few rows that show each case. Open it in a spreadsheet to see the shape, and save your file as CSV UTF-8.
 
@@ -38,36 +38,37 @@ Please import my Sendy subscribers from ~/Downloads/sendy-export.csv into the ne
 
 Claude's `/migrate-list` skill reads Kestrel's format from your instance and asks you what anything ambiguous in the export means. It converts a few rows for you to check, then checks Kestrel's plan against its own counts. It asks for your attestation before it imports anyone as a subscriber. [Connect Claude to the API](../guides/01-connect-claude.md) sets Claude up.
 
-If a scheduled post would reach the people the import adds, Claude stops and asks you to finish in the dashboard: choose the converted file Claude left in your working folder under **Subscribers → Import**, and the same plan appears for you to confirm.
+If a scheduled post would reach the people the import adds, Claude stops and asks you to finish in the dashboard. Under **Subscribers → Import**, choose the converted file Claude left in your working folder, and the same plan appears for you to confirm.
 
 ## What an import does
 
-Nothing changes when you choose a file. Kestrel plans the import first and shows you what it would do to every row. You see who is added as a subscriber, who is recorded as having left, and who is suppressed, and which rows are repeats, invalid, or left out. You can download the rows that won't be imported as subscribers, to check them against your file. Only when you press **Import** does anything change, and then the import applies whole, or not at all. If a reader's consent changed between your plan and the import, for example someone unsubscribed or confirmed, their row follows your list as it stands then, and the result lists each row that turned out differently from the plan you saw. An import sends no email.
+Nothing changes when you choose a file. Kestrel plans the import first and shows you what it would do to every row. You see who is added as a subscriber, who is recorded as having left, and who is suppressed. You also see which rows are repeats, invalid, or left out. You can download the rows that won't be imported as subscribers, to check them against your file. Only when you press **Import** does anything change, and then the import applies whole, or not at all. A reader's consent can change between your plan and the import, for example when someone unsubscribes or confirms. Their row then follows your list as it stands at the import. The result lists each row that turned out differently from the plan you saw. An import sends no email.
 
-To import anyone as a subscriber, you confirm that everyone you're importing as subscribed opted in to receive your publication, and that the list isn't purchased, rented, or scraped. If you're unsure about some people, take them out of the file before importing. Kestrel keeps your attestation with the import's record.
+To import anyone as a subscriber, you confirm that everyone you're importing as subscribed opted in to receive your publication. You also confirm that the list isn't purchased, rented, or scraped. If you're unsure about some people, take them out of the file before importing. Kestrel keeps your attestation with the import's record.
 
 If a post is scheduled, it goes to the list as it stands when it sends, so the people an import adds would receive it. The plan names each such post and how many more people it would reach, and you acknowledge each one before importing.
 
-If your list or its scheduled posts changed since the plan in a way the plan rests on, such as another import, Kestrel plans your file again and shows you the new plan as things stand now, before anything happens.
+Your list or its scheduled posts may change after the plan in a way the plan rests on, such as another import. Then Kestrel plans your file again and shows you the new plan as things stand now, before anything happens.
 
 ## Why your old service's record is honored
 
-Kestrel normally confirms every new subscriber with double opt-in: they click a link in an email before they get any posts. Asking your whole list to confirm again would lose readers who already said yes, and would mail every one of them a request they didn't expect. So an import carries over what your old service recorded instead: the consent each person gave there, how it was collected, and your word for it.
+Kestrel normally confirms every new subscriber with double opt-in: they click a link in an email before they get any posts. Asking your whole list to confirm again would lose readers who already said yes. It would also mail every one of them a request they didn't expect. So an import carries over your old service's record instead: the consent each person gave there, how it was collected, and your word for it.
 
 Kestrel holds a few lines that an import can't cross:
 
 - **Someone who left stays gone.** An address that unsubscribed here is never subscribed again by an import, whatever the file says. Only that reader can come back, by confirming here.
-- **A bounce, a block, or a do-not-contact marker here always wins.** An import never lifts a suppression, so an address known to fail is never mailed. An address you erased keeps only a do-not-contact marker, and an import never records a subscriber for it again, not even as one who left.
+- **A bounce, a block, or a do-not-contact marker here always wins.** An import never lifts a suppression, so an address known to fail is never mailed. An address you erased keeps only a do-not-contact marker. An import never records a subscriber for it again, not even as one who left.
 - **A reader's newer choice stands.** If someone confirmed here after your old service says they left, they stay subscribed.
 - **Repeats are folded together,** and when one row says subscribed and another says unsubscribed, unsubscribed wins.
 
-In the subscriber list, imported subscribers are **Confirmed** and receive your posts. The **How they joined** column says they were imported, with the service and the opt-in method your file gave, such as "Imported · Sendy, single opt-in". Only someone who confirmed through Kestrel itself reads as "Double opt-in". Choose **View subscriber** from a subscriber's ⋯ menu to see the evidence.
+In the subscriber list, imported subscribers are **Confirmed** and receive your posts. The **How they joined** column says they were imported, with the service and opt-in method from your file, such as "Imported · Sendy, single opt-in". Only someone who confirmed through Kestrel itself reads as "Double opt-in". Choose **View subscriber** from a subscriber's ⋯ menu to see the evidence.
 
 ## Limits
 
-- **Rows.** One import takes up to 10,000 rows on Workers Paid, or 1,000 on the free plan's limits. The import screen says which applies to you. Split a larger list into several files, and import them one at a time.
-- **Daily database writes on the free plan.** Cloudflare's free plan allows a fixed number of database writes a day, and stops your newsletter until midnight UTC once they're used up. Bringing in a large list, in one file or several, and sending to it on the same day can use them up. So when the day's imports would use most of the day's writes, the plan warns you and suggests importing the file the next day, by UTC, and a post scheduled for a day imports have written warns you too, suggesting it go out the next day. Neither warning stops anything.
-- **When to move to Workers Paid.** From about 5,000 subscribers, it's recommended to move to the $5 Workers Paid plan, which has no daily limit on writes. Whoever runs your Kestrel makes the change, as [Go live](../get-started/06-go-live.md#as-your-list-grows) describes.
+- **Rows.** One import takes up to 10,000 rows, or 1,000 on the free hosting plan's limits. Which applies is up to whoever runs your Kestrel, and the import screen says which applies to you. Split a larger list into several files, and import them one at a time.
+- **Daily database writes on the free hosting plan.** On that plan, your Kestrel can write 100,000 rows to its database a day. Once they're used up, your whole newsletter stops until midnight UTC. Each new subscriber an import brings in writes 7 rows, and a send writes about 14 for each recipient. So one import of 1,000 new subscribers uses about 7% of a day's writes, and about 10 of them use most of a day. Bringing in a large list, in one file or several, and sending to it on the same day can use them all.
+- **The warnings on the free hosting plan.** An import's plan warns you when it and the day's earlier imports, by UTC, would use more than 70% of the day's writes. It suggests importing the file the next day. A scheduled post warns you when its send and that day's imports would use most of the day. With no imports, that's a send to more than 5,000 recipients. It suggests sending the next day, and the post's banner repeats the warning for as long as it's scheduled. Neither warning stops anything.
+- **When to move to the paid hosting plan.** From about 5,000 subscribers, it's recommended to move to the $5 paid hosting plan, which has no daily limit on writes. Whoever runs your Kestrel makes the change, as [Go live](../get-started/06-go-live.md#as-your-list-grows) describes.
 
 ## When readers reply
 
@@ -79,7 +80,7 @@ When a reader asks you to delete their data, choose **Erase** from their ⋯ men
 
 ## Taking your list out
 
-**Subscribers → Export** downloads your whole list as one CSV in the same format: every subscriber with their state, how they joined and the evidence, and every bounced, complained, blocked, or erased address. It's yours to keep as a backup, or to import into another Kestrel, which carries the list over as it is. A value a spreadsheet would run as a formula is written as text, so the file is safe to open.
+**Subscribers → Export** downloads your whole list as one CSV in the same format. It holds every subscriber with their state, how they joined, and the evidence, and every bounced, complained, blocked, or erased address. It's yours to keep as a backup, or to import into another Kestrel, which carries the list over as it is. A value a spreadsheet would run as a formula is written as text, so the file is safe to open.
 
 Claude can read the same export a page at a time through the API, at `GET /api/subscribers/export`.
 

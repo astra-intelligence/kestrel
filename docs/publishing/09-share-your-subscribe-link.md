@@ -56,7 +56,7 @@ A reader who submits it lands on your Kestrel's own check-your-inbox page, and c
 
 **Settings → Reader pages shows each page a reader can land on, exactly as they see it, without walking through the steps.**
 
-Pick a page from the list: the subscribe form and its check-your-inbox page, the confirm and unsubscribe pages, or your landing page, archive, and a post page. Pages a reader rarely meets, such as an expired link or an archive with no posts yet, are there too. **Desktop** and **Phone** show each at either width. These are samples, so nothing on them subscribes or unsubscribes anyone.
+Pick a page from the list: the subscribe form and its check-your-inbox page, or the confirm and unsubscribe pages. Your landing page, archive, and a post page are there too. Pages a reader rarely meets, such as an expired link or an archive with no posts yet, are there too. **Desktop** and **Phone** show each at either width. These are samples, so nothing on them subscribes or unsubscribes anyone.
 
 ## When signups aren't open yet
 
