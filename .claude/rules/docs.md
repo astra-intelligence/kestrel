@@ -6,6 +6,7 @@ paths:
   - "docs/reference/**"
   - "docs/publishing/**"
   - "src/docs/**"
+  - "scripts/docs-shots.mjs"
 ---
 
 # Writing the docs
@@ -90,6 +91,13 @@ A setup guide page, after Linode's guides:
 - **Between pages:** relative links to the file, `[Deploy the app](02-deploy.md)` or `[Notifications](../guides/03-notifications.md)`. They work on GitHub, the Worker rewrites them to the Docs tab's routes, and getkestrel.dev's sync rewrites them to its URLs. A spec fails on a link to a page that doesn't exist.
 - **Anchors work everywhere:** the Docs tab gives each heading GitHub's id, so `02-deploy.md#check-it` lands on the same heading on GitHub, in the app, and on the site. Link to a section when the reader needs that section.
 - **Outside the guide** (the README, provider docs): absolute URLs. They open in a new tab in the app.
+
+## Screenshots
+
+- **A screenshot earns its place** where seeing the screen answers faster than words: what a view looks like before the reader has one, such as an import plan or a send's record. Not every page, and never a screen the words already walk through.
+- **Beside the page:** a page's images live in an `img/` folder in its set's folder (`docs/publishing/img/editor.png`), and the page shows one as a relative Markdown image, `![…](img/editor.png)`, so GitHub shows it as it is. The admin build copies every image under `docs/` into the served tree and fails on a reference to a file that isn't there; the Worker points the Docs tab and the agent's Markdown at that copy; getkestrel.dev's sync copies the images too.
+- **Alt text says what the shot shows** for the reader who can't see it, in a sentence: the screen and what's on it that matters to the page.
+- **Captured, never edited by hand.** `scripts/docs-shots.mjs` makes every image from the seeded dev server (`npm run dev`, `npm run seed`, `npm run docs:shots`), light theme, at a 2x scale. A new shot is an entry in its list, and a UI change that a shot shows is recaptured in the same change.
 
 ## Facts
 

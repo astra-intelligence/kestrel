@@ -10,6 +10,10 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+### Added
+
+- Screenshots in the Publishing docs: the editor's Preview on Write and send a post, the import plan on Bring your existing list, and a send's record on When something's wrong. The Docs tab shows them, and a doc's Markdown at `GET /api/docs/<slug>.md` points each image at the copy the editor serves (SPEC §11).
+
 ### Changed
 
 - The Publishing docs are shorter and answer first, around what a publisher has to do or decide. Write and send a post now covers scheduling too, since testing the locked copy is the point of scheduling. **When something's wrong** replaces After a send, taking each problem a send or an import reports, in its own words, with what it means and what to do. The import format reference is the last section of "Bring your existing list", which opens with the advice to move to the paid hosting plan for a list of more than about 5,000. The import screen's **Import format reference →** opens that section, and the Markdown of each removed page (`import-format`, `scheduling-and-sending`, `after-a-send`) still answers at its old address, with the page that holds its content now (SPEC §11).

@@ -163,6 +163,39 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
   });
 });
 
+describe("a doc's images (SPEC §11)", () => {
+  it("shows an image on a page in the Docs tab, from the copy the admin build serves", () => {
+    // The page references the file beside it (`img/editor.png`), which GitHub shows as it
+    // is; the Docs tab can't resolve that against /dashboard/, so it points at the copy
+    // scripts/build-client.mjs writes under /dashboard/docs/ at the same path.
+    const page = renderDocs().docs.find((d) => d.slug === "write-a-post");
+    expect(page?.html).toContain(
+      '<img src="/dashboard/docs/publishing/img/editor.png" alt="The editor on Preview, showing',
+    );
+    for (const d of renderDocs().docs) {
+      for (const [, src] of d.html.matchAll(/<img src="([^"]*)"/g)) {
+        expect(src, d.slug).toMatch(/^\/dashboard\/docs\/[a-z-]+\/img\/[a-z0-9-]+\.png$/);
+      }
+    }
+  });
+
+  it("points an agent at the served copy, which a path relative to the Markdown route would miss", () => {
+    expect(docMarkdown("write-a-post")).toContain("](/dashboard/docs/publishing/img/editor.png)");
+    const md = [
+      "![A shot](img/a.png) and ![another](../guides/img/b.png).",
+      "",
+      "Write `![alt](img/a.png)` to show one.",
+    ].join("\n");
+    expect(markdownLinksForAgents(md, "publishing/04-write-a-post.md")).toBe(
+      [
+        "![A shot](/dashboard/docs/publishing/img/a.png) and ![another](/dashboard/docs/guides/img/b.png).",
+        "",
+        "Write `![alt](img/a.png)` to show one.",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("each doc as Markdown, for an agent (docMarkdown)", () => {
   it("serves a page's Markdown with its links pointed at the other docs' Markdown", () => {
     const md = docMarkdown("your-list") ?? "";

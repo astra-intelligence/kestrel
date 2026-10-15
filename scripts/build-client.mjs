@@ -35,14 +35,30 @@
  *              tree with the production build, which would reload the open editor onto a
  *              bundle with no live reload in it.
  *
+ * The docs' images (any image file under docs/, beside the pages that show it) are copied to
+ * dist/public/dashboard/docs/ at the same path, where the Docs tab's fragments point them
+ * (src/docs/index.ts, DOC_MEDIA). Static files behind Access with the rest of /dashboard, so
+ * the Worker never serves them. Every image a page references must exist, or the build
+ * fails (in --check too, so the gate catches a broken one). Like any file new to the
+ * assets directory, an image added while `wrangler dev` runs is served after a restart.
+ *
  * Only an explicit build (or a deploy) writes the production build over a live tree.
  * `wrangler types` runs build.command too, for no reason this script serves (type
  * generation never reads the tree), so it is a no-op here: wrangler names its command in
  * WRANGLER_COMMAND for every custom build.
  */
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  watch,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 
@@ -50,6 +66,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "public");
 const OUT = join(ROOT, "dist", "public");
 const ADMIN = "dashboard";
+const DOCS = join(ROOT, "docs");
+/** Where the docs' images are served from, mirroring docs/ (src/docs/index.ts, DOC_MEDIA). */
+const DOCS_OUT = join(OUT, ADMIN, "docs");
+const IMAGE = /\.(?:png|jpe?g|gif|webp|svg)$/i;
 
 if (process.env.WRANGLER_COMMAND === "types") {
   process.exit(0);
@@ -77,6 +97,36 @@ function sourceIndex() {
   return html;
 }
 
+/** Every file under docs/, as paths relative to it. */
+function docsFiles(dir = DOCS) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? docsFiles(join(dir, e.name)) : [relative(DOCS, join(dir, e.name))],
+  );
+}
+
+/**
+ * The docs' images, checked: every relative image a page references (`![alt](img/x.png)`)
+ * resolves to a file under docs/, so a page never shows a broken image in the Docs tab, on
+ * GitHub, or on getkestrel.dev. Images are written as relative paths; an absolute URL is
+ * left to its host.
+ */
+function docsImages() {
+  const files = docsFiles();
+  for (const page of files.filter((f) => f.endsWith(".md"))) {
+    // Code shows image syntax as written (SPEC's examples), so it's left out.
+    const md = readFileSync(join(DOCS, page), "utf8").replace(
+      /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$|`[^`\n]+`/gm,
+      "",
+    );
+    for (const [, src] of md.matchAll(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g)) {
+      if (!/^[a-z]+:/i.test(src) && !existsSync(join(DOCS, dirname(page), src))) {
+        throw new Error(`docs/${page} shows ${src}, which is not a file under docs/`);
+      }
+    }
+  }
+  return files.filter((f) => IMAGE.test(f));
+}
+
 /**
  * Copy public/ through and generate index.html with each stamped asset's `?v=`. Runs after
  * esbuild has written app.js. The exact reference form (`./app.js`) is rewritten, so a
@@ -91,6 +141,12 @@ function emitServedTree() {
     html = html.replaceAll(ref, `${ref}?v=${fingerprint(readFileSync(join(OUT, ADMIN, name)))}`);
   }
   writeFileSync(join(OUT, ADMIN, "index.html"), html);
+  // Cleared first, so an image removed from docs/ isn't left in the served tree.
+  rmSync(DOCS_OUT, { recursive: true, force: true });
+  for (const image of docsImages()) {
+    mkdirSync(dirname(join(DOCS_OUT, image)), { recursive: true });
+    cpSync(join(DOCS, image), join(DOCS_OUT, image));
+  }
 }
 
 /** @type {esbuild.BuildOptions} */
@@ -134,18 +190,19 @@ const options = {
 
 if (checkMode) {
   sourceIndex();
+  docsImages();
   await esbuild.build({ ...options, write: false, plugins: [], logLevel: "silent" });
   console.log("[client] served tree builds (checked, nothing written)");
 } else if (watchMode) {
   const ctx = await esbuild.context(options);
   await ctx.watch();
 
-  // public/ edits (the stylesheet, the index.html template, favicon, _headers) need no
-  // bundling, only a re-emit. Watch the directory, not files: an editor that saves by
-  // rename replaces the inode, which a file watch would silently lose. Debounced, since
-  // one save can land as several events.
+  // public/ edits (the stylesheet, the index.html template, favicon, _headers) and docs/
+  // edits (a recaptured image) need no bundling, only a re-emit. Watch the directories, not
+  // files: an editor that saves by rename replaces the inode, which a file watch would
+  // silently lose. Debounced, since one save can land as several events.
   let timer = null;
-  watch(SRC, { recursive: true }, () => {
+  const reemit = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
       try {
@@ -154,7 +211,9 @@ if (checkMode) {
         console.error(`[client] ${e.message}`);
       }
     }, 50);
-  });
+  };
+  watch(SRC, { recursive: true }, reemit);
+  watch(DOCS, { recursive: true }, reemit);
 
   console.log(
     `[client] ${dev ? "dev" : "production"} build: watching client/ and public/, serving from dist/public`,

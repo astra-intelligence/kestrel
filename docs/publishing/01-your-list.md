@@ -32,6 +32,8 @@ edsger@example.com,unsubscribed,unknown,unknown,
 
 Under **Subscribers → Import**, choose your file. Nothing changes yet: Kestrel plans the import and shows what it would do to every row. You see who is added, who is recorded as having left, who is suppressed, and which rows are left out. You can download the rows that won't be imported as subscribers, to check them against your file.
 
+![The import plan for a file of eight rows: four added as confirmed subscribers, two recorded as having left, one suppressed, and one invalid, with the confirmations to give before importing](img/import-plan.png)
+
 **Import** then applies the plan, all of it or none of it. Before it does, you confirm two things when they apply:
 
 - **That everyone you're importing as subscribed opted in** to receive your publication, and the list isn't purchased, rented, or scraped. Kestrel keeps your attestation with the import.

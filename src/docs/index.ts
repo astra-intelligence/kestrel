@@ -216,14 +216,32 @@ export type { DocFragment };
 const MD_HREF = /href="([^"#:]+\.md)(?:#([^"]*))?"/g;
 // A link to a heading on the same page: `[Check it](#check-it)`.
 const SAME_PAGE_LINK = /href="#([^"/][^"]*)"/g;
+// A relative image, as the HTML carries it: `![The editor](img/editor.png)`.
+const IMG_SRC = /<img src="([^"#:]+)"/g;
+
+/** Where the docs' images are served: the admin build copies each image under docs/ to the
+ *  same path here (scripts/build-client.mjs), static files behind Access with the rest of
+ *  /dashboard. */
+const DOC_MEDIA = "/dashboard/docs/";
+
+/** The served URL of an image a doc at `from` references as `src`, relative to the doc, so
+ *  the same file shows it on GitHub. Null when it climbs out of docs/. */
+function docMediaUrl(from: string, src: string): string | null {
+  const path = resolvePath(from, src);
+  return path ? DOC_MEDIA + path : null;
+}
 
 /** Point each link between docs at its in-app route, `#/docs/<slug>`, with its anchor as one
- *  more segment. The room gives each heading GitHub's id for it, so an anchor that works on
+ *  more segment, and each image at its served copy. The room gives each heading GitHub's id for it, so an anchor that works on
  *  GitHub lands on the same heading in the app. A link to a file that is not a doc is left as
  *  written, and a spec catches it. `from` is the linking file's path; `slug` names the page a
  *  same-page link resolves against (a set's index passes the set's id). */
 function rewriteDocLinks(html: string, from: string, slug: string): string {
   return html
+    .replace(IMG_SRC, (whole, src: string) => {
+      const url = docMediaUrl(from, src);
+      return url ? `<img src="${url}"` : whole;
+    })
     .replace(MD_HREF, (whole, href: string, anchor: string | undefined) => {
       const target = TARGETS.get(resolvePath(from, href) ?? "");
       return target ? `href="#/docs/${target}${anchor ? `/${anchor}` : ""}"` : whole;
@@ -231,8 +249,9 @@ function rewriteDocLinks(html: string, from: string, slug: string): string {
     .replace(SAME_PAGE_LINK, (_whole, anchor: string) => `href="#/docs/${slug}/${anchor}"`);
 }
 
-/** Render Markdown to a sanitized HTML fragment (no page wrapper). Docs carry no post images,
- *  so the image map is empty and the media base is unused. */
+/** Render Markdown to a sanitized HTML fragment (no page wrapper). A doc's images are files
+ *  beside it, not a post's uploads, so the image map is empty and the render leaves each
+ *  reference as written for rewriteDocLinks to point at its served copy. */
 function renderFragment(markdown: string, from: string, slug: string): string {
   const warnings: string[] = [];
   const html = markdownToHtml(markdown, {
@@ -278,6 +297,8 @@ export function renderDocs(): DocsResponse {
 
 // A relative Markdown link to a Markdown file, `[text](../guides/01-connect-claude.md#x)`.
 const MD_LINK = /\]\(([^)\s#:]+\.md)(#[^)\s]*)?\)/g;
+// A relative Markdown image, `![The editor](img/editor.png)`.
+const MD_IMAGE = /(!\[[^\]]*\]\()([^)\s#:]+)(?=[)\s])/g;
 // Code, which shows link syntax as written and is never rewritten: a fenced block, or an
 // inline span.
 const MD_CODE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$|`[^`\n]+`/gm;
@@ -306,14 +327,20 @@ export function docMarkdown(name: string): string | null {
 }
 
 /** Point each link to another doc at that doc's own Markdown route, which resolves beside
- *  this one (`connect-claude.md`), so an agent can follow it. `from` is the file's path under
- *  docs/. Code blocks and spans show link syntax as written, so they're left alone. */
+ *  this one (`connect-claude.md`), so an agent can follow it, and each image at its served
+ *  copy, which a relative path from the Markdown route would miss. `from` is the file's path
+ *  under docs/. Code blocks and spans show link syntax as written, so they're left alone. */
 export function markdownLinksForAgents(markdown: string, from: string): string {
   const rewrite = (prose: string): string =>
-    prose.replace(MD_LINK, (whole, href: string, anchor: string | undefined) => {
-      const target = TARGETS.get(resolvePath(from, href) ?? "");
-      return target ? `](${target}.md${anchor ?? ""})` : whole;
-    });
+    prose
+      .replace(MD_IMAGE, (whole, open: string, src: string) => {
+        const url = docMediaUrl(from, src);
+        return url ? open + url : whole;
+      })
+      .replace(MD_LINK, (whole, href: string, anchor: string | undefined) => {
+        const target = TARGETS.get(resolvePath(from, href) ?? "");
+        return target ? `](${target}.md${anchor ?? ""})` : whole;
+      });
   let out = "";
   let at = 0;
   for (const m of markdown.matchAll(MD_CODE)) {

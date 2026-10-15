@@ -19,6 +19,7 @@ npm run migrate:local               # apply D1 migrations to the local database
 npm run dev                         # wrangler dev on http://localhost:8787 (editor at /dashboard/), plus the send sweep once a minute
 npm run seed                        # load the demo publication (resets the local database); --size 10k to scale the list
 npm run simulate-send -- --in 90s   # schedule a demo send through the API and print its watch URL (seeds an empty database first)
+npm run docs:shots                  # recapture the docs' screenshots from the seeded dev server (`-- editor` for one)
 
 npm test                            # Vitest suite, run inside workerd (@cloudflare/vitest-pool-workers)
 npm run test:watch                  # watch mode

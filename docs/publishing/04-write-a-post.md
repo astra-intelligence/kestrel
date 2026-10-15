@@ -8,6 +8,8 @@ You write a post in Markdown, test it, and schedule it. Scheduling locks the pos
 
 Kestrel's editor is a Markdown editor. You write a post in Markdown, the way you would for a static site generator or with an AI assistant. Kestrel places it in your [email template](03-name-your-publication.md#the-email-template). The same Markdown makes the email and the post's archive page, so you never format a post twice. **Preview** shows the email as it will look, and Kestrel saves as you type.
 
+![The editor on Preview, showing a draft's subject and slug above the email as it will look](img/editor.png)
+
 A few things to know as you write:
 
 - **A blank line starts a new paragraph.** In an email, a single line break doesn't.

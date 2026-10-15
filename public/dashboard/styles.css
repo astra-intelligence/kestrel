@@ -3433,6 +3433,13 @@ textarea.is-invalid {
   border-radius: 4px;
   padding: 1px 5px;
 }
+/* A screenshot, framed so its own page background doesn't run into the doc's. A shadow,
+   not a border: the shared Markdown render writes `border:0` inline on every image. */
+.doc img {
+  margin: 16px 0;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line);
+}
 .doc pre {
   position: relative;
   background: var(--bg);

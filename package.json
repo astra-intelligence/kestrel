@@ -65,7 +65,8 @@
     "ci": "biome ci .",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "migrate:remote": "node scripts/require-env.mjs d1 migrations apply DB --remote",
-    "check:package": "node scripts/check-package.mjs"
+    "check:package": "node scripts/check-package.mjs",
+    "docs:shots": "node scripts/docs-shots.mjs"
   },
   "dependencies": {
     "@css-inline/css-inline-wasm": "^0.21.2",

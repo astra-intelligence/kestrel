@@ -22,7 +22,11 @@ A problem with your email provider never marks anyone unsent. The send waits whe
 
 ## Reading a send's record
 
-A send's page becomes its permanent record once it finishes. Its counts cover everyone the send went to:
+A send's page becomes its permanent record once it finishes.
+
+![The record of a finished send: counts of recipients, delivered, bounced, complained, and unsent, over the recipients that weren't delivered, each with its provider's words](img/send-record.png)
+
+Its counts cover everyone the send went to:
 
 | Count | What it means |
 | --- | --- |
