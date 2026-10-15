@@ -46,6 +46,7 @@ The Publishing set gets a publisher going, and tells them about the decisions to
 - **Only what changes what the publisher does.** The dashboard explains itself as they go, so a page doesn't walk it screen by screen. Exact rules, edge cases, and the API go in a reference section at the page's end, under its own heading, or in the API reference.
 - **Each fact once.** One page holds it, and the others link there in a line.
 - **Short.** The task part of a page fits in a screen or two.
+- **No closing "Next" line.** The Docs tab's pager already links the next page in the section.
 - **Facts come from the app, not the documents alone.** Check a label against the UI's source as well as DESIGN, and a behavior against the code as well as SPEC. Where they disagree, describe what the app does and flag the gap to the maintainer.
 - **No deploy vocabulary.** Never assume the reader touched Cloudflare, wrangler, or AWS. A fact that belongs to whoever deploys (the paid hosting plan, reply forwarding, the From address) is named as theirs, "whoever manages your Kestrel instance", with a link into the setup guide for the detail, never restated. Name the plans as the free and the paid hosting plan.
 - **Settled facts, cited and hedged.** A legal claim links its source and says whose law it is. Where the law is judgment, say "usually" or "probably". A page with legal content says it's general information, not legal advice.
@@ -66,7 +67,7 @@ A setup guide page, after Linode's guides:
 3. `## Before you begin`: only where a page has prerequisites of its own. List what the reader needs as noun phrases. Deploy the app also carries an unnumbered `## Choose your hostnames` after it, since the whole path uses those names.
 4. `## 1. Verb phrase` sections: one or two sentences of why, then numbered steps.
 5. `## Check it`: a checklist the reader, or Claude, can verify. Prefer a check with a concrete result (a URL that answers, a command's output) over "it looks right". A page whose sections are themselves the checks, such as Verify it works, ends with one line instead, rather than restating them.
-6. **End** by pointing to the next page.
+6. **End** by pointing to the next page. The Docs tab has a pager, but Claude follows these pages as Markdown, where the line is the only way on.
 
 ## Voice
 

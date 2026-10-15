@@ -28,4 +28,3 @@ Until whoever manages your Kestrel instance connects an email provider, nothing 
 
 A growing list meets your provider's daily sending quota, longer sends, and on the free hosting plan, a cap on daily database writes. Kestrel tells you when you reach each one. Raising each is for whoever manages your Kestrel instance, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
 
-Next, [Bring your existing list](01-your-list.md).

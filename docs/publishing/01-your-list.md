@@ -4,7 +4,7 @@ If your readers are on another service, bring them over before your first post, 
 
 **With more than about 5,000 subscribers, move to the paid hosting plan first.** The free plan caps database writes per day, and a large import plus a send can use them up. When that happens, your newsletter stops until midnight UTC. The paid plan is $5 a month and has no daily cap. Whoever manages your Kestrel instance makes the change, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
 
-If you're starting fresh, skip this step. New readers join through [Share your subscribe link](09-share-your-subscribe-link.md).
+If you're starting without a list, skip this step and go on to [Write and send a post](04-write-a-post.md).
 
 ## Choose your file
 

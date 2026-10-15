@@ -2,20 +2,18 @@
 
 You write a post in Markdown, test it, and schedule it. Scheduling locks the post and makes the exact email that will go out. Then you send yourself a test of that copy, so the email you tested is the one your list receives.
 
-**New post**, on the Dashboard or under **Drafts**, opens a draft. Kestrel saves as you type, and **Preview** shows the email as it will look.
+**New post**, on the Dashboard or under **Drafts**, opens a draft.
 
 ## Writing
 
-- **Subject and slug.** The **Subject** is the email's subject line, and a post needs one to schedule. The **Slug** ends the post's permanent public address, such as `newsletter.example.com/archive/spring-update`. It follows the subject until you type your own, and it's fixed once the post is scheduled.
-- **Markdown.** Kestrel reads GitHub's flavor, and the toolbar covers the common cases. In an email, a single line break doesn't start a new line, so leave a blank line between paragraphs.
-- **HTML.** It works where Markdown falls short. Kestrel removes scripts, `<style>` blocks, forms, and event handlers, so style a piece with an inline `style` attribute.
-- **The opening lines** are what a mail client shows beside the subject. There's no separate field for that preview, so make them count.
-- **Images.** Paste or drop one into the composer. Kestrel uploads it and inserts a reference by file name, such as `![cover.jpg](cover.jpg)`. Replace the words in brackets with a short description, which screen readers read aloud and blocked images show.
-- **Image files.** PNG, JPEG, WebP, or GIF, up to 5 MB each. Kestrel doesn't shrink them, and every reader downloads them, so smaller opens faster. Images are public, and fixed once the post is scheduled.
-- **Versions.** Every save keeps a whole version of the post. The editor doesn't show that history, but [Claude](07-working-with-claude.md) can read it back.
-- **Someone else editing.** If Claude or another tab saves a newer version, a banner says who, and your saves pause until you choose. One save never silently overwrites another.
+Kestrel's editor is a Markdown editor. You write a post in Markdown, the way you would for a static site generator or with an AI assistant. Kestrel places it in your [email template](03-name-your-publication.md#the-email-template). The same Markdown makes the email and the post's archive page, so you never format a post twice. **Preview** shows the email as it will look, and Kestrel saves as you type.
 
-Whoever manages your Kestrel instance chose the part of the address before the slug, as [Configuration](../reference/01-configuration.md#archive_base_path) describes.
+A few things to know as you write:
+
+- **A blank line starts a new paragraph.** In an email, a single line break doesn't.
+- **The opening lines** are the preview a mail client shows beside the subject.
+- **Images** go in by paste or drop, and Kestrel inserts a reference by file name, such as `![cover.jpg](cover.jpg)`. Replace the words in brackets with a short description. PNG, JPEG, WebP, or GIF, up to 5 MB each.
+- **The subject** sets the post's slug, the end of its permanent archive address, such as `newsletter.example.com/archive/spring-update`. The slug is fixed once you schedule.
 
 ## Test it
 
