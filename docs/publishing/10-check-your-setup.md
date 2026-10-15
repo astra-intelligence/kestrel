@@ -1,48 +1,31 @@
 # Check your setup
 
-Before your readers get anything, see it arrive yourself, and make sure a problem will reach you without your watching for it. Send yourself a test, subscribe yourself, and set where Kestrel emails you. It's the second step of **Set up your publication** on your dashboard.
+Before your readers get anything, see it arrive yourself, and make sure a problem will reach you without your watching for it. Send yourself a test and reply to it, subscribe yourself, and set where Kestrel emails you.
 
-This page covers whether email is connected and what to check in a test. It also covers how Kestrel tells you something's wrong, and what changes as your list grows.
-
-## Email is connected
-
-If nothing on your dashboard says otherwise, it is. While no email provider is connected, Kestrel says so wherever a send would fail. Until your first post, the dashboard's checklist shows **Connect Amazon SES** in place of this step. After that, an amber line on the dashboard reads "No email provider connected, so nothing can be sent yet." The Schedule dialog says the post can't be scheduled yet, and its buttons are unavailable.
-
-**Settings → Email sender** shows your From address, sending domain, and email provider, read-only. Connecting a provider is for whoever manages your Kestrel instance, in [Connect Amazon SES](../get-started/04-ses.md) and [Verify it works](../get-started/05-verify.md).
+**A list of more than about 5,000 subscribers is better on the paid hosting plan.** Whoever manages your Kestrel instance makes the change, so read [Bring your existing list](01-your-list.md) before you import.
 
 ## Send yourself a test
 
-A test shows you exactly what readers get, and you can send one before you write any post. Choose **Template** in the sidebar, then **Send test email**, and send a sample post to your own inboxes. [Name your publication](03-name-your-publication.md) covers the template, and [Write your first post](04-write-a-post.md#test-emails) covers what a test is.
+Choose **Template** in the sidebar, then **Send test email**, and send a sample post to your own inboxes. When it arrives, check:
 
-When it arrives, look at:
-
-- **The From name and address.** They're what readers see first.
-- **Your logo and name,** as your template prints them.
+- **The From name and address,** which readers see first. Whoever manages your Kestrel instance sets them.
 - **Where it lands:** the inbox, Promotions, or spam. If it lands in spam, tell whoever manages your Kestrel instance. [Sending-domain DNS](../reference/02-sending-domain-dns.md) covers what they check.
 - **A reply.** Reply to the test, and check that it reaches your inbox. Kestrel never sees replies, so this depends on [forwarding set up by whoever manages your Kestrel instance](../get-started/04-ses.md#3-receive-replies-at-your-from-address).
 
 ## Subscribe yourself
 
-Subscribing with a personal address shows you what a new reader sees. Use your public subscribe page, at your publication's address followed by `/subscribe`. The confirmation email arrives with your wording. Once you confirm, you appear under **Subscribers** as **Confirmed**. [Share your subscribe link](09-share-your-subscribe-link.md) covers the page and the confirmation email.
+Subscribe with a personal address at your publication's address followed by `/subscribe`, and confirm. You see what a new reader sees, and you then appear under **Subscribers** as **Confirmed**. [Share your subscribe link](09-share-your-subscribe-link.md) covers the page and the confirmation email.
 
-## How Kestrel tells you something's wrong
+## Set your notifications address
 
-Kestrel tells you in three places: your inbox, the dashboard, and the Schedule dialog. Most of the time, none of them says anything.
+Under **Settings → Notifications**, fill in **Send notifications to**, save, and choose **Send a test notification**. Kestrel then emails you when a send finishes or needs you. [Notifications](06-troubleshooting.md#notifications) lists what you're told, and why a second way to send them is worth asking for.
 
-- **Notifications.** Set your address under **Settings → Notifications**, in **Send notifications to**, and save. **Send a test notification** checks that one arrives. With no address set, nothing is emailed. [After a send](06-after-a-send.md#notifications) lists what you're told.
-- **The dashboard's health block.** It appears only when something needs attention, and stays until it clears. Red needs you to act, and amber is worth a look.
-- **Warnings when you schedule.** The Schedule dialog warns you before you schedule something that could go wrong. [Scheduling and sending](05-scheduling-and-sending.md#warnings-in-the-schedule-dialog) covers them.
+## If email isn't connected
 
-Whoever manages your Kestrel instance chooses how notifications are sent. [Notifications through Cloudflare's email](../guides/03-notifications.md) covers a way that reaches you even when your email provider refuses your account.
+Until whoever manages your Kestrel instance connects an email provider, nothing can be sent, and the dashboard says so. The checklist shows **Connect Amazon SES** in place of this step, as [Connect Amazon SES](../get-started/04-ses.md) describes. **Settings → Email sender** shows your From address, sending domain, and provider, read-only.
 
 ## As your list grows
 
-A growing list meets a few limits, and Kestrel tells you before or when it reaches each one. Raising each is a change for whoever manages your Kestrel instance, on the plans and accounts they chose, as [Go live](../get-started/06-go-live.md#as-your-list-grows) describes.
-
-- **Your provider's daily sending quota.** A send that hits it waits, and the dashboard shows why. It resumes on its own once the quota frees up, and nobody is mailed twice. Amazon SES reports a spent quota as refusing your account, so its email reaches you only if your notifications go another way ([Notifications](06-after-a-send.md#notifications)).
-- **How long a send takes.** It grows with your list, and depends on your provider's sending rate and the hosting plan whoever manages your Kestrel instance chose. [Go live](../get-started/06-go-live.md#as-your-list-grows) gives the rates.
-- **Daily database writes on the free hosting plan.** A large send or import can use them up, stopping the whole app until midnight UTC. [Bring your existing list](01-your-list.md#limits) explains the limit and how Kestrel warns you first.
-
-From about 5,000 subscribers, it's recommended that whoever manages your Kestrel instance moves to the paid hosting plan, which has no daily limit on writes.
+A growing list meets your provider's daily sending quota, longer sends, and on the free hosting plan, a cap on daily database writes. Kestrel tells you when you reach each one. Raising each is for whoever manages your Kestrel instance, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
 
 Next, [Bring your existing list](01-your-list.md).

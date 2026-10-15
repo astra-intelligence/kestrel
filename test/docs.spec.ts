@@ -16,9 +16,8 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       "publishing/set-up-your-publication/your-list",
       "publishing/set-up-your-publication/write-a-post",
       "publishing/set-up-your-publication/share-your-subscribe-link",
-      "publishing/sending/scheduling-and-sending",
-      "publishing/sending/after-a-send",
       "publishing/sending/sending-rules",
+      "publishing/sending/troubleshooting",
       "publishing/more/working-with-claude",
       "self-hosting/get-started/deploy",
       "self-hosting/get-started/access",
@@ -173,9 +172,11 @@ describe("each doc as Markdown, for an agent (docMarkdown)", () => {
     expect(md).not.toMatch(/\]\([^)]*\d{2}-[a-z0-9-]+\.md/);
   });
 
-  it("serves a merged page under its former slug, which an earlier release's operator context names", () => {
+  it("serves a merged page under its former slug, which an earlier release's context or links may name", () => {
     expect(docMarkdown("import-format")).toBe(docMarkdown("your-list"));
     expect(docMarkdown("import-format")).toMatch(/^# Bring your existing list/);
+    expect(docMarkdown("scheduling-and-sending")).toBe(docMarkdown("write-a-post"));
+    expect(docMarkdown("after-a-send")).toBe(docMarkdown("troubleshooting"));
   });
 
   it("serves a set's index by its id, linking its pages and the other set", () => {

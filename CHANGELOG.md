@@ -12,7 +12,7 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 ### Changed
 
-- The import format reference is now the last section of the publisher page "Bring your existing list", The file format, so the format is explained in one place. The page opens with the import and, for a list of more than about 5,000, the advice to move to the paid hosting plan first. The import screen's **Import format reference →** opens that section, and `GET /api/docs/import-format.md` still answers, with the merged page (SPEC §11).
+- The Publishing docs are shorter and answer first, around what a publisher has to do or decide. Write and send a post now covers scheduling too, since testing the locked copy is the point of scheduling. **When something's wrong** replaces After a send, taking each problem a send or an import reports, in its own words, with what it means and what to do. The import format reference is the last section of "Bring your existing list", which opens with the advice to move to the paid hosting plan for a list of more than about 5,000. The import screen's **Import format reference →** opens that section, and the Markdown of each removed page (`import-format`, `scheduling-and-sending`, `after-a-send`) still answers at its old address, with the page that holds its content now (SPEC §11).
 - The operator's Claude context's `/migrate-list` reads the import format from the merged page, `GET /api/docs/your-list.md`, since the separate import format page is gone. `npm run check-context` offers the change to an existing instance.
 
 ## [1.10.0] - 2026-10-14

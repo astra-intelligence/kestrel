@@ -1,6 +1,6 @@
 # Publishing with Kestrel
 
-These pages cover writing and sending your newsletter in the dashboard, from naming your publication to what happens after each send. Deploying and running Kestrel itself is covered in [Self-hosting](../README.md).
+These pages get you publishing in the dashboard, and cover the decisions to make before they matter. Deploying and running Kestrel itself is covered in [Self-hosting](../README.md).
 
 ## Set up your publication
 
@@ -9,16 +9,15 @@ The steps your dashboard lists until your first post, in the same order.
 1. [Name your publication](03-name-your-publication.md)
 1. [Check your setup](10-check-your-setup.md)
 1. [Bring your existing list](01-your-list.md)
-1. [Write your first post](04-write-a-post.md)
+1. [Write and send a post](04-write-a-post.md)
 1. [Share your subscribe link](09-share-your-subscribe-link.md)
 
 ## Sending
 
-Scheduling a post, what happens when it goes out, and the rules every send keeps.
+What the law asks of every send, and what to do when something goes wrong.
 
-- [Scheduling and sending](05-scheduling-and-sending.md)
-- [After a send](06-after-a-send.md)
 - [Sending rules](02-sending-rules.md)
+- [When something's wrong](06-troubleshooting.md)
 
 ## More
 

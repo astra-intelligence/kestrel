@@ -36,8 +36,7 @@ import yourList from "../../docs/publishing/01-your-list.md";
 import sendingRules from "../../docs/publishing/02-sending-rules.md";
 import nameYourPublication from "../../docs/publishing/03-name-your-publication.md";
 import writeAPost from "../../docs/publishing/04-write-a-post.md";
-import schedulingAndSending from "../../docs/publishing/05-scheduling-and-sending.md";
-import afterASend from "../../docs/publishing/06-after-a-send.md";
+import troubleshooting from "../../docs/publishing/06-troubleshooting.md";
 import workingWithClaude from "../../docs/publishing/07-working-with-claude.md";
 import shareYourSubscribeLink from "../../docs/publishing/09-share-your-subscribe-link.md";
 import checkYourSetup from "../../docs/publishing/10-check-your-setup.md";
@@ -61,8 +60,7 @@ const PAGES: Record<string, string> = {
   "publishing/02-sending-rules.md": sendingRules,
   "publishing/03-name-your-publication.md": nameYourPublication,
   "publishing/04-write-a-post.md": writeAPost,
-  "publishing/05-scheduling-and-sending.md": schedulingAndSending,
-  "publishing/06-after-a-send.md": afterASend,
+  "publishing/06-troubleshooting.md": troubleshooting,
   "publishing/07-working-with-claude.md": workingWithClaude,
   "publishing/09-share-your-subscribe-link.md": shareYourSubscribeLink,
   "publishing/10-check-your-setup.md": checkYourSetup,
@@ -287,7 +285,11 @@ const MD_CODE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$|`[^`\n]+`/gm;
 // Slugs a released page had before it merged into another, so an agent that still names the
 // old one, such as an instance's operator context written by an earlier release, reads the
 // page that now holds its content.
-const FORMER_SLUGS = new Map([["import-format", "your-list"]]);
+const FORMER_SLUGS = new Map([
+  ["import-format", "your-list"],
+  ["scheduling-and-sending", "write-a-post"],
+  ["after-a-send", "troubleshooting"],
+]);
 
 /** A doc's Markdown for an agent to read (SPEC §11): a page by its slug or a former slug, or a
  *  set's index by its id, with its links pointed at the other docs' Markdown routes. Null for
