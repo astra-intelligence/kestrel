@@ -1433,7 +1433,7 @@ export function createRouter({
       summary:
         "A post's unlisted link, the view-in-browser link every test and send carries (SPEC §5).",
       description:
-        "Before the post's send starts, the same `Nothing here yet` page (404) as any unknown token. Once it has: while the post is listed, a temporary redirect (302) to its archive address, since the listing can change; while it is email only, the post's page itself, with `X-Robots-Tag: noindex`. Public, but never listed or linked from any page.",
+        "Before the post's send starts, the same `Nothing here yet` page (404) as any unknown token. Once it has: while the post is listed, a temporary redirect (302, `Cache-Control: no-store`, `X-Robots-Tag: noindex`) to its own archive address, since the listing can change, and never to anything the request names; while it is email only, the post's page itself, with `X-Robots-Tag: noindex`. Public, but never listed or linked from any page. A GET only reads, so a mail client's link scanner following it changes nothing.",
       handler: archiveRoutes.unlistedPage,
     },
 

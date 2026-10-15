@@ -120,7 +120,18 @@ describe("what the unlisted link opens follows the post (SPEC §5)", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`${ORIGIN}/archive/listed-owls`);
     expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("x-robots-tag")).toBe("noindex");
     expect((await get("/archive/listed-owls")).status).toBe(200);
+  });
+
+  it("never forwards anywhere a request names, and changes nothing when a scanner follows it", async () => {
+    const { id, post } = await sendPost("Listed Owls");
+    const before = (await read(id)).post;
+    const res = await get(
+      `/email/${post.unlisted_token}?next=https://evil.example/&url=https://evil.example/`,
+    );
+    expect(res.headers.get("location")).toBe(`${ORIGIN}/archive/listed-owls`);
+    expect((await read(id)).post).toEqual(before);
   });
 
   it("is an email-only post's page, unindexed", async () => {

@@ -198,10 +198,18 @@ export async function unlistedPage(c: RequestContext): Promise<Response> {
   if (!post || !send) {
     return nothingHereYetPage(c);
   }
+  // Mail clients' link scanners fetch this on delivery, so the request only reads. The target
+  // is the post's own archive address, never anything the request names, so the link can't be
+  // used as an open redirect. Not cached, so a listing change takes effect at once, and not
+  // indexed, as the unlisted link itself never is.
   if (post.slug_reserved && !post.email_only) {
     return new Response(null, {
       status: 302,
-      headers: { location: archiveUrl(c.config, post.slug), "cache-control": "no-store" },
+      headers: {
+        location: archiveUrl(c.config, post.slug),
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex",
+      },
     });
   }
   return postPage(c, post, send);
