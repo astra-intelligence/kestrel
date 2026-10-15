@@ -20,6 +20,7 @@ To move a running instance from one version to another, follow [Upgrade to a new
 ### Changed
 
 - Verify it works sends its test post as **Email only**, and ends by erasing the SES simulator addresses and any test subscriber that won't be a reader.
+- The demo publication (`npm run seed`) opens with the operator's own test send, made as Verify it works makes one: email only, to one test address, before the list came in. It shows under **Sent** with the **Email only** label, and the archive leaves it out.
 
 ## [1.11.0] - 2026-10-15
 

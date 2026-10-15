@@ -36,6 +36,7 @@ export interface SeedPost {
   slug_auto: boolean;
   subject: string;
   status: PostStatus;
+  email_only?: boolean;
   current_revision: string | null;
   created_at: number;
   updated_at: number;
@@ -170,7 +171,7 @@ export async function insertPost(
   await db.batch([
     db
       .prepare(
-        "INSERT INTO posts (id, slug, slug_auto, subject, status, current_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO posts (id, slug, slug_auto, subject, status, email_only, current_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .bind(
         post.id,
@@ -178,6 +179,7 @@ export async function insertPost(
         post.slug_auto ? 1 : 0,
         post.subject,
         post.status,
+        post.email_only ? 1 : 0,
         post.current_revision,
         post.created_at,
         post.updated_at,
