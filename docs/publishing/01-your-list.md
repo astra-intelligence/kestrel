@@ -17,6 +17,15 @@ Every service's export is different. Kestrel never guesses what one means, becau
 - **A CSV in Kestrel's format (preferred).** One row per address, with its status, how and where consent was collected, and any bounce or complaint. **Download example file (CSV)** on the import screen shows each case. Save your file as CSV UTF-8.
 - **A plain list (`.txt`).** One address per line, all of one kind: subscribed, unsubscribed, or bounced. Nothing else carries over, so use it only when addresses are all you have.
 
+A CSV in Kestrel's format looks like this, with the five columns that decide what happens to each row:
+
+```
+email,status,opt_in,origin,subscribed_at
+ada@example.com,subscribed,double,sendy,2024-03-01T09:30:00Z
+grace@example.com,subscribed,single,mailchimp,
+edsger@example.com,unsubscribed,unknown,unknown,
+```
+
 [The file format](01-your-list.md#the-file-format), below, describes every column. If you use Claude Code with your instance, it can do the conversion for you, as [Working with Claude](07-working-with-claude.md) describes.
 
 ## 3. Import it
