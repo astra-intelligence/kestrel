@@ -1,9 +1,11 @@
-// The post editor: subject/slug, the Markdown composer, autosave with its idle and
+// The post editor: the subject and its Publishing options, the Markdown composer, autosave with its idle and
 // hard-cap timers, the freshness poll, images, the schedule / send-now dialogs, and a
 // scheduled post's banner, which follows its send until the send page takes over.
 
 import type { ImageUploadResponse } from "../../shared/images";
 import type {
+  ListingBody,
+  ListingResponse,
   PostEditBody,
   PostResponse,
   PostSavedResponse,
@@ -29,7 +31,7 @@ import {
   notConnectedScheduleLine,
   notConnectedTestLine,
   notConnectedWarning,
-  postArchiveUrl,
+  postUnlistedUrl,
   providerNotConnected,
   sendNowWhenText,
   tooSoonText,
@@ -53,10 +55,17 @@ import {
 import { highlightMarkdown } from "../ui/highlight";
 import { type Html, html, setHtml } from "../ui/html";
 import { type IconName, icon } from "../ui/icons";
-import { busy, fieldError, infoTip, modal, renderError, toast } from "../ui/widgets";
+import { busy, fieldError, modal, renderError, toast } from "../ui/widgets";
 import { createAutosave } from "./autosave";
 import { DirtyTracker } from "./dirty";
 import { trackSaves } from "./pending_save";
+import {
+  addressFieldHtml,
+  takenNoteHtml,
+  unlistedLineHtml,
+  willAppearClause,
+  willAppearHtml,
+} from "./publishing";
 import { type Author, type Conflict, conflictFromError, RevisionTracker } from "./revisions";
 import { previewOpensWebVersion, webVersionHash } from "./web";
 
@@ -82,6 +91,7 @@ const TOOLBAR: [IconName, string][][] = [
 
 // A bare attribute is markup, not text: spelled once as markup so it can be interpolated.
 const READONLY = html` readonly`;
+const HIDDEN = html` hidden`;
 const ARIA_DISABLED = html` aria-disabled="true"`;
 
 type ComposerTab = "edit" | "preview";
@@ -175,6 +185,11 @@ export async function renderEditor(
     }
   }
   const { post, markdown, scheduled } = data;
+  // The post's publishing options as they stand (SPEC §4, §5): its listing, and the archive
+  // address its slug would take now, numbered if another post holds it. Neither is part of the
+  // email, so both change while the post is scheduled too.
+  let emailOnly = post.email_only;
+  let archiveSlug = data.archive_slug;
 
   // The editor now only ever mounts a draft or a scheduled (frozen) post, so `locked`
   // means scheduled — signaled by the scheduled banner, not a status pill.
@@ -213,15 +228,24 @@ export async function renderEditor(
     ${locked && scheduled ? html`<div class="banner banner-scheduled"><div class="sched-main"><span id="schedWhen"></span>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Reschedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div>` : null}
     <div id="freshnessBanner" class="banner banner-conflict" role="alert" hidden></div>
     <div class="card">
-      <div class="grid2">
-        <div><label for="f-subject">Subject</label><input id="f-subject" value="${post.subject}" placeholder="Untitled"${ro}></div>
-        <div>
-          <div class="label-row">
-            <label for="f-slug">Slug</label>
-            ${infoTip("The web address of this post’s archive page.")}
-          </div>
-          <input id="f-slug" value="${post.slug}"${ro}>
-          ${locked ? null : html`<label class="slug-auto-toggle"><input type="checkbox" id="f-slug-auto">Auto-generate from subject</label>`}
+      <label for="f-subject">Subject</label>
+      <input id="f-subject" value="${post.subject}" placeholder="Untitled"${ro}>
+      <div class="pub-line">
+        <span class="pub-summary" id="pubSummary">${willAppearHtml(post.email_only, post.slug)}</span>
+        <button type="button" class="linkbtn pub-toggle" id="pubToggle" aria-expanded="false" aria-controls="pubPanel">Publishing options ▾</button>
+      </div>
+      ${locked ? html`<p class="pub-cue">Still editable while scheduled, and saves as it changes: neither choice is part of the email.</p>` : null}
+      <div class="pub-panel" id="pubPanel" hidden>
+        ${emailOnlyFieldHtml("f-email-only", post.email_only)}
+        <div class="pub-address" id="pubAddress"${post.email_only ? HIDDEN : null}>
+          <label for="f-slug">Archive address</label>
+          ${addressFieldHtml(post.slug, { id: "f-slug", readonly: post.slug_reserved })}
+          ${
+            post.slug_reserved
+              ? html`<p class="pub-note">Permanent: this address has been public, so it can’t change.</p>`
+              : html`<label class="slug-auto-toggle"><input type="checkbox" id="f-slug-auto">Auto-generate from subject</label>`
+          }
+          <div id="pubTaken">${takenNoteHtml(post.slug, data.archive_slug)}</div>
         </div>
       </div>
 
@@ -268,6 +292,8 @@ export async function renderEditor(
 
   const subjectEl = $<HTMLInputElement>("#f-subject");
   const slugEl = $<HTMLInputElement>("#f-slug");
+  // The slug the server last saved: what the line under Subject names once the field is left.
+  let savedSlug = post.slug;
   const ta = $<HTMLTextAreaElement>("#f-markdown");
   const toolbarEl = $(".toolbar", root);
   const previewFrame = $<HTMLIFrameElement>("#previewFrame");
@@ -298,10 +324,15 @@ export async function renderEditor(
   // once set by hand, the field is what is sent. Either way the field shows only slugs the server
   // answered with, never the editor's own guess, so it can lag a subject edit until the save
   // but never shows an address the post won't get.
-  const autoEl = locked ? null : $<HTMLInputElement>("#f-slug-auto");
+  const autoEl = post.slug_reserved ? null : $<HTMLInputElement>("#f-slug-auto");
+  // A reserved slug is permanent (SPEC §4), so a save never sends one.
   const collect = () => ({
     subject: subjectEl.value,
-    ...(autoEl?.checked ? { slug_auto: true } : { slug: slugEl.value, slug_auto: false }),
+    ...(post.slug_reserved
+      ? {}
+      : autoEl?.checked
+        ? { slug_auto: true }
+        : { slug: slugEl.value, slug_auto: false }),
     markdown: ta.value,
   });
   // A save's answer for a slug being typed by hand waits until the field is left (or Enter),
@@ -340,11 +371,85 @@ export async function renderEditor(
     return true;
   }
 
+  // --- Publishing options (DESIGN §3): the line under Subject and the panel it opens ---
+  // The line says, in the future tense, where the post will appear; the panel holds the
+  // Email only box and, while the post will be listed, its archive address. A draft saves the
+  // address with the rest of the draft; the listing, and on a scheduled post the address too,
+  // save as they change through the post's listing, since neither is part of the email.
+  const pubSummary = $("#pubSummary");
+  const pubToggle = $<HTMLButtonElement>("#pubToggle");
+  const pubPanel = $("#pubPanel");
+  const pubAddress = $("#pubAddress");
+  const pubTaken = $("#pubTaken");
+  const emailOnlyEl = $<HTMLInputElement>("#f-email-only");
+  const paintPublishing = () => {
+    const slug = slugEl.value.trim() || savedSlug;
+    setHtml(pubSummary, willAppearHtml(emailOnly, slug));
+    emailOnlyEl.checked = emailOnly;
+    pubAddress.hidden = emailOnly;
+    // The warning is the server's (it numbers the address), so it speaks of the saved slug.
+    const taken = slugEl.value === savedSlug ? takenNoteHtml(savedSlug, archiveSlug) : null;
+    setHtml(pubTaken, taken ?? html``);
+  };
+  pubToggle.onclick = () => {
+    const open = pubPanel.hidden;
+    pubPanel.hidden = !open;
+    pubToggle.setAttribute("aria-expanded", String(open));
+    pubToggle.textContent = open ? "Publishing options ▴" : "Publishing options ▾";
+  };
+  // Take what the server answered: the slug it settled, and what it would take now.
+  const applyPublishing = (p: { email_only: boolean; slug: string; slug_auto: boolean }) => {
+    emailOnly = p.email_only;
+    savedSlug = p.slug;
+    if (document.activeElement !== slugEl) {
+      slugEl.value = p.slug;
+    }
+    if (autoEl) {
+      autoEl.checked = p.slug_auto;
+      slugEl.classList.toggle("slug-auto", p.slug_auto);
+    }
+    paintPublishing();
+    onListing?.(emailOnly);
+  };
+  // Another part of the page that shows the listing (the scheduled banner) repaints with it.
+  let onListing: ((emailOnly: boolean) => void) | null = null;
+  /** Save a change to the post's publishing options now (the listing route), and show what
+   *  the server made of it. A refusal is said, and the panel goes back to what is stored. */
+  const saveListing = async (body: ListingBody): Promise<boolean> => {
+    try {
+      const res = await api<ListingResponse>(`/api/posts/${id}/listing`, {
+        method: "PUT",
+        json: body,
+      });
+      archiveSlug = res.archive_slug;
+      applyPublishing(res.post);
+      if (res.changed) {
+        readSendsNow(); // the post's sends carry the listing: let every view see it
+      }
+      return true;
+    } catch (e) {
+      if (signal.aborted || foundGone(e)) {
+        return false;
+      }
+      toast(message(e));
+      paintPublishing();
+      return false;
+    }
+  };
+  /** Set the post's listing, from the panel's box or the Schedule dialog's: one stored value. */
+  const setEmailOnly = (next: boolean): Promise<boolean> => {
+    emailOnly = next;
+    paintPublishing();
+    return saveListing({ email_only: next });
+  };
+  emailOnlyEl.onchange = () => void setEmailOnly(emailOnlyEl.checked);
+
   // The "Auto-generate from subject" box, checked while the slug follows the subject. The
   // slug stays editable throughout. Typing your own slug takes manual control (unchecks);
-  // emptying the field, or ticking the box, hands it back to the subject. The slug the
-  // subject gives arrives with the save that leaving the subject makes (or Enter, or the
-  // autosave).
+  // emptying the field, or ticking the box, hands it back to the subject. On a draft the slug
+  // the subject gives arrives with the save that leaving the subject makes (or Enter, or the
+  // autosave); on a scheduled post, whose subject is fixed, a change saves when the field is
+  // left. A reserved address has neither: it is shown read-only.
   if (autoEl) {
     autoEl.checked = post.slug_auto;
 
@@ -356,14 +461,19 @@ export async function renderEditor(
     slugEl.addEventListener("input", () => {
       autoEl.checked = slugEl.value.trim() === "";
       reflect();
+      paintPublishing();
     });
     // Ticking the box saves at once, so the field shows the subject's slug as soon as the
     // server answers; unticking hands over the field ready to edit.
     autoEl.addEventListener("change", () => {
       reflect();
-      markEdited(); // the checkbox changes what a save sends without an input event
       if (autoEl.checked) {
-        saveDraft(true).catch(() => {}) /* the save cue says why */;
+        if (locked) {
+          void saveListing({ slug_auto: true });
+        } else {
+          markEdited(); // the checkbox changes what a save sends without an input event
+          saveDraft(true).catch(() => {}) /* the save cue says why */;
+        }
       } else {
         slugEl.focus();
         slugEl.select();
@@ -373,6 +483,16 @@ export async function renderEditor(
     // that leaving it makes fills it in; with nothing to save, the post already has the
     // subject's slug, so the field shows that.
     slugEl.addEventListener("blur", () => {
+      if (locked) {
+        if (slugEl.value.trim() === "") {
+          autoEl.checked = true;
+          reflect();
+          void saveListing({ slug_auto: true });
+        } else if (slugEl.value !== savedSlug) {
+          void saveListing({ slug: slugEl.value });
+        }
+        return;
+      }
       applyHeld();
       if (slugEl.value.trim() === "") {
         autoEl.checked = true;
@@ -380,12 +500,24 @@ export async function renderEditor(
         markEdited();
         if (!dirty.dirty) {
           slugEl.value = savedSlug;
+          paintPublishing();
         }
       }
     });
+    if (locked) {
+      // Enter commits the address, as leaving the field does.
+      slugEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          slugEl.blur();
+        }
+      });
+    }
+  }
 
-    // Clear the empty-subject error as soon as a real subject is typed; it re-fires
-    // on the next Schedule click if the field is still empty (see validateSubject).
+  // Clear the empty-subject error as soon as a real subject is typed; it re-fires on the next
+  // Schedule click if the field is still empty (see validateSubject).
+  if (!locked) {
     subjectEl.addEventListener("input", () => {
       if (subjectEl.value.trim() !== "") {
         clearSubjectError();
@@ -422,9 +554,7 @@ export async function renderEditor(
       syncMdScroll();
     }
   }
-  // The slug the server last saved, which the preview renders with (a dedupe may differ
-  // from what the field shows while it is being typed in).
-  let savedSlug = post.slug;
+
   async function showPreview() {
     showTab("preview");
     try {
@@ -437,11 +567,11 @@ export async function renderEditor(
           const doc = previewFrame.contentDocument;
           if (doc) {
             openLinksInNewTab(doc);
-            // Read on each load, so a slug edited since the last preview is the one
-            // matched. The editor holds only an unpublished post: once its send starts, the
-            // editor hands off to the send page (and a web version opened after that goes
-            // on to the public page itself).
-            previewOpensWebVersion(doc, postArchiveUrl(savedSlug), webVersionUrl);
+            // The email's link is the post's unlisted link, which never changes. The
+            // editor holds only an unpublished post: once its send starts, the editor hands
+            // off to the send page (and a web version opened after that goes on to the
+            // public page itself).
+            previewOpensWebVersion(doc, postUnlistedUrl(post.unlisted_token), webVersionUrl);
             previewFrame.style.height = `${doc.body.scrollHeight + 24}px`;
           }
         } catch {}
@@ -656,7 +786,7 @@ export async function renderEditor(
     const slugShown = slugEl.value;
     try {
       const body: PostEditBody = { ...fields, base_revision: revisions.base };
-      const { post: u } = await api<PostSavedResponse>(`/api/posts/${id}`, {
+      const { post: u, archive_slug } = await api<PostSavedResponse>(`/api/posts/${id}`, {
         method: "PUT",
         json: body,
       });
@@ -679,6 +809,8 @@ export async function renderEditor(
       if (u.slug) {
         savedSlug = u.slug;
       }
+      archiveSlug = archive_slug;
+      paintPublishing();
       revisions.saved(u.current_revision); // our save is now the newest; poll against it
       dirty.markSaved(sent);
       saveFailed = false;
@@ -1026,6 +1158,12 @@ export async function renderEditor(
     };
     paintBanner();
     every(1000, paintBanner, signal);
+    // The banner marks an email-only post (DESIGN §4), so a change in Publishing options
+    // shows in it at once, before the send's own next report.
+    onListing = (next) => {
+      current = { ...current, email_only: next };
+      paintBanner();
+    };
 
     // --- re-made since its last test (SPEC §8): the server's condition, in the banner ---
     // A template or identity change re-made the frozen email, so an earlier test no longer
@@ -1056,6 +1194,11 @@ export async function renderEditor(
         {
           update(send: SendView, change: StageChange | null) {
             current = send;
+            // A listing changed elsewhere (Claude, another tab) shows in Publishing options.
+            if (send.email_only !== emailOnly) {
+              emailOnly = send.email_only;
+              paintPublishing();
+            }
             if (change?.to === "sending" || change?.to === "sent" || change?.to === "complete") {
               toast("Your send started, so this page switched to its live watch.");
               handOff(`#/sent/${send.id}`);
@@ -1352,11 +1495,27 @@ export async function renderEditor(
       // While no provider is connected the server would refuse both views, so the dialog
       // drops the picker and the Send now row and leaves only the standing line (DESIGN §4).
       const notConnected = providerNotConnected();
-      // The post's listing (SPEC §5), as the dialog's Email only box holds it: it starts as the
-      // post's, and keeps its state when the dialog switches between its two views.
-      let emailOnly = post.email_only;
+      // The dialog's Email only box is the post's listing (SPEC §5), the same stored value as
+      // the editor's Publishing options: it opens as the editor left it, and a change here saves
+      // and shows there. Under it, where the post will be: its archive address, read-only since
+      // it is set in the editor beside the subject it follows, or the unlisted link its email
+      // carries.
+      const whereHtml = () =>
+        emailOnly
+          ? html`<label>Web version</label>${unlistedLineHtml(post.unlisted_token)}`
+          : html`<label>Archive address</label>${addressFieldHtml(savedSlug, { readonly: true })}${takenNoteHtml(savedSlug, archiveSlug)}<p class="pub-note">Set in the editor’s Publishing options.</p>`;
+      const listingHtml = (inputId: string, whereId: string) =>
+        html`${emailOnlyFieldHtml(inputId, emailOnly)}<div class="pub-where" id="${whereId}">${whereHtml()}</div>`;
+      const wireDialogListing = (inputId: string, clauseId: string, whereId: string) =>
+        wireListing($<HTMLInputElement>(`#${inputId}`, box), $(`#${clauseId}`, box), {
+          words: willAppearClause,
+          onChange: (v) => {
+            void setEmailOnly(v);
+            setHtml($(`#${whereId}`, box), whereHtml());
+          },
+        });
       const scheduleView = () =>
-        html`<h3 id="schHead">Schedule this post</h3><p class="hint">It sends at the time you pick, with a cancelable window until then${notConnected ? "." : html`<span id="schListing"></span>`}</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}">${emailOnlyFieldHtml("schEmailOnly", emailOnly)}`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
+        html`<h3 id="schHead">Schedule this post</h3><p class="hint">It sends at the time you pick, with a cancelable window until then${notConnected ? "." : html`<span id="schListing"></span>`}</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}">${listingHtml("schEmailOnly", "schWhere")}`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
       const m = modal(scheduleView(), signal);
       const box = $(".modal", m.el);
       // Who a send would reach now: the confirmed addresses that aren't suppressed (SPEC §6),
@@ -1483,11 +1642,7 @@ export async function renderEditor(
           return;
         }
         $("#toSendNow", box).onclick = showSendNow;
-        wireListing($<HTMLInputElement>("#schEmailOnly", box), $("#schListing", box), {
-          onChange: (v) => {
-            emailOnly = v;
-          },
-        });
+        wireDialogListing("schEmailOnly", "schListing", "schWhere");
         $("#schWhen", box).focus();
         void paintDailyWrites();
       }
@@ -1495,16 +1650,12 @@ export async function renderEditor(
       async function showSendNow() {
         setHtml(
           box,
-          html`<h3 id="snHead">Send now?</h3><p class="hint">Sends this draft, as it is now, to <strong id="snWho">your subscribers</strong> in ${sendNowWhenText()}<span id="snListing"></span> The post locks until then, and you can cancel any time before it starts sending.</p>${emailOnlyFieldHtml("snEmailOnly", emailOnly)}${dailyWritesLine()}<div class="altrow altrow-top"><button type="button" class="linkbtn" id="toSchedule">← Back to schedule</button></div><div class="actions"><button type="button" id="snCancel">Cancel</button><button type="button" class="primary" id="snGo">Send now</button></div>`,
+          html`<h3 id="snHead">Send now?</h3><p class="hint">Sends this draft, as it is now, to <strong id="snWho">your subscribers</strong> in ${sendNowWhenText()}<span id="snListing"></span> The post locks until then, and you can cancel any time before it starts sending.</p>${listingHtml("snEmailOnly", "snWhere")}${dailyWritesLine()}<div class="altrow altrow-top"><button type="button" class="linkbtn" id="toSchedule">← Back to schedule</button></div><div class="actions"><button type="button" id="snCancel">Cancel</button><button type="button" class="primary" id="snGo">Send now</button></div>`,
         );
         box.setAttribute("aria-labelledby", "snHead");
         $("#snCancel", box).onclick = m.close;
         $("#snGo", box).onclick = doSendNow;
-        wireListing($<HTMLInputElement>("#snEmailOnly", box), $("#snListing", box), {
-          onChange: (v) => {
-            emailOnly = v;
-          },
-        });
+        wireDialogListing("snEmailOnly", "snListing", "snWhere");
         $<HTMLButtonElement>("#snGo", box).disabled = providerNotConnected();
         $("#toSchedule", box).onclick = () => {
           setHtml(box, scheduleView());

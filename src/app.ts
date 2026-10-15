@@ -17,6 +17,7 @@
  * has no such routes at all (a 404 by absence, not by check) and its reference omits them.
  */
 
+import { UNLISTED_PATH } from "../shared/archive_url";
 import { IMPORT_LIMITS } from "../shared/imports";
 import type { ReferenceResponse } from "../shared/reference";
 import {
@@ -470,10 +471,20 @@ export function createRouter({
       resource: "posts",
       summary:
         "Create a draft post. Its slug follows the subject (`slug_auto: true`) unless you send a `slug`, which sets it by hand.",
+      description:
+        "The post is made with its unlisted link, `<app origin>/email/<unlisted_token>`, which every test and send of it carries as view-in-browser and which never changes (SPEC §5). The slug is the archive address the post will have if it is listed; it is not numbered until it is reserved, so two drafts may share one, and `archive_slug` in the answer is the address it would take now.",
       example: {
         request: { subject: "Hello, world", markdown: "# Hello\n\nWelcome." },
         response: {
-          post: { id: "p_abc123", status: "draft", slug: "hello-world", slug_auto: true },
+          post: {
+            id: "p_abc123",
+            status: "draft",
+            slug: "hello-world",
+            slug_auto: true,
+            slug_reserved: false,
+            unlisted_token: "9f2c41d07ab35e8c6d1f04b2a7e9c350",
+          },
+          archive_slug: "hello-world",
           revision_id: "r_1",
         },
       },
@@ -518,6 +529,8 @@ export function createRouter({
       resource: "posts",
       summary:
         "One post with its current markdown and any active schedule; `scheduled.remade_at` says when a template or identity change last re-made its email.",
+      description:
+        "`archive_slug` is the archive address the post would take if it became public now: its `slug`, or the slug numbered (`-2`) when another post already holds that address (SPEC §4).",
       handler: postRoutes.getPost,
     },
     {
@@ -529,7 +542,7 @@ export function createRouter({
       summary:
         "Update a draft. Send the revision you read as `base_revision` (or If-Match): a save without one is a 428 `base_required` carrying the post as it stands, and one whose base is no longer current is a 409 `stale_revision`.",
       description:
-        "Only a draft is editable; a scheduled post is soft-locked until its schedule is canceled, and a save to a post that is not a draft is a 409 `post_not_draft` (its message says whether canceling the schedule would unlock it). While the post's slug follows the subject (`slug_auto: true`), every save derives it from the subject again and numbers it if another post holds it, so take the slug from the answer. Sending `slug` sets it by hand and turns `slug_auto` off; `slug_auto: true` has it follow the subject again. Sending both is a 400 naming `slug`.",
+        "Only a draft is editable; a scheduled post is soft-locked until its schedule is canceled, and a save to a post that is not a draft is a 409 `post_not_draft` (its message says whether canceling the schedule would unlock it). While the post's slug follows the subject (`slug_auto: true`), every save derives it from the subject again, so take the slug from the answer, and `archive_slug` for the address it would take now. Sending `slug` sets it by hand and turns `slug_auto` off; `slug_auto: true` has it follow the subject again. Sending both is a 400 naming `slug`. A slug already reserved (a post scheduled or sent before unlisted links, then canceled) is permanent: a save that would change it is a 409 `slug_permanent`.",
       example: {
         request: {
           subject: "Hello again, world",
@@ -564,13 +577,20 @@ export function createRouter({
       accepts: JSON_BODY,
       resource: "posts",
       summary:
-        "Set where a post is listed: `email_only: true` leaves it out of the archive index and the landing page, `false` lists it there (SPEC §5).",
+        "Set a post's publishing options: where it is listed (`email_only`) and its archive address (`slug`, `slug_auto`) (SPEC §4, §5).",
       description:
-        "Allowed in any state, a scheduled or sent post's included: the listing is not part of the frozen email, so changing it never re-makes a scheduled send or alters a sent one (I3). An email-only post is mailed exactly as a listed one, and its post page still answers at its address, with `X-Robots-Tag: noindex`. Schedule, Send now, and a reschedule set it too. Each of the post's sends carries it as `email_only`, so they take a new `rev` and the send feed reports them. Setting the listing the post already has answers `changed: false`. A missing or non-boolean `email_only` is a 400 naming it.",
+        "Any subset of the three. Allowed in any state, a scheduled or sent post's included: neither is part of the frozen email, which carries the post's unlisted link, so a change never re-makes a scheduled send or alters a sent one (I3). `email_only: true` mails the post as usual but leaves it out of the archive index and the landing page, and its archive address stops answering; its unlisted link opens the page. `false` lists it. Schedule, Send now, and a reschedule set the listing too. `slug` sets the archive address by hand and `slug_auto: true` has it follow the subject again, as for a save. Listing a post whose send has started reserves its address, numbered (`-2`) if another post holds it, and from then the address is permanent: a change to it is a 409 `slug_permanent`, while naming the address it has is fine. Making such a post email only keeps its address reserved, so listing it again brings back the same one. Each of the post's sends carries the listing and the address in its view, so they take a new `rev` and the send feed reports them. Answers with the post, its `archive_slug` (the address it would take if it became public now), and `changed: false` when nothing changed. A body naming none of the three, or a field of the wrong type, is a 400 naming it.",
       example: {
-        request: { email_only: true },
+        request: { email_only: false, slug: "hello-world" },
         response: {
-          post: { id: "p_abc123", status: "sent", slug: "hello-world", email_only: true },
+          post: {
+            id: "p_abc123",
+            status: "sent",
+            slug: "hello-world-2",
+            slug_reserved: true,
+            email_only: false,
+          },
+          archive_slug: "hello-world-2",
           changed: true,
         },
       },
@@ -1402,7 +1422,22 @@ export function createRouter({
 
     // --- delivery webhooks (public; provider-signature-verified, not requireAuth) ---
 
-    // --- archive / view-in-browser (public; serves the frozen record, I3) ---
+    // --- unlisted links (public; the "view in browser" every email carries, SPEC §5) ---
+    // On the app's own origin and independent of ARCHIVE_BASE_PATH, so moving the archive
+    // breaks no email already sent.
+    {
+      method: "GET",
+      path: `${UNLISTED_PATH}/:token`,
+      access: "public",
+      resource: "archive",
+      summary:
+        "A post's unlisted link, the view-in-browser link every test and send carries (SPEC §5).",
+      description:
+        "Before the post's send starts, the same `Nothing here yet` page (404) as any unknown token. Once it has: while the post is listed, a temporary redirect (302) to its archive address, since the listing can change; while it is email only, the post's page itself, with `X-Robots-Tag: noindex`. Public, but never listed or linked from any page.",
+      handler: archiveRoutes.unlistedPage,
+    },
+
+    // --- archive (public; serves the frozen record, I3) ---
     // Registered at ARCHIVE_BASE_PATH (default /archive) so the index, the post
     // pages, and the emitted archive URLs always share one source. Self-contained by
     // default; an apex zone can additionally route <base>/* to this Worker (SPEC §11).
@@ -1424,7 +1459,9 @@ export function createRouter({
       access: "public",
       resource: "archive",
       summary:
-        "A published post's archive page / view-in-browser (I3), from the moment its send starts.",
+        "A published post's archive page (I3), from the moment a listed post's send starts, while it stays listed.",
+      description:
+        "Only a reserved address answers (SPEC §4). An email-only post's address answers the `Nothing here yet` page (404) but stays reserved for the post, so listing it again brings it back. The exception is a post whose email carries this address as its view-in-browser link (one sent before unlisted links): its address answers whatever its listing, with `X-Robots-Tag: noindex` while it is email only.",
       handler: archiveRoutes.archivePage,
     },
 

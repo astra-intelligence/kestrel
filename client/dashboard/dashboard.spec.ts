@@ -26,6 +26,8 @@ const post = (over: Partial<PostListItem> = {}): PostListItem => ({
   id: "p1",
   slug: "owls",
   slug_auto: true,
+  slug_reserved: false,
+  unlisted_token: "t-p1",
   subject: "<b>Owls</b> & co",
   status: "draft",
   email_only: false,
@@ -660,15 +662,13 @@ describe("dashboard", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
-  it("says an email-only post's scheduled card won't be listed", async () => {
+  it("marks an email-only post's scheduled card, and only that one", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
     fake = world([post()], srv);
     await mount(renderDashboard);
     await vi.advanceTimersByTimeAsync(0);
-    expect($("#dashScheduled .sched-card .sched-email-only").textContent).toBe(
-      "Email only, not listed",
-    );
+    expect($("#dashScheduled .sched-card .sched-email-only").textContent).toBe("Email only");
     expect(fake.unhandled).toEqual([]);
   });
 

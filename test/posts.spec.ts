@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { reserveSlug } from "../src/db/posts";
 import { frozenSend, setRow } from "./support/fixtures";
 import { AUTH, adminAuth, base, JSON_AUTH, readJson } from "./support/http";
 
@@ -79,11 +80,19 @@ describe("posts + revisions", () => {
     expect(r1.markdown).toBe("v1");
   });
 
-  it("deduplicates slugs", async () => {
+  it("lets two drafts want one address, and numbers neither until one is reserved (SPEC §4)", async () => {
     const a = await readJson(await createPost({ subject: "Dup Title" }));
     const b = await readJson(await createPost({ subject: "Dup Title" }));
-    expect(a.post.slug).toBe("dup-title");
-    expect(b.post.slug).toBe("dup-title-2");
+    expect([a.post.slug, b.post.slug]).toEqual(["dup-title", "dup-title"]);
+    expect([a.archive_slug, b.archive_slug]).toEqual(["dup-title", "dup-title"]);
+
+    await reserveSlug(env.DB, a.post.id);
+    const read = await readJson(
+      await SELF.fetch(`${base}/api/posts/${b.post.id}`, { headers: AUTH }),
+    );
+    // Still the address it asks for, but the one it would take is numbered.
+    expect(read.post.slug).toBe("dup-title");
+    expect(read.archive_slug).toBe("dup-title-2");
   });
 
   it("has a slug follow the subject until one is set by hand", async () => {
@@ -123,27 +132,28 @@ describe("posts + revisions", () => {
     expect(post.slug_auto).toBe(false);
   });
 
-  it("drops a following slug's suffix on the next save once the plain slug is free", async () => {
-    const first = await readJson(await createPost({ subject: "Two Directions" }));
-    const second = await readJson(await createPost({ subject: "Two Directions" }));
-    expect(second.post.slug).toBe("two-directions-2");
+  it("refuses a save that would move a reserved address, and allows naming the one it has (SPEC §4)", async () => {
+    const created = await readJson(await createPost({ subject: "Kept Address" }));
+    // A post scheduled before unlisted links, then canceled: a draft whose address is reserved.
+    await reserveSlug(env.DB, created.post.id);
+    const moved = await SELF.fetch(`${base}/api/posts/${created.post.id}`, {
+      method: "PUT",
+      headers: JSON_AUTH,
+      body: JSON.stringify({ slug: "elsewhere", base_revision: created.revision_id }),
+    });
+    expect(moved.status).toBe(409);
+    expect(await moved.json()).toMatchObject({ error: "slug_permanent", field: "slug" });
 
-    const resaved = await save(second.post.id, {
-      markdown: "y",
-      base_revision: second.revision_id,
+    const same = await save(created.post.id, {
+      slug: "kept-address",
+      subject: "A New Subject",
+      base_revision: created.revision_id,
     });
-    expect(resaved.post.slug).toBe("two-directions-2"); // still taken: the dedupe holds
-
-    const del = await SELF.fetch(`${base}/api/posts/${first.post.id}`, {
-      method: "DELETE",
-      headers: AUTH,
+    expect(same.post).toMatchObject({
+      slug: "kept-address",
+      slug_auto: false,
+      slug_reserved: true,
     });
-    expect(del.status).toBe(200);
-    const freed = await save(second.post.id, {
-      markdown: "z",
-      base_revision: resaved.post.current_revision,
-    });
-    expect(freed.post.slug).toBe("two-directions");
   });
 
   it("lists each post's slug mode as true or false (SPEC §4)", async () => {

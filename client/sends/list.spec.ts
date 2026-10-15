@@ -205,7 +205,7 @@ describe("sent view", () => {
     fake = world(srv);
     await mount(renderSent);
     await vi.advanceTimersByTimeAsync(0);
-    expect($(".sched-card .sched-email-only").textContent).toBe("Email only, not listed");
+    expect($(".sched-card .sched-email-only").textContent).toBe("Email only");
     const rows = $$(".sent-table tbody tr");
     const label = (id: string) =>
       rows.find((r) => r.dataset.id === id)?.querySelector(".badge.email-only")?.textContent ??
@@ -224,10 +224,12 @@ describe("sent view", () => {
     $("[data-reschedule='sch']").click();
     const box = $<HTMLInputElement>("#rsEmailOnly");
     expect(box.checked).toBe(true);
-    expect($("#rsListing").textContent).toBe("It’s email only: not listed in your archive.");
+    expect($("#rsListing").textContent).toBe(
+      "It will be sent as email only, not listed in your archive.",
+    );
     box.checked = false;
     box.dispatchEvent(new Event("change"));
-    expect($("#rsListing").textContent).toBe("It’s listed in your archive.");
+    expect($("#rsListing").textContent).toBe("It will be listed in your archive.");
     $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);

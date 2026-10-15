@@ -23,9 +23,17 @@ export function viewOf(
     rendered_text?: string;
   };
   return buildSendView(
-    { ...row, post_slug: null, post_email_only: 0 },
+    {
+      ...row,
+      web_link: "unlisted",
+      post_slug: null,
+      post_slug_reserved: 0,
+      post_unlisted_token: null,
+      post_email_only: 0,
+    },
     {
       provider,
+      appOrigin: base,
       archiveOrigin: base,
       archiveBasePath: "/",
     },

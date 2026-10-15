@@ -34,6 +34,10 @@ export interface SeedPost {
   id: string;
   slug: string;
   slug_auto: boolean;
+  /** True for a post whose address has been public (SPEC §4). */
+  slug_reserved?: boolean;
+  /** Its unlisted link's token; absent, the database makes one. */
+  unlisted_token?: string;
   subject: string;
   status: PostStatus;
   email_only?: boolean;
@@ -171,12 +175,14 @@ export async function insertPost(
   await db.batch([
     db
       .prepare(
-        "INSERT INTO posts (id, slug, slug_auto, subject, status, email_only, current_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO posts (id, slug, slug_auto, slug_reserved, unlisted_token, subject, status, email_only, current_revision, created_at, updated_at) VALUES (?, ?, ?, ?, COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, ?, ?)",
       )
       .bind(
         post.id,
         post.slug,
         post.slug_auto ? 1 : 0,
+        post.slug_reserved ? 1 : 0,
+        post.unlisted_token ?? null,
         post.subject,
         post.status,
         post.email_only ? 1 : 0,

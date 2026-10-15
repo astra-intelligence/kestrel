@@ -14,10 +14,12 @@
  * Worker; what it means for a reader is already in the phase, conditions, and actions.
  */
 
+import { unlistedPostUrl } from "../../shared/archive_url";
 import type { WritesDay } from "../../shared/daily_writes";
 import type { SendHalt, SendPhase, SendSummary, SendView } from "../../shared/sends";
 import { countsOf, type SendCounts, type SendStatus } from "../db/sends";
 import type { Config } from "../env";
+import { archiveAnswers } from "../lib/archive_address";
 import { archiveUrl } from "../render/render";
 import { sendActions, sendConditions } from "./conditions";
 import { nextChangeAt } from "./feed";
@@ -161,10 +163,13 @@ export function tickEstimate(
   return { perTick, finishAt: nextTick + (ticks - 1) * TICK_MS + TICK_RUN_MS };
 }
 
-/** A stored send as a view reads it: the row without its frozen bodies, its post's slug,
- *  which names the published post's archive page, and its post's listing (SPEC §5). */
+/** A stored send as a view reads it: the row without its frozen bodies, which address its
+ *  email carries, and its post's two addresses and listing (SPEC §5). */
 export type SendViewRow = SendSummary & {
+  web_link: "unlisted" | "archive";
   post_slug: string | null;
+  post_slug_reserved: number | null;
+  post_unlisted_token: string | null;
   post_email_only: number | null;
 };
 
@@ -177,12 +182,13 @@ export type SendViewRow = SendSummary & {
  */
 export function buildSendView(
   send: SendViewRow,
-  config: Pick<Config, "provider" | "archiveOrigin" | "archiveBasePath">,
+  config: Pick<Config, "provider" | "appOrigin" | "archiveOrigin" | "archiveBasePath">,
   hasRetries: boolean,
   now: number,
   day: WritesDay | null,
 ): SendView {
   const counts = countsOf(send);
+  const published = send.status === "sending" || send.status === "sent";
   const summed =
     counts.pending +
     counts.in_flight +
@@ -278,10 +284,21 @@ export function buildSendView(
       deliveries: `/api/sends/${id}/deliveries`,
       deliveries_csv: `/api/sends/${id}/deliveries.csv`,
       post: `/api/posts/${send.post_id}`,
-      // The archive serves a post's page once its send starts: before, the link would 404.
+      // Each address answers only once the send starts; the archive's only while it is the
+      // post's public address (`archiveAnswers`).
       archive:
-        (send.status === "sending" || send.status === "sent") && send.post_slug !== null
+        published &&
+        send.post_slug !== null &&
+        archiveAnswers({
+          reserved: send.post_slug_reserved === 1,
+          emailOnly: send.post_email_only === 1,
+          webLink: send.web_link,
+        })
           ? archiveUrl(config, send.post_slug)
+          : null,
+      unlisted:
+        published && send.post_unlisted_token !== null
+          ? unlistedPostUrl(config.appOrigin, send.post_unlisted_token)
           : null,
     },
   };

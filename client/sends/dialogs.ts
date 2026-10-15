@@ -68,25 +68,12 @@ export function emailOnlyFieldHtml(id: string, checked: boolean): Html {
   return html`<label class="listing-check"><input type="checkbox" id="${id}"${checked ? html` checked` : null}><span><strong>Email only</strong><span class="listing-help">${EMAIL_ONLY_HELP}</span></span></label>`;
 }
 
-/**
- * How a dialog's line ends, saying where the post will appear, so the default is stated
- * rather than implied by an unchecked box (DESIGN §3).
- */
-export function listingClause(emailOnly: boolean): string {
-  return emailOnly
-    ? ", email only: not listed in your archive."
-    : ", and is listed in your archive.";
-}
-
 /** Keep a dialog's line in step with its checkbox: `clause` holds the words `words` gives
- *  for the box's state (by default, the line's ending). */
+ *  for the box's state. */
 export function wireListing(
   input: HTMLInputElement,
   clause: HTMLElement,
-  {
-    words = listingClause,
-    onChange,
-  }: { words?: (emailOnly: boolean) => string; onChange?: (v: boolean) => void } = {},
+  { words, onChange }: { words: (emailOnly: boolean) => string; onChange?: (v: boolean) => void },
 ): void {
   const paint = () => {
     clause.textContent = words(input.checked);
@@ -131,7 +118,9 @@ export function openRescheduleModal(
   const emailOnly = $<HTMLInputElement>("#rsEmailOnly", box);
   wireListing(emailOnly, $("#rsListing", box), {
     words: (v) =>
-      v ? "It’s email only: not listed in your archive." : "It’s listed in your archive.",
+      v
+        ? "It will be sent as email only, not listed in your archive."
+        : "It will be listed in your archive.",
   });
   $("#rsCancel", box).onclick = m.close;
   go.onclick = () =>

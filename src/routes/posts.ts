@@ -9,12 +9,19 @@ import type {
   PostSavedResponse,
   StaleRevisionError,
 } from "../../shared/posts";
+import { slugify } from "../../shared/slug";
 import * as images from "../db/images";
 import * as posts from "../db/posts";
-import { currentSendSeq, getActiveSendForPost, latestSentSendForPost } from "../db/sends";
+import {
+  currentSendSeq,
+  getActiveSendForPost,
+  latestSentSendForPost,
+  publishedSendForPost,
+} from "../db/sends";
 import { fieldError, optBoolean, optString, optStringOrNull, readJsonObject } from "../lib/body";
 import { badRequest, json, notFound, refusal } from "../lib/errors";
 import { listPage, parseListParams } from "../lib/list";
+import { unwrap } from "../lib/unwrap";
 import type { RequestContext } from "../router";
 import { param } from "../router";
 
@@ -108,7 +115,11 @@ export async function createPost(c: RequestContext): Promise<Response> {
   // case; one that sends a body is held to the same JSON and field rules as an edit.
   const { input } = await readBody(c, { optional: true });
   const { post, revision } = await posts.createPost(c.env.DB, input, author(c));
-  const body: PostSavedResponse = { post, revision_id: revision.id };
+  const body: PostSavedResponse = {
+    post,
+    archive_slug: await posts.archiveSlugFor(c.env.DB, post),
+    revision_id: revision.id,
+  };
   return json(body, 201, revisionHeaders(post));
 }
 
@@ -168,6 +179,7 @@ export async function getPost(c: RequestContext): Promise<Response> {
   const sent = post.status === "sent" ? await latestSentSendForPost(c.env.DB, post.id) : null;
   const body: PostResponse = {
     post,
+    archive_slug: await posts.archiveSlugFor(c.env.DB, post),
     markdown: revision?.markdown ?? "",
     author: revision?.author ?? null, // who wrote the current revision — the freshness poll names them
     // `remade_at`: when a template or identity change last re-made the frozen email
@@ -215,8 +227,13 @@ export async function updatePost(c: RequestContext): Promise<Response> {
     };
     return json(stale, 409, revisionHeaders(post));
   }
+  refuseSlugChange(post, body.input.slug, body.input.slug_auto);
   const { post: updated, revision } = await posts.updatePost(c.env.DB, post, body.input, author(c));
-  const saved: PostSavedResponse = { post: updated, revision_id: revision.id };
+  const saved: PostSavedResponse = {
+    post: updated,
+    archive_slug: await posts.archiveSlugFor(c.env.DB, updated),
+    revision_id: revision.id,
+  };
   return json(saved, 200, revisionHeaders(updated));
 }
 
@@ -270,26 +287,61 @@ export async function getRevision(c: RequestContext): Promise<Response> {
 }
 
 /**
- * Change a post's listing (SPEC §5): in the archive, or email only. Any state, a sent post's
- * included, since the listing is not part of the frozen copy (I3); a repeat of the listing
- * the post already has answers `changed: false`.
+ * A reserved slug is the post's permanent archive address (SPEC §4): links to it may be
+ * shared, so a save or a listing change that would move it is refused rather than dropped.
+ * Naming the address it already has changes nothing and is allowed.
+ */
+function refuseSlugChange(post: posts.PostRow, slug?: string, slugAuto?: boolean): void {
+  if (!post.slug_reserved) {
+    return;
+  }
+  const moves = (slug !== undefined && slugify(slug) !== post.slug) || slugAuto === true;
+  if (moves) {
+    throw refusal(
+      409,
+      "slug_permanent",
+      "This post’s archive address is permanent: it has been public, and people may have shared it.",
+      { field: slug !== undefined ? "slug" : "slug_auto" },
+    );
+  }
+}
+
+/**
+ * Change a post's publishing options (SPEC §4, §5): its listing, in the archive or email only,
+ * and its archive address. Any state, a sent post's included, since neither is part of the
+ * frozen copy (I3); a repeat of what the post already has answers `changed: false`. Listing a
+ * post whose send has started reserves its address.
  */
 export async function setListing(c: RequestContext): Promise<Response> {
   const body = await readJsonObject(c);
   const emailOnly = optBoolean(body, "email_only");
-  if (emailOnly === undefined) {
+  const slug = optString(body, "slug");
+  const slugAuto = optBoolean(body, "slug_auto");
+  if (emailOnly === undefined && slug === undefined && slugAuto === undefined) {
     throw fieldError(
       "email_only",
-      "email_only is required: true for email only, false to list the post in the archive",
+      "Name what to change: email_only (true for email only, false to list the post in the archive), slug, or slug_auto",
     );
+  }
+  if (slug !== undefined && slugAuto === true) {
+    throw fieldError("slug", "slug cannot be set while slug_auto is true");
   }
   const post = await posts.getPost(c.env.DB, param(c, "id"));
   if (!post) {
     throw notFound("post");
   }
-  const changed = await posts.setEmailOnly(c.env.DB, post, emailOnly);
+  refuseSlugChange(post, slug, slugAuto);
+  const published = (await publishedSendForPost(c.env.DB, post.id)) !== null;
+  const changed = await posts.setPublishing(
+    c.env.DB,
+    post,
+    { emailOnly, slug, slugAuto },
+    published,
+  );
+  const now = changed ? unwrap(await posts.getPost(c.env.DB, post.id), "post") : post;
   const answer: ListingResponse = {
-    post: changed ? { ...post, email_only: emailOnly } : post,
+    post: now,
+    archive_slug: await posts.archiveSlugFor(c.env.DB, now),
     changed,
   };
   return json(answer);

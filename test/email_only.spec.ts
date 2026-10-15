@@ -1,6 +1,7 @@
 // Email only (SPEC §5): a post mailed as usual but left out of the archive index and the
-// landing page. The listing is the post's, chosen when it is scheduled and changeable after,
-// a sent post's included, and never part of the frozen copy (I3).
+// landing page, its archive address answering nothing. The listing is the post's, chosen when
+// it is scheduled and changeable after, a sent post's included, and never part of the frozen
+// copy (I3). What each address answers is test/unlisted_links.spec.ts.
 
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
@@ -145,16 +146,16 @@ describe("the public pages and an email-only post (SPEC §5)", () => {
     }
   });
 
-  it("serve its post page at its address, asking search engines not to index it", async () => {
+  it("serve its page at its unlisted link, asking search engines not to index it, and give it no archive address", async () => {
     const quiet = await sendPost("Quiet Gulls", true);
-    const listed = await sendPost("Listed Owls", false);
-    const res = await SELF.fetch(`${base}/archive/${quiet.slug}`);
+    const token = (await post(quiet.id)).unlisted_token;
+    const res = await SELF.fetch(`${base}/email/${token}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("x-robots-tag")).toBe("noindex");
     expect(await res.text()).toContain("Quiet Gulls");
-    const plain = await SELF.fetch(`${base}/archive/${listed.slug}`);
-    expect(plain.status).toBe(200);
-    expect(plain.headers.get("x-robots-tag")).toBeNull();
+    // Never listed, so its slug was never public: no address answers, and none is reserved.
+    expect((await SELF.fetch(`${base}/archive/${quiet.slug}`)).status).toBe(404);
+    expect((await post(quiet.id)).slug_reserved).toBe(false);
   });
 
   it("mail it exactly as a listed post", async () => {

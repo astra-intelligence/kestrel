@@ -405,9 +405,9 @@ function dashSentHtml(sends: SendView[]): Html {
   }
   return html`<div class="table-wrap"><table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Delivered</th><th></th></tr></thead><tbody>${recent.map(
     (s) => {
-      // The published post, which the send's view links once it has started.
-      // An email-only post's page isn't in the archive, so its link says what it opens.
-      const url = s.links.archive;
+      // The published post, which the send's view links once it has started: its archive
+      // page, or an email-only post's page at its unlisted link, so the link says which.
+      const url = s.email_only ? s.links.unlisted : s.links.archive;
       return html`<tr class="clickable" data-send="${s.id}"><td><a href="#/sent/${s.id}">${s.subject}</a>${emailOnlyLabel(s)}</td><td>${badge(s.status)}</td><td class="num">${s.audience.count.toLocaleString()}</td><td class="num delivered">${deliveredCell(s.counts)}</td><td class="act">${
         url
           ? html`<a class="ghost-link" href="${url}" target="_blank" rel="noopener">${s.email_only ? html`Web version&nbsp;↗` : html`Archive&nbsp;↗`}</a>`

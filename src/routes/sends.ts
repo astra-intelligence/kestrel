@@ -12,7 +12,7 @@ import {
   type SendResponse,
   type SendView,
 } from "../../shared/sends";
-import { getPost, setEmailOnly } from "../db/posts";
+import { getPost, setPublishing } from "../db/posts";
 import * as sends from "../db/sends";
 import { oneOf, optBoolean, readJsonObject } from "../lib/body";
 import { badRequest, HttpError, json, notFound } from "../lib/errors";
@@ -367,7 +367,7 @@ export async function reschedule(c: RequestContext): Promise<Response> {
   let listed = false;
   if (emailOnly !== undefined) {
     const post = await getPost(c.env.DB, moved.send.post_id);
-    listed = post ? await setEmailOnly(c.env.DB, post, emailOnly) : false;
+    listed = post ? await setPublishing(c.env.DB, post, { emailOnly }, false) : false;
   }
   const changed = moved.changed || listed;
   const response: SendActionResponse = { ...(await answerWith(c, id)), changed };

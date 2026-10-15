@@ -1,6 +1,6 @@
 // The sent record view and the live in-flight watch.
 
-import type { ListingResponse } from "../../shared/posts";
+import type { ListingBody, ListingResponse, PostResponse } from "../../shared/posts";
 import type {
   DeliveryListResponse,
   DeliveryOutcomes,
@@ -11,11 +11,19 @@ import type {
   SendResponse,
   SendView,
 } from "../../shared/sends";
+import { slugify } from "../../shared/slug";
 import { isErasedPlaceholder } from "../../shared/subscribers";
 import { ApiError, api, apiFile, describeError } from "../api";
-import { heldAdviceHtml, noEmailProvider, providerNotConnected } from "../deployment";
+import {
+  heldAdviceHtml,
+  noEmailProvider,
+  postArchiveUrl,
+  providerNotConnected,
+} from "../deployment";
 import { every, mount } from "../lifecycle";
+import { addressFieldHtml, shortUrl, takenNoteHtml } from "../posts/publishing";
 import { followSend, readSendsNow } from "../send_state";
+import { copyFace, copyWith } from "../ui/copy";
 import { $, $$ } from "../ui/dom";
 import { saveFile } from "../ui/download";
 import { fmt } from "../ui/format";
@@ -506,24 +514,27 @@ function renderFrozenRecord(
     renderCanceled(send, root);
     return;
   }
-  // The published post, which the send's view links once it has started.
-  const archive = send.links.archive;
   const total = outcomes.recipients;
   const sentAt = send.completed_at ?? send.fire_at;
 
+  // The page splits in two (DESIGN §3): the post, what it is on the web and what can still be
+  // done with it, and its delivery, the record of how the send went, which nothing changes.
   setHtml(
     root,
     html`
     <div class="editor-head">
       <a href="#/sent" class="back">← Sent</a>
-      ${archive ? html`<button type="button" class="primary" id="viewPublished">View published post&nbsp;↗</button>` : null}
     </div>
-    <div class="card rec-card">
-      <div class="rec-head">
-        <div class="watch-title"><h1>${send.subject || html`<em>untitled</em>`}</h1><span id="recPill">${phasePill(send.phase)}</span></div>
-        <div class="rec-meta">Sent ${fmt(sentAt)} · ${total.toLocaleString()} recipients</div>
-        <div class="rec-listing" id="recListing">${listingLineHtml(send.email_only)}</div>
-      </div>
+    <div class="rec-head rec-head-page">
+      <div class="watch-title"><h1>${send.subject || html`<em>untitled</em>`}</h1><span id="recPill">${phasePill(send.phase)}</span></div>
+      <div class="rec-meta">Sent ${fmt(sentAt)} · ${total.toLocaleString()} recipients</div>
+    </div>
+    <section class="card rec-post" aria-labelledby="recPostTitle">
+      <h2 class="rec-part-title" id="recPostTitle">The post</h2>
+      <div class="rec-web" id="recWeb">${postPartHtml(send)}</div>
+    </section>
+    <section class="card rec-card" aria-labelledby="recDeliveryTitle">
+      <h2 class="rec-part-title" id="recDeliveryTitle">Delivery</h2>
       <p class="rec-tiles-cap muted">Delivery outcomes keep updating as receipts arrive; the audience at fire and the published post are fixed.</p>
       <div class="rec-tiles">${outcomeTilesHtml(outcomes)}</div>
       <p class="rec-recon muted">${outcomeReconHtml(outcomes)}</p>
@@ -532,7 +543,7 @@ function renderFrozenRecord(
       </div>
       <div class="rec-people">
         <div class="rec-people-head">
-          <h2 class="rec-people-title">Recipients</h2>
+          <h3 class="rec-people-title">Recipients</h3>
           <div class="rec-views" role="group" aria-label="Which recipients to show">
             ${DELIVERY_TABS.map(
               (t, i) =>
@@ -544,65 +555,126 @@ function renderFrozenRecord(
         <div id="recRows" class="muted">Loading…</div>
         <div id="recPager"></div>
       </div>
-      <p class="rec-note muted">This is the record of what went out: the published post is the exact frozen copy readers received, and nothing here is editable. Only where the post is listed can change.</p>
-    </div>`,
+      <p class="rec-note muted">This is the record of what went out: the published post is the exact frozen copy readers received, and nothing here is editable.</p>
+    </section>`,
   );
 
-  const viewBtn = document.getElementById("viewPublished");
-  if (viewBtn && archive) {
-    viewBtn.onclick = () => window.open(archive, "_blank", "noopener");
-  }
-
-  // Where the post is listed (SPEC §5): the record's one control that changes anything, and
-  // what it changes is the listing, never the record (I3). It follows the send's view, so a
-  // change made elsewhere (Claude, another tab) shows on the next report.
-  const listingEl = $("#recListing", root);
-  let emailOnly = send.email_only;
-  const paintListing = () => {
-    setHtml(listingEl, listingLineHtml(emailOnly));
-    const btn = listingEl.querySelector<HTMLButtonElement>("button");
-    if (btn) {
-      btn.onclick = () => (emailOnly ? confirmAddToArchive() : setListing(btn, true));
+  // The post (SPEC §5): its web address and what can still change about it, which is where it
+  // is listed, never the record (I3). It follows the send's view, so a change made elsewhere
+  // (Claude, another tab) shows on the next report. Both changes of visibility ask first.
+  const webEl = $("#recWeb", root);
+  let view = send;
+  const paintPost = () => {
+    setHtml(webEl, postPartHtml(view));
+    const open = webEl.querySelector<HTMLButtonElement>("#recOpen");
+    const copy = webEl.querySelector<HTMLButtonElement>("#recCopy");
+    const change = webEl.querySelector<HTMLButtonElement>("#recListing");
+    const url = webUrl(view);
+    if (open && url) {
+      open.onclick = () => window.open(url, "_blank", "noopener");
+    }
+    if (copy && url) {
+      copy.onclick = () => void copyWith(copy, url);
+    }
+    if (change) {
+      change.onclick = () => (view.email_only ? confirmAddToArchive() : confirmEmailOnly());
     }
   };
-  // From the confirming dialog, `dialog` closes on success and shows a refusal in place.
-  const setListing = (btn: HTMLButtonElement, next: boolean, dialog?: Modal) =>
-    busy(btn, next ? "Updating…" : "Adding…", async () => {
-      dialog?.clearError();
+  /** Change the listing from a confirming dialog: it closes on success and shows a refusal in
+   *  place. Answers the post as it now stands. */
+  const setListing = (go: HTMLButtonElement, body: ListingBody, dialog: Modal) =>
+    busy(go, body.email_only ? "Updating…" : "Adding…", async () => {
+      dialog.clearError();
       try {
         const res = await api<ListingResponse>(`/api/posts/${send.post_id}/listing`, {
           method: "PUT",
-          json: { email_only: next },
+          json: body,
         });
-        dialog?.close();
-        emailOnly = res.post.email_only;
-        paintListing();
-        toast(next ? "Email only: no longer listed in your archive" : "Added to your archive");
+        dialog.close();
+        // The send's next report brings its links; the listing shows now.
+        const archive = res.post.email_only ? null : postArchiveUrl(res.post.slug);
+        view = { ...view, email_only: res.post.email_only, links: { ...view.links, archive } };
+        paintPost();
+        toast(
+          res.post.email_only
+            ? "Email only: no longer listed in your archive"
+            : `Added to your archive at ${archive ? shortUrl(archive) : res.post.slug}`,
+        );
         readSendsNow();
       } catch (e) {
-        if (dialog) {
-          dialog.error(message(e));
-        } else {
-          toast(message(e));
-        }
+        dialog.error(message(e));
       }
     });
-  // Listing a post puts it in front of anyone visiting the home page, so it asks first;
-  // taking it off the lists does not (DESIGN §7).
-  const confirmAddToArchive = () => {
+  const confirmEmailOnly = () => {
+    const address = view.links.archive;
+    const m = modal(
+      html`<h3 id="eoHead">Make this post email only?</h3>
+        <p class="hint">It comes off your home page and your public archive, and its archive address stops working, including links people have shared. The link in the email keeps working for anyone who has it.</p>
+        ${address ? html`<div class="url-gone"><s>${shortUrl(address)}</s></div>` : null}
+        <p class="pub-note">The address stays reserved for this post. Add it to your archive again and the same address, and the links people shared, work again.</p>
+        <div class="actions"><button type="button" id="eoCancel">Cancel</button><button type="button" class="primary" id="eoGo">Make email only</button></div>`,
+      signal,
+    );
+    $(".modal", m.el).setAttribute("aria-labelledby", "eoHead");
+    $("#eoCancel", m.el).onclick = m.close;
+    const go = $<HTMLButtonElement>("#eoGo", m.el);
+    go.onclick = () => setListing(go, { email_only: true }, m);
+    go.focus();
+  };
+  // Listing a post puts it in front of anyone visiting the home page. A post listed before
+  // gets back its reserved address; one never listed gets its address set here, as the
+  // editor's Publishing options would, since it becomes permanent the moment it is listed.
+  const confirmAddToArchive = async () => {
+    let read: PostResponse;
+    try {
+      read = await api<PostResponse>(`/api/posts/${send.post_id}`, { signal });
+    } catch (e) {
+      if (!signal.aborted) {
+        toast(message(e));
+      }
+      return;
+    }
+    const { post, archive_slug } = read;
+    const field = post.slug_reserved
+      ? html`${addressFieldHtml(post.slug, { readonly: true })}<p class="pub-note">Reserved from when it was listed, so links people shared work again.</p>`
+      : html`${addressFieldHtml(post.slug, { id: "addSlug" })}<label class="slug-auto-toggle"><input type="checkbox" id="addAuto"${post.slug_auto ? html` checked` : null}>Auto-generate from subject</label>${takenNoteHtml(post.slug, archive_slug)}<p class="pub-note">Permanent once it’s listed. The link in the email keeps working and now forwards here.</p>`;
     const m = modal(
       html`<h3 id="addArchHead">Add this post to your archive?</h3>
-        <p class="hint">It will be listed on your home page and in your public archive, where anyone visiting can find it. You can make it email only again at any time.</p>
+        <p class="hint">It will be listed on your home page and in your public archive, where anyone visiting can find it.</p>
+        <label${post.slug_reserved ? null : html` for="addSlug"`}>Archive address</label>${field}
         <div class="actions"><button type="button" id="addArchCancel">Cancel</button><button type="button" class="primary" id="addArchGo">Add to archive</button></div>`,
       signal,
     );
     $(".modal", m.el).setAttribute("aria-labelledby", "addArchHead");
     $("#addArchCancel", m.el).onclick = m.close;
+    const input = m.el.querySelector<HTMLInputElement>("#addSlug");
+    const auto = m.el.querySelector<HTMLInputElement>("#addAuto");
+    if (input && auto) {
+      // Typing an address takes it by hand; ticking the box has it follow the subject again.
+      input.addEventListener("input", () => {
+        auto.checked = false;
+      });
+      auto.addEventListener("change", () => {
+        if (auto.checked) {
+          input.value = slugify(post.subject) || post.slug;
+        }
+      });
+    }
     const go = $<HTMLButtonElement>("#addArchGo", m.el);
-    go.onclick = () => setListing(go, false, m);
+    go.onclick = () => {
+      const body: ListingBody = { email_only: false };
+      if (input && auto) {
+        if (auto.checked) {
+          body.slug_auto = true;
+        } else {
+          body.slug = input.value;
+        }
+      }
+      return setListing(go, body, m);
+    };
     go.focus();
   };
-  paintListing();
+  paintPost();
 
   // The per-recipient record, its own paged/filtered state. Default view is "failures" so
   // the rows that went wrong lead; default sort mirrors the CSV (email asc). It reloads on
@@ -747,9 +819,13 @@ function renderFrozenRecord(
           return;
         }
         setHtml($("#recPill", root), phasePill(fresh.phase));
-        if (fresh.email_only !== emailOnly) {
-          emailOnly = fresh.email_only;
-          paintListing();
+        if (
+          fresh.email_only !== view.email_only ||
+          fresh.links.archive !== view.links.archive ||
+          fresh.links.unlisted !== view.links.unlisted
+        ) {
+          view = fresh;
+          paintPost();
         }
         const now = outcomesOf(fresh);
         if (sameOutcomes(shown, now)) {
@@ -767,11 +843,23 @@ function renderFrozenRecord(
   );
 }
 
-/** Where a sent post is listed, with the one control that changes it (DESIGN §3). */
-function listingLineHtml(emailOnly: boolean): Html {
-  return emailOnly
-    ? html`<span>Email only: not listed in your archive.</span><button type="button" class="ghost" id="listingBtn">Add to archive…</button>`
-    : html`<span>Listed in your archive.</span><button type="button" class="ghost" id="listingBtn">Make email only</button>`;
+/** Where a sent post's page is: its archive address while listed, else its unlisted link. */
+function webUrl(send: SendView): string | null {
+  return send.email_only ? send.links.unlisted : (send.links.archive ?? send.links.unlisted);
+}
+
+/**
+ * The sent page's post part (DESIGN §3): what the post is on the web and what can still be
+ * done with it. Listed, its archive address and the way to take it down; email only, the
+ * unlisted link its email carries and the way to list it.
+ */
+function postPartHtml(send: SendView): Html {
+  const url = webUrl(send);
+  const shown = url ? shortUrl(url) : null;
+  if (send.email_only) {
+    return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code>${shown}</code>` : null}<span class="muted">Anyone with the link can open it. Nothing lists or indexes it.</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
+  }
+  return html`<div class="rec-web-what"><strong>Listed in your archive</strong>${shown ? html`<code>${shown}</code>` : null}</div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View published post&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Make email only…</button></div>`;
 }
 
 /** A sent send's outcomes from its counters: the same buckets as the record's own read,

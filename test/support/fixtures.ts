@@ -100,6 +100,26 @@ export async function setRow(
     .run();
 }
 
+/**
+ * Mark a send started (or finished) by hand, as `setRow` does, with what its start does to its
+ * post: a listed post's archive address is reserved (SPEC §4), as the send loop's lease
+ * reserves it. For a spec that dates a send without running the loop.
+ */
+export async function startedRow(
+  id: string,
+  fields: Record<string, number | string | null>,
+): Promise<void> {
+  await setRow(id, fields);
+  const row = await env.DB.prepare(
+    "SELECT p.id, p.email_only FROM sends s JOIN posts p ON p.id = s.post_id WHERE s.id = ?",
+  )
+    .bind(id)
+    .first<{ id: string; email_only: number }>();
+  if (row && row.email_only === 0) {
+    await posts.reserveSlug(env.DB, row.id);
+  }
+}
+
 /** A minimal valid email template that carries `marker`, so two saves differ and a re-made
  *  send's email shows which it had. */
 export const tpl = (marker: string): string =>

@@ -18,6 +18,7 @@ import {
   resetShell,
   sendSummary,
   settingsResponse,
+  stubClipboard,
   typeInto,
   unmount,
 } from "../test/support";
@@ -141,7 +142,7 @@ describe("sent record", () => {
     );
     expect($$(".rec-people-table tbody tr")).toHaveLength(2);
     expect($(".rec-people-table tbody tr .rec-out").textContent).toBe("Hard bounce");
-    expect($("#viewPublished")).toBeTruthy();
+    expect($("#recOpen").textContent).toBe("View published post\u00a0↗");
     expect(
       fake.calls.find((c) => c.url.pathname.endsWith("/deliveries"))?.url.searchParams.get("view"),
     ).toBe("failures");
@@ -177,53 +178,153 @@ describe("sent record", () => {
     expect(fake.unhandled).toHaveLength(0);
   });
 
-  // DESIGN §3: the record's one control that changes anything, and what it changes is the
-  // post's listing, never the record (SPEC §5, I3).
-  describe("where the post is listed", () => {
-    const listingRoute = (emailOnly: () => boolean) => ({
+  // DESIGN §3: the page in two parts, the post and its delivery. The post holds the one thing
+  // that can still change, its listing, never the record (SPEC §5, I3), and both changes of
+  // visibility ask first.
+  describe("the post, beside its delivery", () => {
+    /** The listing route, answering the post as the server would after the change. */
+    const listingRoute = (post: Record<string, unknown>) => ({
       method: "PUT",
       path: "/api/posts/p1/listing",
-      reply: () => ({ post: { id: "p1", status: "sent", email_only: emailOnly() }, changed: true }),
+      reply: () => ({
+        post: { id: "p1", status: "sent", ...post },
+        archive_slug: post.slug,
+        changed: true,
+      }),
+    });
+    /** The post's read, which Add to archive takes the address from. */
+    const postRoute = (post: Record<string, unknown>, archiveSlug = String(post.slug)) => ({
+      path: "/api/posts/p1",
+      reply: () => ({
+        post: { id: "p1", subject: "Owls at Dusk", status: "sent", ...post },
+        archive_slug: archiveSlug,
+        markdown: "",
+        author: null,
+        scheduled: null,
+        sending: null,
+        sent: { id: "x1" },
+      }),
+    });
+    beforeEach(() => {
+      appState.appConfig = {
+        ...settingsResponse(),
+        deployment: {
+          ...settingsResponse().deployment,
+          archiveOrigin: "https://birds.example",
+          archiveBasePath: "/archive",
+        },
+      } as typeof appState.appConfig;
     });
 
-    it("says a listed post is in the archive, and Make email only acts at once", async () => {
+    it("splits the page into the post and its delivery, with a listed post's address and its actions", async () => {
       const server = sendServer([send()]);
-      fake = fakeApi([...server.routes, noRows, listingRoute(() => true)]);
+      fake = fakeApi([...server.routes, noRows]);
+      const clipboard = stubClipboard();
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#recListing span").textContent).toBe("Listed in your archive.");
-      expect($("#listingBtn").textContent).toBe("Make email only");
-      $("#listingBtn").click();
+      expect($$(".rec-part-title").map((h) => h.textContent)).toEqual(["The post", "Delivery"]);
+      expect($(".rec-post").contains($("#recOpen"))).toBe(true);
+      expect($(".rec-card").contains($(".rec-tiles"))).toBe(true);
+      expect($(".rec-web-what").textContent).toBe("Listed in your archivebirds.example/p1");
+      $("#recOpen").click();
+      expect(open).toHaveBeenCalledWith("https://birds.example/p1", "_blank", "noopener");
+      $("#recCopy").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect(document.querySelector(".modal")).toBeNull(); // no confirmation
+      expect(clipboard).toHaveBeenCalledWith("https://birds.example/p1");
+      expect($("#recListing").textContent).toBe("Make email only…");
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("asks before making a post email only, and says its archive address stops working", async () => {
+      const server = sendServer([send()]);
+      fake = fakeApi([
+        ...server.routes,
+        noRows,
+        listingRoute({ email_only: true, slug: "owls", slug_reserved: true }),
+      ]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      $("#recListing").click();
+      expect($(".modal h3").textContent).toBe("Make this post email only?");
+      expect($(".modal .hint").textContent).toContain("its archive address stops working");
+      expect($(".modal .url-gone").textContent).toBe("birds.example/p1");
+      $("#eoCancel").click();
+      expect(document.querySelector(".modal")).toBeNull();
+      expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p1/listing")).toBe(false);
+      $("#recListing").click();
+      $("#eoGo").click();
+      await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
-      expect(put?.method).toBe("PUT");
       expect(put?.json()).toEqual({ email_only: true });
-      expect($("#recListing span").textContent).toBe("Email only: not listed in your archive.");
-      expect($("#listingBtn").textContent).toBe("Add to archive…");
+      expect(document.querySelector(".modal")).toBeNull();
+      // Now its unlisted link, which the email carries, and the way back.
+      expect($(".rec-web-what").textContent).toBe(
+        "Email onlyapp.birds.example/email/t-p1Anyone with the link can open it. Nothing lists or indexes it.",
+      );
+      expect($("#recOpen").textContent).toBe("View web version\u00a0↗");
+      expect($("#recListing").textContent).toBe("Add to archive…");
       expect($("#toasts").textContent).toContain("Email only: no longer listed in your archive");
       expect(fake.unhandled).toHaveLength(0);
     });
 
-    it("asks before adding an email-only post to the archive, and changes nothing on Cancel", async () => {
+    it("sets the address of a post never listed when adding it to the archive", async () => {
       const server = sendServer();
       server.put(send(), { email_only: true });
-      fake = fakeApi([...server.routes, noRows, listingRoute(() => false)]);
+      fake = fakeApi([
+        ...server.routes,
+        noRows,
+        postRoute(
+          { slug: "owls", slug_auto: true, slug_reserved: false, email_only: true },
+          "owls-2",
+        ),
+        listingRoute({ email_only: false, slug: "dusk-owls", slug_reserved: true }),
+      ]);
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#recListing span").textContent).toBe("Email only: not listed in your archive.");
-      $("#listingBtn").click();
+      $("#recListing").click();
+      await vi.advanceTimersByTimeAsync(0);
       expect($(".modal h3").textContent).toBe("Add this post to your archive?");
-      $("#addArchCancel").click();
-      expect(document.querySelector(".modal")).toBeNull();
-      expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p1/listing")).toBe(false);
-      $("#listingBtn").click();
+      const slug = $<HTMLInputElement>("#addSlug");
+      expect(slug.value).toBe("owls");
+      expect($<HTMLInputElement>("#addAuto").checked).toBe(true);
+      // Another post holds it, so it will be numbered.
+      expect($(".modal .pub-taken").textContent).toContain("this one will be owls-2");
+      typeInto(slug, "dusk-owls");
+      expect($<HTMLInputElement>("#addAuto").checked).toBe(false);
+      $("#addArchGo").click();
+      await vi.advanceTimersByTimeAsync(0);
+      const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
+      expect(put?.json()).toEqual({ email_only: false, slug: "dusk-owls" });
+      expect($("#toasts").textContent).toContain(
+        "Added to your archive at birds.example/archive/dusk-owls",
+      );
+      expect($(".rec-web-what").textContent).toBe(
+        "Listed in your archivebirds.example/archive/dusk-owls",
+      );
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("brings back the reserved address of a post listed before, read-only", async () => {
+      const server = sendServer();
+      server.put(send(), { email_only: true });
+      fake = fakeApi([
+        ...server.routes,
+        noRows,
+        postRoute({ slug: "owls", slug_auto: false, slug_reserved: true, email_only: true }),
+        listingRoute({ email_only: false, slug: "owls", slug_reserved: true }),
+      ]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      $("#recListing").click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect($<HTMLInputElement>(".modal .url-field input").readOnly).toBe(true);
+      expect(document.querySelector("#addAuto")).toBeNull();
+      expect($(".modal").textContent).toContain("Reserved from when it was listed");
       $("#addArchGo").click();
       await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
       expect(put?.json()).toEqual({ email_only: false });
-      expect(document.querySelector(".modal")).toBeNull();
-      expect($("#recListing span").textContent).toBe("Listed in your archive.");
       expect(fake.unhandled).toHaveLength(0);
     });
 
@@ -232,10 +333,10 @@ describe("sent record", () => {
       fake = fakeApi([...server.routes, noRows]);
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#listingBtn").textContent).toBe("Make email only");
+      expect($("#recListing").textContent).toBe("Make email only…");
       server.edit("x1", {}, { email_only: true }); // Claude made it email only
       await vi.advanceTimersByTimeAsync(3000);
-      expect($("#listingBtn").textContent).toBe("Add to archive…");
+      expect($("#recListing").textContent).toBe("Add to archive…");
       expect(fake.unhandled).toHaveLength(0);
     });
   });

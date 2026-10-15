@@ -3138,16 +3138,6 @@ textarea.is-invalid {
 .modal .dialog-error {
   margin-top: 12px;
 }
-/* Label + info icon grouped at the top of the slug field. */
-.label-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 14px 0 8px;
-}
-.label-row label {
-  margin: 0;
-}
 /* Info icon: the field explanation lives in its hover/focus tooltip. The padding
    + equal negative margin enlarge the hover/click target to ~28px without moving
    the glyph or growing the label row. */
@@ -3212,7 +3202,7 @@ textarea.is-invalid {
   visibility: visible;
   transform: translateY(0);
 }
-/* The "Auto-generate from subject" toggle, grouped just under the slug field. */
+/* The "Auto-generate from subject" toggle, grouped just under the archive address. */
 .slug-auto-toggle {
   display: inline-flex;
   align-items: center;
@@ -3328,26 +3318,184 @@ textarea.is-invalid {
   line-height: 1.45;
   color: var(--muted);
 }
-/* Where a sent post is listed, on its record: the line and its one control. */
-.rec-listing {
+/* Publishing options (DESIGN §3): one future-tense line under Subject saying where the post
+   will appear, and the panel it opens with the Email only box and the archive address. */
+.pub-line {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 4px 12px;
   flex-wrap: wrap;
   margin-top: 8px;
   font-size: 13.5px;
   color: var(--muted);
 }
-
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.pub-summary {
+  flex: 1 1 280px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-@media (max-width: 620px) {
-  .grid2 {
-    grid-template-columns: 1fr;
+.pub-summary code,
+.pub-taken code,
+.unlisted-line code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--fg);
+}
+.pub-toggle {
+  flex: none;
+}
+button.linkbtn.pub-toggle {
+  font-size: 13px;
+}
+.pub-cue {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pub-panel {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.pub-panel .listing-check {
+  margin-top: 0;
+}
+/* The archive address: the base read-only before the slug, which is the editable part. */
+.url-field {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.url-field:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.url-base {
+  display: flex;
+  align-items: center;
+  padding: 8px 2px 8px 10px;
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--sunken);
+}
+.url-field input {
+  flex: 1;
+  min-width: 6em;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 10px 8px 2px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+.url-field input:focus-visible {
+  outline: none;
+}
+.url-field.readonly input {
+  color: var(--muted);
+  font-weight: 500;
+  background: var(--sunken);
+}
+@media (max-width: 480px) {
+  .url-field {
+    flex-direction: column;
   }
+  .url-base {
+    padding-bottom: 0;
+  }
+  .url-field input {
+    padding-left: 10px;
+  }
+}
+.pub-taken {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--warn-fg);
+}
+.pub-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* The unlisted link, as the Schedule dialog shows an email-only post's web version. */
+.unlisted-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.unlisted-line svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.unlisted-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A sent post's page in two parts (DESIGN §3): the post, then its delivery. */
+.rec-head-page {
+  margin-bottom: 14px;
+}
+.rec-part-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rec-web {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rec-web-what {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+.rec-web-what code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.rec-web-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* The address Make email only takes down, struck through in its dialog. */
+.url-gone {
+  padding: 8px 10px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
   .tb {
     width: 34px;
     height: 34px;

@@ -32,6 +32,8 @@ import { renderEditor } from "./editor";
 
 type Draft = {
   post: Record<string, unknown>;
+  /** The address the slug would take now, numbered past one another post holds. */
+  archive_slug: string;
   markdown: string;
   author: string | null;
   scheduled?: { id: string; fire_at: number; remade_at: number | null } | null;
@@ -43,6 +45,8 @@ const draft = (over: Record<string, unknown> = {}): Draft => ({
     subject: "Owls",
     slug: "owls",
     slug_auto: true,
+    slug_reserved: false,
+    unlisted_token: "t0k3n",
     status: "draft",
     email_only: false,
     current_revision: "r1",
@@ -51,6 +55,7 @@ const draft = (over: Record<string, unknown> = {}): Draft => ({
   },
   markdown: "# Owls\n\nHoot.",
   author: "a@b.c",
+  archive_slug: (over.slug as string | undefined) ?? "owls",
 });
 
 /**
@@ -75,13 +80,33 @@ function draftServer(initial = draft()) {
       n += 1;
       const post: Record<string, unknown> = { ...state.post, ...body, current_revision: `r${n}` };
       // The server derives a following slug from the subject, or slugifies the one it is sent,
-      // and numbers it past a slug another post holds (`taken`).
+      // and says it would be numbered past a slug another post holds (`taken`); it numbers
+      // nothing until the address is reserved (SPEC §4).
       const want = post.slug_auto ? slugify(String(post.subject)) : slugify(String(post.slug));
-      post.slug = server.taken.has(want || "post") ? `${want || "post"}-2` : want || "post";
-      state = { ...state, post };
-      return { post: state.post };
+      post.slug = want || "post";
+      const archive_slug = server.taken.has(String(post.slug))
+        ? `${post.slug}-2`
+        : String(post.slug);
+      state = { ...state, post, archive_slug };
+      return { post: state.post, archive_slug };
     },
-    /** Slugs other posts hold, which a following slug is numbered past. */
+    /** A change to the post's publishing options (`PUT …/listing`): no revision, as the
+     *  server writes none for one. */
+    listing(req: FakeRequest) {
+      const body = req.json() as Record<string, unknown>;
+      const post: Record<string, unknown> = { ...state.post, ...body };
+      if (body.slug !== undefined || body.slug_auto !== undefined) {
+        post.slug_auto = body.slug_auto === true; // a slug sent sets it by hand
+        const want = post.slug_auto ? slugify(String(post.subject)) : slugify(String(post.slug));
+        post.slug = want || "post";
+      }
+      const archive_slug = server.taken.has(String(post.slug))
+        ? `${post.slug}-2`
+        : String(post.slug);
+      state = { ...state, post, archive_slug };
+      return { post: state.post, archive_slug, changed: true };
+    },
+    /** Slugs other posts hold, which an address would be numbered past. */
     taken: new Set<string>(),
     /** Another writer saved: the server moves on to a new revision. */
     elsewhere(author: string): string {
@@ -114,6 +139,7 @@ function scheduledPost(fireAt = Date.now() + 3_600_000, remadeAt: number | null 
   let sending: { id: string } | null = null;
   const postRoute: FakeRoute = { path: "/api/posts/p1", reply: () => ({ ...post.get(), sending }) };
   return {
+    server: post,
     sends,
     postRoute,
     routes: [
@@ -178,7 +204,9 @@ describe("editor view", () => {
     await vi.advanceTimersByTimeAsync(0);
   }
   const handle = () => unwrapHandle(mounted());
-  const puts = () => fake.calls.filter((c) => c.method === "PUT");
+  /** The draft's saves: each writes a revision (a listing change, its own route, writes none). */
+  const puts = () =>
+    fake.calls.filter((c) => c.method === "PUT" && c.url.pathname === "/api/posts/p1");
   const body = () => $<HTMLTextAreaElement>("#f-markdown");
 
   it("mounts a draft into its fields and reads as saved", async () => {
@@ -847,12 +875,16 @@ describe("editor view", () => {
     expect(slug.value).toBe("owls"); // no guess while typing: still the slug the post has
     slug.focus(); // Tab: the subject's blur saves
     await vi.advanceTimersByTimeAsync(0);
-    expect(slug.value).toBe("spring-update-2"); // shown though the field has focus
+    expect(slug.value).toBe("spring-update"); // shown though the field has focus
+    // Another post holds it, so the address will be numbered once it is reserved.
+    expect($("#pubTaken").textContent).toBe(
+      "Another post has this address, so this one will be spring-update-2.",
+    );
     expect(puts()[0]?.json()).toMatchObject({ subject: "Spring update", slug_auto: true });
     expect(puts()[0]?.json()).not.toHaveProperty("slug");
     body().focus(); // Tab on into the body
     typeInto(body(), "This spring…");
-    expect(slug.value).toBe("spring-update-2");
+    expect(slug.value).toBe("spring-update");
   });
 
   it("refills a cleared slug on leaving the field when the post already has the subject's slug", async () => {
@@ -874,37 +906,35 @@ describe("editor view", () => {
 
   it("lets a slug being typed by hand keep its cursor, showing the saved slug once the field is left", async () => {
     const server = draftServer();
-    server.taken.add("custom");
     await open([
       { path: "/api/posts/p1", reply: server.get },
       { method: "PUT", path: "/api/posts/p1", reply: (req) => server.put(req) },
     ]);
     const slug = $<HTMLInputElement>("#f-slug");
     slug.focus();
-    typeInto(slug, "custom");
+    typeInto(slug, "Custom Owls"); // the server makes it a slug
     await vi.advanceTimersByTimeAsync(5000); // the autosave lands mid-typing
     expect(puts()).toHaveLength(1);
-    expect(slug.value).toBe("custom"); // not rewritten under the cursor
+    expect(slug.value).toBe("Custom Owls"); // not rewritten under the cursor
     body().focus();
     await vi.advanceTimersByTimeAsync(0);
-    expect(slug.value).toBe("custom-2");
+    expect(slug.value).toBe("custom-owls");
     expect($("#saveStatus").textContent).toBe("Saved");
     expect(puts()).toHaveLength(1);
   });
 
   it("shows the saved slug on Enter in the slug field", async () => {
     const server = draftServer();
-    server.taken.add("custom");
     await open([
       { path: "/api/posts/p1", reply: server.get },
       { method: "PUT", path: "/api/posts/p1", reply: (req) => server.put(req) },
     ]);
     const slug = $<HTMLInputElement>("#f-slug");
     slug.focus();
-    typeInto(slug, "custom");
+    typeInto(slug, "Custom Owls");
     slug.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await vi.advanceTimersByTimeAsync(0);
-    expect(slug.value).toBe("custom-2");
+    expect(slug.value).toBe("custom-owls");
     expect($("#saveStatus").textContent).toBe("Saved");
   });
 
@@ -942,7 +972,7 @@ describe("editor view", () => {
     expect($("#saveStatus").textContent).toBe("Saved");
   });
 
-  it("reads as saved after the server numbers a slug, without saving again", async () => {
+  it("reads as saved after the server reshapes a slug, and warns of an address another post holds, without saving again", async () => {
     const server = draftServer();
     await open([
       { path: "/api/posts/p1", reply: server.get },
@@ -955,19 +985,20 @@ describe("editor view", () => {
     body().focus();
     await vi.advanceTimersByTimeAsync(0);
     expect(slug.value).toBe("barn-owls");
-    // Following the subject: another post takes its slug, and the next save is numbered.
+    expect($("#pubTaken").textContent).toBe("");
+    // Following the subject: another post takes its address, and the next save says so.
     server.taken.add("barn-owls");
     typeInto(body(), "Hoot.");
     await vi.advanceTimersByTimeAsync(5000);
-    expect(slug.value).toBe("barn-owls-2");
+    expect(slug.value).toBe("barn-owls");
+    expect($("#pubTaken").textContent).toContain("this one will be barn-owls-2");
     expect($("#saveStatus").textContent).toBe("Saved");
     // Set by hand: the slug is saved as the server made it, not as typed.
-    server.taken.add("custom");
     slug.focus();
-    typeInto(slug, "custom");
+    typeInto(slug, "Custom Owls");
     body().focus();
     await vi.advanceTimersByTimeAsync(0);
-    expect(slug.value).toBe("custom-2");
+    expect(slug.value).toBe("custom-owls");
     expect($("#saveStatus").textContent).toBe("Saved");
     await vi.advanceTimersByTimeAsync(30000);
     expect(puts()).toHaveLength(3); // neither numbered answer left the editor dirty
@@ -1162,6 +1193,7 @@ describe("editor view", () => {
     beforeEach(() => {
       appState.appConfig = {
         deployment: {
+          appOrigin: "https://newsletter.example.com",
           archiveOrigin: "https://newsletter.example.com",
           archiveBasePath: "/archive",
         },
@@ -1170,6 +1202,8 @@ describe("editor view", () => {
     afterEach(() => {
       appState.appConfig = null;
     });
+    /** The post's unlisted link, the "view in browser" its emails carry (SPEC §5). */
+    const UNLISTED = "https://newsletter.example.com/email/t0k3n";
     /** The preview frame loaded with `markup`, as the browser would load its srcdoc
      *  (happy-dom loads none), and its links. */
     function loadPreview(markup: string): HTMLAnchorElement[] {
@@ -1182,7 +1216,7 @@ describe("editor view", () => {
       return [...doc.querySelectorAll("a")];
     }
 
-    it("opens a draft's web version, under the slug it has now, and leaves every other link alone", async () => {
+    it("opens a draft's web version from its unlisted link, whatever its slug, and leaves every other link alone", async () => {
       const server = draftServer();
       await open([
         { path: "/api/posts/p1", reply: server.get },
@@ -1194,13 +1228,13 @@ describe("editor view", () => {
       await vi.advanceTimersByTimeAsync(0);
       const [own, before, other, out] = loadPreview(
         // The host spelled differently is still the same address.
-        `<a href="https://NEWSLETTER.example.com/archive/owls-at-dusk">View in browser</a><a href="${ARCHIVE}/owls">Old slug</a><a href="${ARCHIVE}/herons">Herons</a><a href="https://x.example">x</a>`,
+        `<a href="https://NEWSLETTER.example.com/email/t0k3n">View in browser</a><a href="${ARCHIVE}/owls-at-dusk">Its archive address</a><a href="${ARCHIVE}/herons">Herons</a><a href="https://x.example">x</a>`,
       );
       expect(own!.getAttribute("href")).toBe(webUrl());
       expect(own!.target).toBe("_blank");
       expect(own!.rel).toBe("noopener noreferrer");
-      // The slug the post had before its edit, and another post's page, are other addresses.
-      expect(before!.getAttribute("href")).toBe(`${ARCHIVE}/owls`);
+      // Its archive address, which no email carries, and another post's page are left alone.
+      expect(before!.getAttribute("href")).toBe(`${ARCHIVE}/owls-at-dusk`);
       expect(other!.getAttribute("href")).toBe(`${ARCHIVE}/herons`);
       expect(other!.target).toBe("_blank");
       expect(out!.getAttribute("href")).toBe("https://x.example");
@@ -1211,7 +1245,7 @@ describe("editor view", () => {
       const post = scheduledPost();
       await open(post.routes);
       const [own, other] = loadPreview(
-        `<a href="${ARCHIVE}/owls">View in browser</a><a href="${ARCHIVE}/herons">Herons</a>`,
+        `<a href="${UNLISTED}">View in browser</a><a href="${ARCHIVE}/herons">Herons</a>`,
       );
       expect(own!.getAttribute("href")).toBe(webUrl());
       expect(own!.target).toBe("_blank");
@@ -1900,6 +1934,7 @@ describe("editor view", () => {
     await open([
       { path: "/api/posts/p1", reply: server.get },
       { method: "PUT", path: "/api/posts/p1", reply: (req) => server.put(req) },
+      { method: "PUT", path: "/api/posts/p1/listing", reply: (req) => server.listing(req) },
       { path: "/api/subscribers", reply: () => ({ counts: { confirmed: 3 }, page: { total: 3 } }) },
       {
         method: "POST",
@@ -1913,15 +1948,32 @@ describe("editor view", () => {
     expect($(".modal .listing-check").textContent).toBe(
       "Email onlySent to subscribers, but not listed in your public archive. Anyone with the email can still open its web version.",
     );
-    // The default is stated, not only implied by the unchecked box.
-    expect($(".modal .hint").textContent).toMatch(/, and is listed in your archive\.$/);
+    // The default is stated, in the future tense, not only implied by the unchecked box, and
+    // the address shows read-only, set in the editor.
+    expect($(".modal .hint").textContent).toMatch(/\. It will be listed in your archive\.$/);
+    expect($<HTMLInputElement>("#schWhere input").value).toBe("owls");
+    expect($<HTMLInputElement>("#schWhere input").readOnly).toBe(true);
+    expect($("#schWhere").textContent).toContain("Set in the editor’s Publishing options.");
     box.checked = true;
     box.dispatchEvent(new Event("change"));
-    expect($(".modal .hint").textContent).toMatch(/, email only: not listed in your archive\.$/);
+    await vi.advanceTimersByTimeAsync(0);
+    expect($(".modal .hint").textContent).toMatch(
+      /\. It will be sent as email only, not listed in your archive\.$/,
+    );
+    // The same stored value as the editor's: it saved, and Publishing options shows it.
+    const saved = fake.calls.filter((c) => c.url.pathname === "/api/posts/p1/listing");
+    expect(saved.map((c) => c.json())).toEqual([{ email_only: true }]);
+    expect($<HTMLInputElement>("#f-email-only").checked).toBe(true);
+    expect($("#pubSummary").textContent).toBe(
+      "Will be sent as email only, not listed in your archive.",
+    );
+    expect($("#schWhere").textContent).toContain("anyone with the email can open it.");
     $("#toSendNow").click();
     await vi.advanceTimersByTimeAsync(0);
     expect($<HTMLInputElement>("#snEmailOnly").checked).toBe(true);
-    expect($("#snListing").textContent).toBe(", email only: not listed in your archive.");
+    expect($("#snListing").textContent).toBe(
+      ". It will be sent as email only, not listed in your archive.",
+    );
     $("#snGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const sent = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/send");
@@ -1933,7 +1985,99 @@ describe("editor view", () => {
     await open([{ path: "/api/posts/p1", reply: server.get }]);
     $("#scheduleBtn").click();
     expect($<HTMLInputElement>("#schEmailOnly").checked).toBe(true);
-    expect($("#schListing").textContent).toBe(", email only: not listed in your archive.");
+    expect($("#schListing").textContent).toBe(
+      ". It will be sent as email only, not listed in your archive.",
+    );
+  });
+
+  describe("Publishing options (DESIGN §3)", () => {
+    it("says under Subject where the post will appear, and opens the panel on request", async () => {
+      const server = draftServer();
+      await open([{ path: "/api/posts/p1", reply: server.get }]);
+      expect($("#pubSummary").textContent).toBe("Will be listed in your archive at /archive/owls");
+      const toggle = $("#pubToggle");
+      expect($("#pubPanel").hidden).toBe(true);
+      toggle.click();
+      expect($("#pubPanel").hidden).toBe(false);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect($<HTMLInputElement>("#f-slug").value).toBe("owls");
+      expect($("#pubAddress").hidden).toBe(false);
+      expect(fake.unhandled).toEqual([]);
+    });
+
+    it("saves Email only at once, and hides the archive address while the post won't be listed", async () => {
+      const server = draftServer();
+      await open([
+        { path: "/api/posts/p1", reply: server.get },
+        { method: "PUT", path: "/api/posts/p1/listing", reply: (req) => server.listing(req) },
+      ]);
+      $("#pubToggle").click();
+      const box = $<HTMLInputElement>("#f-email-only");
+      box.checked = true;
+      box.dispatchEvent(new Event("change"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fake.calls.at(-1)?.json()).toEqual({ email_only: true });
+      expect($("#pubAddress").hidden).toBe(true);
+      expect($("#pubSummary").textContent).toBe(
+        "Will be sent as email only, not listed in your archive.",
+      );
+      expect(puts()).toHaveLength(0); // no revision: the listing isn't part of the draft
+    });
+
+    it("keeps a scheduled post's options editable, saving the address as it changes, while the body is locked", async () => {
+      const post = scheduledPost();
+      const server = post.server;
+      await open([
+        ...post.routes,
+        { method: "PUT", path: "/api/posts/p1/listing", reply: (req) => server.listing(req) },
+      ]);
+      expect($(".pub-cue").textContent).toBe(
+        "Still editable while scheduled, and saves as it changes: neither choice is part of the email.",
+      );
+      expect($<HTMLInputElement>("#f-subject").readOnly).toBe(true);
+      const slug = $<HTMLInputElement>("#f-slug");
+      expect(slug.readOnly).toBe(false);
+      slug.focus();
+      typeInto(slug, "Owls at Dusk");
+      slug.blur();
+      await vi.advanceTimersByTimeAsync(0);
+      const listing = fake.calls.filter((c) => c.url.pathname === "/api/posts/p1/listing");
+      expect(listing.map((c) => c.json())).toEqual([{ slug: "Owls at Dusk" }]);
+      expect(slug.value).toBe("owls-at-dusk");
+      expect($("#pubSummary").textContent).toBe(
+        "Will be listed in your archive at /archive/owls-at-dusk",
+      );
+      expect(puts()).toHaveLength(0);
+    });
+
+    it("marks only Email only in a scheduled post's banner, as soon as it is chosen", async () => {
+      const post = scheduledPost();
+      await open([
+        ...post.routes,
+        { method: "PUT", path: "/api/posts/p1/listing", reply: (req) => post.server.listing(req) },
+      ]);
+      expect($("#schedWhen").textContent).not.toContain("Email only");
+      const box = $<HTMLInputElement>("#f-email-only");
+      box.checked = true;
+      box.dispatchEvent(new Event("change"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($("#schedWhen .sched-email-only").textContent).toBe("Email only");
+    });
+
+    it("shows a reserved address read-only, and never sends it with a save", async () => {
+      const server = draftServer(draft({ slug_reserved: true, slug_auto: false }));
+      await open([
+        { path: "/api/posts/p1", reply: server.get },
+        { method: "PUT", path: "/api/posts/p1", reply: (req) => server.put(req) },
+      ]);
+      expect($<HTMLInputElement>("#f-slug").readOnly).toBe(true);
+      expect(document.querySelector("#f-slug-auto")).toBeNull();
+      expect($("#pubAddress").textContent).toContain("Permanent");
+      typeInto(body(), "More.");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(puts()[0]?.json()).not.toHaveProperty("slug");
+      expect(puts()[0]?.json()).not.toHaveProperty("slug_auto");
+    });
   });
 
   it("sends now from the schedule dialog's demoted link, naming the audience: confirmed, less the suppressed (SPEC §6)", async () => {
@@ -2037,14 +2181,14 @@ describe("editor view", () => {
     ]);
     $("#scheduleBtn").click();
     expect($(".modal .hint").textContent).toBe(
-      "It sends at the time you pick, with a cancelable window until then, and is listed in your archive.",
+      "It sends at the time you pick, with a cancelable window until then. It will be listed in your archive.",
     );
     // One lead plus the minute the picker can't show: 10:00:30 + 2 min, to the minute.
     expect($<HTMLInputElement>("#schWhen").min).toBe("2026-09-23T10:02");
     $("#toSendNow").click();
     await vi.advanceTimersByTimeAsync(0);
     expect($(".modal .hint").textContent).toBe(
-      "Sends this draft, as it is now, to your subscribers in 1 to 2 minutes, and is listed in your archive. The post locks until then, and you can cancel any time before it starts sending.",
+      "Sends this draft, as it is now, to your subscribers in 1 to 2 minutes. It will be listed in your archive. The post locks until then, and you can cancel any time before it starts sending.",
     );
     $("#snGo").click();
     await vi.advanceTimersByTimeAsync(0);

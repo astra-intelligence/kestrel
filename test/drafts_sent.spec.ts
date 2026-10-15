@@ -72,8 +72,9 @@ async function seedSentSend(subject: string, slug: string, deliveries: SeedDeliv
   const now = Date.now();
   const postId = `p-${uniq()}`;
   const sendId = `s-${uniq()}`;
+  // Listed and sent, so its archive address is reserved, as its send's start reserved it.
   await env.DB.prepare(
-    "INSERT INTO posts (id, slug, subject, status, created_at, updated_at) VALUES (?, ?, ?, 'sent', ?, ?)",
+    "INSERT INTO posts (id, slug, slug_reserved, subject, status, created_at, updated_at) VALUES (?, ?, 1, ?, 'sent', ?, ?)",
   )
     .bind(postId, slug, subject, now, now)
     .run();

@@ -13,7 +13,7 @@ A few things to know as you write:
 - **A blank line starts a new paragraph.** In an email, a single line break doesn't.
 - **The opening lines** are the preview a mail client shows beside the subject.
 - **Images** go in by paste or drop, and Kestrel inserts a reference by file name, such as `![cover.jpg](cover.jpg)`. Replace the words in brackets with a short description. PNG, JPEG, WebP, or GIF, up to 5 MB each.
-- **The subject** sets the post's slug, the end of its permanent archive address, such as `newsletter.example.com/archive/spring-update`. The slug is fixed once you schedule.
+- **Where it will appear** is the line under the subject: its archive address, such as `newsletter.example.com/archive/spring-update`, which follows the subject, or that it will be sent as email only. **Publishing options** changes either (below).
 
 ## Test it
 
@@ -33,11 +33,17 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Send now →**, under the time picker, is for a post you've already reviewed. It still waits out the window, scheduling the post for the minimum lead from now.
 
-### Email only
+### Publishing options
 
-**Email only**, under the time in the Schedule dialog and in Send now, sends the post to your list as usual but leaves it out of your public archive and your home page. Use it for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. Its web version stays at its address, so the email's "view in browser" link works, and anyone with the email can open it, but search engines are asked not to list it.
+**Publishing options**, under the subject, holds two choices, and neither is part of the email, so both stay open while the post is scheduled and save as you change them.
 
-You can change it later. **Reschedule** shows the box too, and a sent post's page under **Sent** says where the post is listed: **Make email only** takes it off the archive at once, and **Add to archive…** asks first, since it puts the post in front of anyone visiting. Neither changes what was sent.
+**Email only** sends the post to your list as usual but leaves it out of your public archive and your home page, and gives it no archive address. Use it for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. The Schedule dialog and Send now show the same box, so you can still decide at send time.
+
+**Archive address** is where a listed post's page will be. It follows the subject until you type your own, and **Auto-generate from subject** hands it back. If another post already has the address, the editor says so and names the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
+
+Every email links its web version through the post's own **unlisted link**, which never changes. It opens the archive page while the post is listed, and the page itself while it's email only. Anyone with the email can open it, but nothing lists it, and search engines are asked not to.
+
+You can change the listing later. **Reschedule** shows the box too, and a sent post's page under **Sent** shows the post's address with **Make email only…** or **Add to archive…**. Both ask first. Making a post email only takes its archive address down, so links people shared stop working, but the address stays the post's: add it back to the archive and those links work again. Neither changes what was sent.
 
 ### Changing your mind
 
@@ -56,6 +62,6 @@ So a recipient count shown before the send is a snapshot. An import that adds su
 
 ### When it sends
 
-At the send time, the post moves to its send page under **Sent**, where you can watch it go out. From then it can't be edited, canceled, or moved. Its archive page goes up at the same moment, showing exactly the copy that was sent, so every email's "view in browser" link works. Whatever interrupts a send, such as your provider's daily quota running out, it waits and resumes where it stopped. No reader gets the same post twice.
+At the send time, the post moves to its send page under **Sent**, where you can watch it go out. From then it can't be edited, canceled, or moved. Its page goes up at the same moment, showing exactly the copy that was sent, so every email's "view in browser" link works. Whatever interrupts a send, such as your provider's daily quota running out, it waits and resumes where it stopped. No reader gets the same post twice.
 
 If a send needs your attention, the send page and the dashboard say so. [Troubleshooting](06-troubleshooting.md) covers each case.

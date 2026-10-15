@@ -20,16 +20,29 @@ const page =
 const htmlReply = () => new Response(page, { headers: { "content-type": "text/html" } });
 const FIRE_AT = Date.UTC(2026, 9, 12, 16);
 /** A post's read: a draft, a scheduled post, one whose send is going out, or a sent one. */
-const postReply = (stage: "draft" | "scheduled" | "sending" | "sent") => () =>
-  jsonResponse({
-    post: { id: "p1", slug: "herons", status: stage === "sending" ? "scheduled" : stage },
-    scheduled: stage === "scheduled" ? { id: "s1", fire_at: FIRE_AT, remade_at: null } : null,
-    sending: stage === "sending" ? { id: "s1" } : null,
-    sent: stage === "sent" ? { id: "s1" } : null,
-  });
+const postReply =
+  (stage: "draft" | "scheduled" | "sending" | "sent", emailOnly = false) =>
+  () =>
+    jsonResponse({
+      post: {
+        id: "p1",
+        slug: "herons",
+        unlisted_token: "t0k3n",
+        email_only: emailOnly,
+        status: stage === "sending" ? "scheduled" : stage,
+      },
+      archive_slug: "herons",
+      scheduled: stage === "scheduled" ? { id: "s1", fire_at: FIRE_AT, remade_at: null } : null,
+      sending: stage === "sending" ? { id: "s1" } : null,
+      sent: stage === "sent" ? { id: "s1" } : null,
+    });
 const deployment = () => {
   appState.appConfig = {
-    deployment: { archiveOrigin: "https://newsletter.example.com", archiveBasePath: "/archive" },
+    deployment: {
+      appOrigin: "https://newsletter.example.com",
+      archiveOrigin: "https://newsletter.example.com",
+      archiveBasePath: "/archive",
+    },
   } as unknown as typeof appState.appConfig;
 };
 /** The bar's words, as an element. */
@@ -77,17 +90,23 @@ describe("web version", () => {
     expect(webVersionHash("a/b c")).toBe("#/web/post/a%2Fb%20c");
   });
 
-  it("names the page as its tag, then where the post stands and where it will be published, as text", () => {
+  it("names the page as its tag, then where the post stands and where it will appear, as text", () => {
     const url = "https://newsletter.example.com/archive/herons";
     const short = "newsletter.example.com/archive/herons";
     const draft = bar({ scheduled: false, url });
-    expect(draft.textContent).toBe(`Web version Draft · will be published at ${short}`);
+    expect(draft.textContent).toBe(
+      `Web version Draft · will be listed in your archive at ${short}`,
+    );
     // The address doesn't answer yet, so it is text, and the bar has no link at all.
     expect(draft.querySelectorAll("a")).toHaveLength(0);
     // The tag is the dev pill's chip, apart from the sentence.
     expect(draft.querySelector(".web-bar-tag")?.textContent).toBe("Web version");
     expect(bar({ scheduled: true, url }).textContent).toBe(
-      `Web version Scheduled · will be published at ${short}`,
+      `Web version Scheduled · will be listed in your archive at ${short}`,
+    );
+    // Email only: it will have no archive address, so the bar names none (SPEC §5).
+    expect(bar({ scheduled: false, url, emailOnly: true }).textContent).toBe(
+      "Web version Draft · will be sent as email only, not listed in your archive",
     );
     // Unknown address or post: the bar names no address, or no stage, rather than a wrong one.
     expect(bar({ scheduled: false, url: null }).textContent).toBe("Web version Draft");
@@ -110,7 +129,7 @@ describe("web version", () => {
     expect(sandbox).not.toContain("allow-scripts");
     expect(sandbox).not.toContain("allow-forms");
     expect($(".web-bar").textContent).toBe(
-      "Web version Scheduled · will be published at newsletter.example.com/archive/herons",
+      "Web version Scheduled · will be listed in your archive at newsletter.example.com/archive/herons",
     );
     // The window scrolls the page: the frame has no scrolling of its own.
     expect(frame.getAttribute("scrolling")).toBe("no");
@@ -182,7 +201,7 @@ describe("web version", () => {
   });
 
   for (const stage of ["sending", "sent"] as const) {
-    it(`goes to the public page itself once the post is ${stage}`, async () => {
+    it(`goes to the public page itself, by its unlisted link, once the post is ${stage}`, async () => {
       location.hash = "#/web/post/p1";
       deployment();
       fake = fakeApi([
@@ -192,7 +211,8 @@ describe("web version", () => {
       const replace = vi.spyOn(location, "replace").mockImplementation(() => {});
       await mount((r, s) => renderWebVersion("p1", r, s));
       await settle();
-      expect(replace).toHaveBeenCalledWith("https://newsletter.example.com/archive/herons");
+      // The unlisted link opens the page whatever the listing, forwarding while it is listed.
+      expect(replace).toHaveBeenCalledWith("https://newsletter.example.com/email/t0k3n");
       expect(document.querySelector(".web-frame")).toBeNull();
     });
   }

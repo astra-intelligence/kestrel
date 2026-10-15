@@ -257,10 +257,15 @@ describe("dev seed (Field Notes dataset)", () => {
     expect(proof?.status).toBe("unsubscribed");
     expect(proof!.confirmed_at).toBeLessThan(test.fire_at);
     expect(proof!.unsubscribed_at).toBeLessThan(sends[1]!.fire_at);
-    // Its page answers for the email's link, unindexed; the lists leave it out.
-    const page = await SELF.fetch(`${base}/archive/test-email`);
+    // Its page answers at the email's unlisted link, unindexed; it never had an archive
+    // address, and the lists leave it out.
+    const token = await env.DB.prepare("SELECT unlisted_token FROM posts WHERE id = ?")
+      .bind(test.post_id)
+      .first<string>("unlisted_token");
+    const page = await SELF.fetch(`${base}/email/${token}`);
     expect(page.status).toBe(200);
     expect(page.headers.get("x-robots-tag")).toBe("noindex");
+    expect((await SELF.fetch(`${base}/archive/test-email`)).status).toBe(404);
     for (const path of ["/archive", "/"]) {
       expect(await (await SELF.fetch(`${base}${path}`)).text(), path).not.toContain(TEST_SUBJECT);
     }

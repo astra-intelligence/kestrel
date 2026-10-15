@@ -70,9 +70,9 @@ const GROUP_RECIPIENTS = 10;
 // What a run can cost, in D1 statements (and, where noted, provider requests), so it
 // only starts what it can finish. Each is an upper bound; the budget counts what is
 // actually spent.
-/** Opening: read the send, take the lease, resolve the audience (2), list the fresh
- *  rows. */
-const OPEN_COST = 5;
+/** Opening: read the send, take the lease and reserve a listed post's address (2),
+ *  resolve the audience (2), list the fresh rows. */
+const OPEN_COST = 6;
 /** One group, besides a request for each of its batches: read its rows, close any no
  *  longer to be mailed (2), renew the lease, hand off (2), record the outcomes (2). A
  *  group with a halted batch also records the hold (3), but then the run only releases
@@ -138,7 +138,8 @@ export async function runSend(
   const provider = getProvider(config, env);
   const now = Date.now();
 
-  // Acquire the lease (also moves scheduled -> sending). If we don't win, no-op.
+  // Acquire the lease (also moves scheduled -> sending, and reserves a listed post's archive
+  // address as the post is published). If we don't win, no-op.
   const lease = await sends.acquireLease(db, sendId, now, LEASE_TTL_MS);
   if (!lease) {
     return empty;

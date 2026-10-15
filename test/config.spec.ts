@@ -714,7 +714,7 @@ describe("createRouter — archive route follows the base path", () => {
 
   it("serves the archive at the configured base path, and 404s the default one", async () => {
     await sendPost("routed");
-    const post = (await posts.getBySlug(env.DB, "routed"))!;
+    const post = (await posts.getByArchiveSlug(env.DB, "routed"))!;
     // A non-default base path, so a route hard-coded to /archive can't pass for this one.
     const router = createRouter({
       archiveBasePath: "/issues",

@@ -112,6 +112,10 @@ export function sendView(row: SendSummary, over: Partial<SendView> = {}): SendVi
         row.status === "sending" || row.status === "sent"
           ? `https://birds.example/${row.post_id}`
           : null,
+      unlisted:
+        row.status === "sending" || row.status === "sent"
+          ? `https://app.birds.example/email/t-${row.post_id}`
+          : null,
     },
     ...over,
   };
