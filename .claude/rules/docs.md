@@ -42,13 +42,13 @@ The Publishing set gets a publisher going, and tells them about the decisions to
 
 - **Each page has one goal,** a task the publisher does or a question they bring. A page whose content serves another page's goal belongs in that page, as a later section.
 - **Answer first.** The page, and a section a link lands on, opens with the short answer: what to do, and where to click, by the dashboard's own words in bold (**Subscribers → Import**). No page overview, Before you begin, or Check it, and numbered sections only where the task is a sequence, as a migration is.
-- **A decision that comes before the work comes right after the answer,** in bold, such as moving to the paid hosting plan before importing a large list. When it's the operator's, say what to ask for and link the setup guide page that makes the change, which is where a publisher who also manages the instance goes.
+- **A decision that comes before the work comes right after the answer,** in bold, such as upgrading to Workers Paid before importing a large list. When it's a change to the deployment, link the setup guide page that makes it.
 - **Only what changes what the publisher does.** The dashboard explains itself as they go, so a page doesn't walk it screen by screen. Exact rules, edge cases, and the API go in a reference section at the page's end, under its own heading, or in the API reference.
 - **Each fact once.** One page holds it, and the others link there in a line.
 - **Short.** The task part of a page fits in a screen or two.
 - **No closing "Next" line.** The Docs tab's pager already links the next page in the section.
 - **Facts come from the app, not the documents alone.** Check a label against the UI's source as well as DESIGN, and a behavior against the code as well as SPEC. Where they disagree, describe what the app does and flag the gap to the maintainer.
-- **No deploy vocabulary.** Never assume the reader touched Cloudflare, wrangler, or AWS. A fact that belongs to whoever deploys (the paid hosting plan, reply forwarding, the From address) is named as theirs, "whoever manages your Kestrel instance", with a link into the setup guide for the detail, never restated. Name the plans as the free and the paid hosting plan.
+- **Say what to do, not who does it.** The reader may also manage the instance, so a change that belongs to the deployment says what to do and links the setup guide page that does it, never restating it. Name the provider's own product (Cloudflare's Workers Paid plan, Amazon SES), so a search finds it. Never assume the reader has used wrangler or a terminal.
 - **Settled facts, cited and hedged.** A legal claim links its source and says whose law it is. Where the law is judgment, say "usually" or "probably". A page with legal content says it's general information, not legal advice.
 - **Headings are link targets.** The editor links a section by its heading's exact words, and a spec fails when a linked heading changes, so rename a linked heading only with its links.
 

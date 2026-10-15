@@ -1,8 +1,8 @@
 # Bring your existing list
 
-If your readers are on another service, move them to Kestrel before your first post, with the consent they gave there. You export your list from the old service, convert it to Kestrel's format, and import it under **Subscribers → Import**. Kestrel shows you what the import will do before anything changes, and an import never emails anyone.
+This guide moves your subscribers from another newsletter service to Kestrel, with the consent they gave there. You export your list from the old service, convert it to Kestrel's format, and import it under **Subscribers → Import**. Along the way, it covers what carries over, the limits on an import, and taking your list out again. Kestrel shows you what an import will do before anything changes, and an import never emails anyone.
 
-**With more than about 5,000 subscribers, move to the paid hosting plan first.** The free plan caps database writes per day, and a large import plus a send can use them up. When that happens, your newsletter stops until midnight UTC. The paid plan is $5 a month and has no daily cap. Whoever manages your Kestrel instance makes the change, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
+**With more than about 5,000 subscribers, upgrade to Cloudflare's Workers Paid plan before you import.** The free plan caps database writes per day, and a large import plus a send can use them up. When that happens, the app stops working until midnight UTC. Workers Paid is $5 a month and has no daily cap, and [As your list grows](../get-started/06-go-live.md#as-your-list-grows) walks through the upgrade.
 
 If you're starting without a list, skip this step and go on to [Write and send a post](04-write-a-post.md).
 
