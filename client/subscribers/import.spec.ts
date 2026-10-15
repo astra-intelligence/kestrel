@@ -151,7 +151,9 @@ describe("import view", () => {
     expect($$(".imp-sample tbody tr")).toHaveLength(3);
     // Each column is described in one place, the reference page the link opens.
     expect(document.querySelector(".imp-ref")).toBe(null);
-    expect($<HTMLAnchorElement>(".imp-links a").getAttribute("href")).toBe("#/docs/import-format");
+    expect($<HTMLAnchorElement>(".imp-links a").getAttribute("href")).toBe(
+      "#/docs/your-list/the-file-format",
+    );
     expect($("#impLimit").textContent).toBe(
       "CSV or .txt, up to 1,000 rows. On the Workers Free plan’s limits, an import takes 1,000 rows.",
     );

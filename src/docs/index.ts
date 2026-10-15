@@ -4,7 +4,7 @@
  * (`docs/README.md` and the section folders it lists) is for whoever deploys and runs the
  * instance. The Markdown is bundled into the Worker as Text modules (the `rules` entry in
  * wrangler.jsonc) and served read-only through the authed docs API. The Markdown in `docs/` is
- * the single source of truth — the pages are NOT editable in the app.
+ * the single source of truth, and the pages are NOT editable in the app.
  *
  * Each set's index file is its landing page and its table of contents both: its H1 and
  * intro, then a `##` heading per section with a blurb and a list of the section's pages,
@@ -31,17 +31,16 @@ import connectClaude from "../../docs/guides/01-connect-claude.md";
 import notifications from "../../docs/guides/03-notifications.md";
 import rateLimit from "../../docs/guides/05-rate-limit.md";
 import upgrade from "../../docs/guides/07-upgrade.md";
-import tryLocally from "../../docs/guides/08-try-locally.md";
+import listGrows from "../../docs/guides/09-as-your-list-grows.md";
 import yourList from "../../docs/publishing/01-your-list.md";
 import sendingRules from "../../docs/publishing/02-sending-rules.md";
 import nameYourPublication from "../../docs/publishing/03-name-your-publication.md";
 import writeAPost from "../../docs/publishing/04-write-a-post.md";
-import schedulingAndSending from "../../docs/publishing/05-scheduling-and-sending.md";
-import afterASend from "../../docs/publishing/06-after-a-send.md";
+import troubleshooting from "../../docs/publishing/06-troubleshooting.md";
 import workingWithClaude from "../../docs/publishing/07-working-with-claude.md";
-import importFormat from "../../docs/publishing/08-import-format.md";
 import shareYourSubscribeLink from "../../docs/publishing/09-share-your-subscribe-link.md";
 import checkYourSetup from "../../docs/publishing/10-check-your-setup.md";
+import emailTemplate from "../../docs/publishing/11-email-template.md";
 import publishingIndex from "../../docs/publishing/README.md";
 import selfHostingIndex from "../../docs/README.md";
 import configuration from "../../docs/reference/01-configuration.md";
@@ -62,10 +61,9 @@ const PAGES: Record<string, string> = {
   "publishing/02-sending-rules.md": sendingRules,
   "publishing/03-name-your-publication.md": nameYourPublication,
   "publishing/04-write-a-post.md": writeAPost,
-  "publishing/05-scheduling-and-sending.md": schedulingAndSending,
-  "publishing/06-after-a-send.md": afterASend,
+  "publishing/06-troubleshooting.md": troubleshooting,
   "publishing/07-working-with-claude.md": workingWithClaude,
-  "publishing/08-import-format.md": importFormat,
+  "publishing/11-email-template.md": emailTemplate,
   "publishing/09-share-your-subscribe-link.md": shareYourSubscribeLink,
   "publishing/10-check-your-setup.md": checkYourSetup,
   "get-started/02-deploy.md": deploy,
@@ -77,7 +75,7 @@ const PAGES: Record<string, string> = {
   "guides/03-notifications.md": notifications,
   "guides/05-rate-limit.md": rateLimit,
   "guides/07-upgrade.md": upgrade,
-  "guides/08-try-locally.md": tryLocally,
+  "guides/09-as-your-list-grows.md": listGrows,
   "reference/01-configuration.md": configuration,
   "reference/02-sending-domain-dns.md": sendingDomain,
 };
@@ -265,7 +263,7 @@ function renderSets(): DocSet[] {
   }));
 }
 
-/** The sets, and every doc in reading order — slug, title, set, section, and rendered
+/** The sets, and every doc in reading order: slug, title, set, section, and rendered
  *  fragment. */
 export function renderDocs(): DocsResponse {
   return {
@@ -286,11 +284,22 @@ const MD_LINK = /\]\(([^)\s#:]+\.md)(#[^)\s]*)?\)/g;
 // inline span.
 const MD_CODE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$|`[^`\n]+`/gm;
 
-/** A doc's Markdown for an agent to read (SPEC §11): a page by its slug, or a set's index by
- *  its id, with its links pointed at the other docs' Markdown routes. Null for a name that is
- *  neither. */
+// Slugs a released page had before it merged into another, so an agent that still names the
+// old one, such as an instance's operator context written by an earlier release, reads the
+// page that now holds its content.
+const FORMER_SLUGS = new Map([
+  ["import-format", "your-list"],
+  ["scheduling-and-sending", "write-a-post"],
+  ["after-a-send", "troubleshooting"],
+  ["try-locally", "deploy"],
+]);
+
+/** A doc's Markdown for an agent to read (SPEC §11): a page by its slug or a former slug, or a
+ *  set's index by its id, with its links pointed at the other docs' Markdown routes. Null for
+ *  a name that is none of these. */
 export function docMarkdown(name: string): string | null {
-  const doc = DOCS.find((d) => d.slug === name);
+  const slug = FORMER_SLUGS.get(name) ?? name;
+  const doc = DOCS.find((d) => d.slug === slug);
   const set = SET_SOURCES.find((s) => s.id === name);
   const from = doc?.path ?? set?.path;
   const markdown = doc?.markdown ?? set?.index;

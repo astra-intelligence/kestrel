@@ -16,20 +16,19 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       "publishing/set-up-your-publication/your-list",
       "publishing/set-up-your-publication/write-a-post",
       "publishing/set-up-your-publication/share-your-subscribe-link",
-      "publishing/sending/scheduling-and-sending",
-      "publishing/sending/after-a-send",
-      "publishing/sending/sending-rules",
-      "publishing/more/working-with-claude",
-      "publishing/more/import-format",
+      "publishing/go-further/email-template",
+      "publishing/go-further/working-with-claude",
+      "publishing/rules-and-troubleshooting/sending-rules",
+      "publishing/rules-and-troubleshooting/troubleshooting",
       "self-hosting/get-started/deploy",
       "self-hosting/get-started/access",
       "self-hosting/get-started/ses",
       "self-hosting/get-started/verify",
       "self-hosting/get-started/go-live",
       "self-hosting/guides/connect-claude",
-      "self-hosting/guides/try-locally",
       "self-hosting/guides/notifications",
       "self-hosting/guides/rate-limit",
+      "self-hosting/guides/as-your-list-grows",
       "self-hosting/guides/upgrade",
       "self-hosting/reference/configuration",
       "self-hosting/reference/sending-domain-dns",
@@ -52,8 +51,8 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
     expect(sets.map((s) => s.sections.map((sec) => [sec.id, sec.title, sec.numbered]))).toEqual([
       [
         ["set-up-your-publication", "Set up your publication", true],
-        ["sending", "Sending", false],
-        ["more", "More", false],
+        ["go-further", "Go further", false],
+        ["rules-and-troubleshooting", "Rules and troubleshooting", false],
       ],
       [
         ["get-started", "Get started", true],
@@ -128,10 +127,10 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
     expect(start?.html).toContain('href="#/docs/sending-domain-dns/choose-your-sending-name"');
     // Across sets: a publisher page to the setup guide, and back.
     expect(docs.find((d) => d.slug === "your-list")?.html).toContain(
-      'href="#/docs/go-live/as-your-list-grows"',
+      'href="#/docs/as-your-list-grows"',
     );
     expect(docs.find((d) => d.slug === "connect-claude")?.html).toContain(
-      'href="#/docs/import-format"',
+      'href="#/docs/your-list/the-file-format"',
     );
   });
 
@@ -169,9 +168,17 @@ describe("each doc as Markdown, for an agent (docMarkdown)", () => {
   it("serves a page's Markdown with its links pointed at the other docs' Markdown", () => {
     const md = docMarkdown("your-list") ?? "";
     expect(md).toMatch(/^# Bring your existing list/);
-    expect(md).toContain("](import-format.md)");
-    expect(md).toContain("](go-live.md#as-your-list-grows)");
+    expect(md).toContain("](your-list.md#the-file-format)");
+    expect(md).toContain("](as-your-list-grows.md)");
     expect(md).not.toMatch(/\]\([^)]*\d{2}-[a-z0-9-]+\.md/);
+  });
+
+  it("serves a merged page under its former slug, which an earlier release's context or links may name", () => {
+    expect(docMarkdown("import-format")).toBe(docMarkdown("your-list"));
+    expect(docMarkdown("import-format")).toMatch(/^# Bring your existing list/);
+    expect(docMarkdown("scheduling-and-sending")).toBe(docMarkdown("write-a-post"));
+    expect(docMarkdown("after-a-send")).toBe(docMarkdown("troubleshooting"));
+    expect(docMarkdown("try-locally")).toBe(docMarkdown("deploy"));
   });
 
   it("serves a set's index by its id, linking its pages and the other set", () => {

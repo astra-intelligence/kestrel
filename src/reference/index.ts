@@ -110,7 +110,7 @@ function jsonBlock(label: string, value: unknown): string {
 /** One route as a Markdown section: its method and path as the heading, then the summary,
  *  description, body types, query parameters, and example. */
 function routeMarkdown(r: ReferenceEntry): string {
-  const parts = [`### ${r.method} ${r.path}`, r.summary];
+  const parts = [`#### ${r.method} ${r.path}`, r.summary];
   if (r.description) {
     parts.push(r.description);
   }
@@ -134,16 +134,17 @@ function routeMarkdown(r: ReferenceEntry): string {
 }
 
 /**
- * The reference as one Markdown document, for an agent to read (SPEC §11): a heading per
- * tier and per resource, then each route. A projection of the same groups `buildReference`
- * returns, so it can't drift from the JSON. `origin` is the base URL the paths hang off.
+ * The reference as one Markdown document, for an agent to read (SPEC §11): a `##` heading per
+ * tier, a `###` per resource within it, and a `####` per route. A projection of the same
+ * groups `buildReference` returns, so it can't drift from the JSON. `origin` is the base URL
+ * the paths hang off.
  */
 export function referenceMarkdown(groups: readonly ReferenceGroup[], origin: string): string {
   const head = `# API reference\n\nEvery route this instance serves, generated from its registration, so every endpoint the editor and Claude can call is listed here. Base URL \`${origin}\`. Admin routes take the same authentication as the editor: Claude sends its service token.`;
   const tiers = groups.map((g) => {
     const resources = g.resources.map((res) =>
       [
-        `## ${g.title}: ${res.title}`,
+        `### ${res.title}`,
         ...g.routes.filter((r) => r.resource === res.key).map(routeMarkdown),
       ].join("\n\n"),
     );

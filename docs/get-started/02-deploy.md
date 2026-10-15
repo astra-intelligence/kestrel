@@ -56,7 +56,14 @@ Your instance's repository holds its configuration, its database migrations, and
     git push -u origin HEAD
     ```
 
-1. **(Optional)** Try Kestrel locally before you deploy it. Your instance is written and installed, so start at [Start the app](../guides/08-try-locally.md#2-start-the-app), and come back here when you're done. Email goes to a stand-in, so nothing reaches a real inbox.
+1. **(Optional)** Try Kestrel locally before you deploy it. Copy the local settings, and start the app:
+
+    ```bash
+    cp .dev.vars.example .dev.vars
+    npm run dev
+    ```
+
+    Open http://localhost:8787/dashboard/, and run `npm run seed` in a second terminal to load a demo publication. Email goes to a stand-in, so nothing reaches a real inbox. Stop the server with <kbd>Ctrl</kbd>+<kbd>C</kbd> when you're done.
 
 ## 2. Sign in to Cloudflare
 
@@ -118,7 +125,7 @@ Name `--env production` on every Wrangler command that creates or binds a resour
         }
       ],
       "vars": {
-        "PROVIDER": "",                                            // ← stays empty until step 3
+        "PROVIDER": "",                                            // ← stays empty until Connect Amazon SES
         "APP_ORIGIN": "https://newsletter.example.com",            // ← your app's hostname
         "ARCHIVE_BASE_PATH": "/archive",
         "SENDING_DOMAIN": "send.example.com",                      // ← your sending hostname
@@ -130,8 +137,8 @@ Name `--env production` on every Wrangler command that creates or binds a resour
     What each one does:
 
     - **`routes`** puts the app on your hostname when you deploy. Cloudflare creates the DNS record and the certificate. Your domain must be in the same Cloudflare account, and the hostname can't already have a CNAME record; delete one if it does. The block also turns off the `workers.dev` addresses, so the app answers only on your hostname.
-    - **`PROVIDER` stays empty.** Step 3, [Connect Amazon SES](04-ses.md), sets it. Until then the app runs without an email provider: you can write and preview posts, but scheduling, test emails, and signups are refused. Never set it to `fake`, the top level's value, even when a wrangler warning suggests copying it: `fake` delivers nothing, and the app refuses it on your hostname.
-    - **`ARCHIVE_BASE_PATH`** is permanent once you send. Every post you send carries its `/archive/…` link, and changing the prefix later breaks the links you've already mailed. Keep `/archive` unless you have a reason not to.
+    - **`PROVIDER` stays empty.** [Connect Amazon SES](04-ses.md) sets it. Until then the app runs without an email provider: posts can be written and previewed, but scheduling, test emails, and signups are refused. Never set it to `fake`, the top level's value, even when a wrangler warning suggests copying it: `fake` delivers nothing, and the app refuses it on your hostname.
+    - **`ARCHIVE_BASE_PATH`** is permanent once the first post goes out. Every post sent carries its `/archive/…` link, and changing the prefix later breaks the links already mailed. Keep `/archive` unless you have a reason not to.
     - **`FROM_ADDRESS`** is the address every email comes from. Keep it on your sending hostname, and set `SENDING_DOMAIN` to the part after the `@`.
 
     Change every `example.com` value, the route included, even before you connect a provider. The app checks its settings but can't see the route: it refuses to run while `APP_ORIGIN`, `SENDING_DOMAIN`, or `FROM_ADDRESS`, or `ARCHIVE_ORIGIN` or `MEDIA_PUBLIC_BASE` if you set them, is still on `example.com`, since its links and the address your email comes from would name a domain that isn't yours.
@@ -195,7 +202,7 @@ This deploys the release your instance runs, with your settings. The output ends
 
     In a browser, `https://newsletter.example.com/dashboard/` says the editor is locked until you set up Access. That's expected.
 
-1. In a browser, `https://newsletter.example.com/` shows your newsletter's public landing page. Its subscribe page, `/subscribe`, says signups aren't open yet, until step 3, Connect Amazon SES.
+1. In a browser, `https://newsletter.example.com/` shows the newsletter's public landing page. Its subscribe page, `/subscribe`, says signups aren't open yet, until Connect Amazon SES.
 
 If the public pages instead say the newsletter is temporarily unavailable, and `/health` answers `500` with a body like `{"error":"invalid_config","variable":"APP_ORIGIN",…}`, the setting it names is missing, malformed, or still on `example.com`. Fix it in `wrangler.jsonc`, commit, and deploy again.
 

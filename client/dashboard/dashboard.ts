@@ -208,7 +208,7 @@ export async function renderDashboard(view: HTMLElement, signal: AbortSignal): P
   const pub = derivePublication(appState.appConfig);
   const deployment = appState.appConfig?.deployment ?? null;
 
-  // First run — nothing written yet: replace the body with the onboarding checklist (the
+  // First run, with nothing written yet: replace the body with the onboarding checklist (the
   // shared Getting-started component) rather than a wall of empty tiles. It ends at the
   // first post, not the first subscriber, so bringing a list in (a step on it) doesn't
   // take away the steps after it.

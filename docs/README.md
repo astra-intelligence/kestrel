@@ -1,6 +1,6 @@
 # Self-hosting Kestrel
 
-These pages cover deploying and running your own Kestrel, from an empty repository to a live newsletter on your Cloudflare account. Writing and sending the newsletter is covered in [Publishing](publishing/README.md).
+These pages cover deploying and running your own Kestrel, from an empty repository to a live newsletter on your Cloudflare account. Writing and sending the newsletter is covered in [Publishing](publishing/README.md). These pages call whoever writes and sends it the publisher, which may be you.
 
 ## Get started
 
@@ -17,9 +17,9 @@ Follow these steps, from an empty repository to a live newsletter. Each one ends
 Each one stands on its own. Pick the ones you need.
 
 - [Connect Claude to the API](guides/01-connect-claude.md)
-- [Try Kestrel locally first](guides/08-try-locally.md)
 - [Notifications through Cloudflare's email](guides/03-notifications.md)
 - [Rate-limit the subscribe form](guides/05-rate-limit.md)
+- [As your list grows](guides/09-as-your-list-grows.md)
 - [Upgrade to a new release](guides/07-upgrade.md)
 
 ## Reference

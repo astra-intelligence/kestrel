@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import referencePage from "../docs/publishing/08-import-format.md?raw";
+import referencePage from "../docs/publishing/01-your-list.md?raw";
 import { utcDayStart } from "../shared/daily_writes";
 import {
   EXPORT_PAGE_ROWS,
@@ -215,6 +215,13 @@ describe("the format, as the API serves it (SPEC §7)", () => {
     expect(p.counts).toEqual(
       counts({ create_confirmed: 2, create_unsubscribed: 1, suppression_added: 1 }),
     );
+    // The short sample the page shows first, in its convert step, plans cleanly too.
+    const sample =
+      referencePage
+        .split("the five columns that decide what happens to each row:\n\n```\n")[1]
+        ?.split("```")[0] ?? "";
+    const q = await planOk({ file: { name: "sample.csv", text: sample } });
+    expect(q.counts).toEqual(counts({ create_confirmed: 2, create_unsubscribed: 1 }));
   });
 
   it("is the publisher's: every import route is behind sign-in", async () => {

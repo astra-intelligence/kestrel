@@ -10,6 +10,15 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+**Upgrading.** No database migrations. Run `npm run check-context` in your instance's repository: `/migrate-list` now reads the import format from "Bring your existing list".
+
+### Changed
+
+- The Publishing docs are reorganized around what a publisher has to do or decide. Their sections are **Set up your publication**, **Go further** (Edit your email template, Working with Claude), and **Rules and troubleshooting** (Sending rules, Troubleshooting). Write and send a post covers scheduling too, Troubleshooting replaces After a send with each problem a send or an import reports, in its own words, and the import format is the last section of Bring your existing list, which opens with when to upgrade to Workers Paid.
+- In Self-hosting, **As your list grows** is its own guide (raising Amazon SES limits and upgrading to Workers Paid, with how long a send takes after each), Verify it works ends by checking SES production access, and Go live hands over to the publisher, including letting them sign in through Access. The pages call whoever writes the newsletter the publisher. Try Kestrel locally first moves into the README, now the front page for someone deciding whether to run Kestrel, and working on Kestrel's own source moves to CONTRIBUTING.md.
+- The Markdown of each removed page (`import-format`, `scheduling-and-sending`, `after-a-send`, `try-locally`) still answers at its old address, with the page that now holds its content. The import screen's **Import format reference →** opens the file format section.
+- The operator's Claude context: `/migrate-list` reads the import format from `GET /api/docs/your-list.md`, since the separate import format page is gone.
+
 ## [1.10.0] - 2026-10-14
 
 **Upgrading from 1.9.0.** No database migrations. Run `npm run check-context` in your instance's repository: this release changes the operator's Claude context (a new `/migrate-list` skill, and rules for erasing, for choosing between unsubscribing and blocking, and for reading the docs as Markdown), and a copy you've edited is merged by hand. Three API changes can break a script of yours, listed under Breaking. One that adds suppressions sends `reason: "manual"` or none, reads what was stored from the answer's `suppression`, and takes a 200 with `added: false` as already suppressed. One that clears suppressions takes a 409 `erasure_marker` on an erased address as final. One that reads `GET /api/docs` reads `sets` in place of `landing`.

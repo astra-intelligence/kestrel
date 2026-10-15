@@ -1,6 +1,6 @@
 # Connect Claude to the API
 
-Claude Code can draft, edit, proofread, and schedule your posts through the same API the editor uses. It has its own Cloudflare Access credential, so its changes show as Claude's, not yours. Anything it schedules waits out the review window, where you can still cancel it.
+Claude Code can draft, edit, proofread, and schedule posts through the same API the editor uses. It has its own Cloudflare Access credential, so its changes show as Claude's, not a person's. Anything it schedules waits out the review window, where the publisher can still cancel it.
 
 In this guide, you create a service token for Claude Code, and add a policy for it to your Access application. Then you store the token where Claude Code reads it, check that it works, and point Claude at the API reference.
 
@@ -77,9 +77,9 @@ Read GET /api/reference first, and use it for every call.
 
 The reference is also served as Markdown, `GET /api/reference.md`, which reads more easily for Claude than the JSON. So are the docs: `GET /api/docs/publishing.md` lists the publisher's pages, `GET /api/docs/self-hosting.md` this guide's, and each page is at `GET /api/docs/<slug>.md`.
 
-Claude reads the reference, and from there can list your posts, write a draft, and schedule it. The reference lists the body types each route takes. Most take JSON, sent with `Content-Type: application/json`. An image upload takes a multipart form, or the image file itself.
+Claude reads the reference, and from there can list the posts, write a draft, and schedule it. The reference lists the body types each route takes. Most take JSON, sent with `Content-Type: application/json`. An image upload takes a multipart form, or the image file itself.
 
-To bring your subscribers over from another service, ask Claude to import your list. Your instance's `/migrate-list` skill reads the format from `GET /api/imports/format` and converts the old service's export to it. It checks Kestrel's plan against its own counts, and asks for your attestation before it imports anyone as a subscriber. [Bring your existing list](../publishing/01-your-list.md) explains what an import does, and the [import format](../publishing/08-import-format.md) describes every column.
+To bring subscribers over from another service, ask Claude to import the list, as [Bring your existing list](../publishing/01-your-list.md) describes. Its [file format](../publishing/01-your-list.md#the-file-format) section describes every column.
 
 ## Check it
 
@@ -89,7 +89,7 @@ To bring your subscribers over from another service, ask Claude to import your l
     {"principal":{"kind":"service"},"auth":{"mode":"access"}}
     ```
 
-1. Ask Claude to list your posts. It answers with the posts the editor shows.
+1. Ask Claude to list the posts. It answers with the posts the editor shows.
 
 1. Open a draft in the editor, and ask Claude to change a word in it. The editor shows that the draft was changed elsewhere, last edited by **Claude**.
 

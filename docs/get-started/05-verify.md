@@ -1,8 +1,8 @@
 # Verify it works
 
-Some things only show up with real email: whether inboxes trust your mail, how it looks in a real mail client, and whether bounces and unsubscribes come back to the app. Check them now, while your list is empty and every email goes only to you.
+Some things only show up with real email: whether inboxes trust your mail, how it looks in a real mail client, and whether bounces and unsubscribes come back to the app. Check them now, while the list is empty and every email goes only to you.
 
-In this guide, you send yourself a test email, reply to it, and check that it passes authentication. Then you set up your notifications, send a real post to yourself as a subscriber, and unsubscribe. Finally, you check that bounces and complaints reach the app, and read the app's logs.
+In this guide, you send yourself a test email, reply to it, and check that it passes authentication. Then you set up notifications, send a real post to yourself as a subscriber, and unsubscribe. Finally, you check that bounces and complaints reach the app, read the app's logs, and check that SES can send to anyone.
 
 ## Before you begin
 
@@ -19,7 +19,7 @@ A test email goes through the same code as a real send. If the test looks right,
 
 1. Open the email. It should arrive in your inbox, not in spam. The image loads and the subject reads as you wrote it. Its **View in browser** link opens "Nothing here yet" until the post goes out, and its unsubscribe link opens the page a subscriber sees, marked as a test and showing a sample address. Its button walks through to the confirmation, but a test email unsubscribes no one. Section 5 unsubscribes for real.
 
-1. Reply to it, as a reader would. Reply from an address other than the inbox your From address forwards to, such as your second address. Gmail doesn't show you a message you sent when it comes back to you. Send that address a test email too if you need one. The reply arrives in the inbox you chose in [Connect Amazon SES](04-ses.md#3-receive-replies-at-your-from-address). The app can't see your forwarding, so this is the only proof that readers can reach you. If the reply bounces, check the routing rule and the destination address there.
+1. Reply to it, as a reader would. Reply from an address other than the inbox your From address forwards to, such as your second address. Gmail doesn't show you a message you sent when it comes back to you. Send that address a test email too if you need one. The reply arrives in the inbox you chose in [Connect Amazon SES](04-ses.md#3-receive-replies-at-your-from-address). The app can't see your forwarding, so this is the only proof that readers can reach the publisher. If the reply bounces, check the routing rule and the destination address there.
 
 ## 2. Check that it passes authentication
 
@@ -37,15 +37,17 @@ Inboxes trust mail that passes DKIM and DMARC for the domain it's from. Passing 
 
 If a check fails, compare your DNS records with the ones in [Connect Amazon SES](04-ses.md#1-verify-your-sending-hostname). [Sending-domain DNS](../reference/02-sending-domain-dns.md#verify-alignment) explains each result.
 
-## 3. Set up your notifications
+## 3. Set up notifications
 
-Kestrel emails you when a send finishes, and right away when one runs into a problem. Notifications go through your email provider. To send them through Cloudflare instead, see [Notifications through Cloudflare's email](../guides/03-notifications.md).
+Kestrel emails the notifications address when a send finishes, and right away when one runs into a problem. Notifications go through your email provider. To send them through Cloudflare instead, see [Notifications through Cloudflare's email](../guides/03-notifications.md).
 
 1. In the editor, open **Settings → Notifications**.
 
 1. Enter your address, and select **Save**.
 
 1. Select **Send a test notification**. It arrives at that address.
+
+Use your own address to test. If you're not the publisher, they set theirs in [Check your setup](../publishing/10-check-your-setup.md).
 
 ## 4. Send a real post to yourself
 
@@ -55,7 +57,7 @@ This is a real send, to a list of one. It proves the whole path: subscribing, co
 
 1. Open the confirmation email, follow its link, and select **Confirm**. In the editor, **Subscribers** shows the address as **Confirmed**.
 
-1. Open your post, select **Schedule**, and then **Send now**. Every send waits at least five minutes before it goes out, so you can cancel a mistake.
+1. Open the post, select **Schedule**, and then **Send now**. Every send waits at least five minutes before it goes out, so you can cancel a mistake.
 
 1. Cancel the send, to see that canceling stops it. Then select **Send now** again, and let it go.
 
@@ -86,7 +88,7 @@ If an address has no flag, SES's events aren't reaching the app. Check the confi
 
 ## 7. Read the logs
 
-The app writes a log line for each thing it does, and Cloudflare keeps them for a few days. Nothing else tells you if the once-a-minute schedule that sends your posts stops, so it's worth knowing where to look.
+The app writes a log line for each thing it does, and Cloudflare keeps them for a few days. Nothing else tells you if the once-a-minute schedule that sends posts stops, so it's worth knowing where to look.
 
 1. In the Cloudflare dashboard, go to **Workers & Pages**, select `kestrel-production`, and select **Observability**.
 
@@ -95,6 +97,16 @@ The app writes a log line for each thing it does, and Cloudflare keeps them for 
 1. Filter on `event` equal to `send.completed`. Your send from section 4 is there.
 
 1. Filter on `level` equal to `error`. A healthy instance shows nothing.
+
+## 8. Check that SES can send to anyone
+
+[Connect Amazon SES](04-ses.md#5-request-production-access) asked AWS for production access. Until AWS grants it, the sandbox mails only your verified addresses, so check it before you go live.
+
+1. In SES, open the **Account dashboard** in the region the app sends from. It no longer says your account is in the sandbox, and it shows your daily quota and maximum send rate.
+
+1. Check that `SES_MAX_SEND_RATE` in `wrangler.jsonc` matches that rate, and that you deployed after setting it, as [Connect Amazon SES](04-ses.md#8-set-the-provider-and-deploy) describes.
+
+If the dashboard still says sandbox, AWS hasn't answered yet. Every other section works in the sandbox, so come back to this one when it does.
 
 When every section gives the result it describes, your instance is ready for subscribers.
 
