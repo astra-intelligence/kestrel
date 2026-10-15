@@ -11,7 +11,7 @@
  * test send (`sent_to`), which goes out before the list is imported, to just those addresses.
  */
 
-import testing from "../../demo/posts/0-testing-testing/index.md";
+import testEmail from "../../demo/posts/0-test-email/index.md";
 import hunter from "../../demo/posts/1-the-hovering-hunter/index.md";
 import oldFashionedList from "../../demo/posts/2-an-old-fashioned-list/index.md";
 import publishing from "../../demo/posts/3-publishing/index.md";
@@ -190,7 +190,7 @@ export function parseDemoPublication(file: string, text: string): DemoPublicatio
  *  Worker's startup. */
 export function loadDemo(): { publication: DemoPublication; posts: DemoPost[] } {
   const posts = [
-    ["0-testing-testing", testing],
+    ["0-test-email", testEmail],
     ["1-the-hovering-hunter", hunter],
     ["2-an-old-fashioned-list", oldFashionedList],
     ["3-publishing", publishing],

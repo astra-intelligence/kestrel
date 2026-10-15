@@ -182,7 +182,7 @@ describe("dev seed — scaled (parametric, DB-backed)", () => {
 
     // The list's four sends, after the operator's one-recipient test send (SPEC §5).
     const sent = (await listSends(env.DB))
-      .filter((s) => s.status === "sent" && s.subject !== "Testing, testing")
+      .filter((s) => s.status === "sent" && s.subject !== "Test email")
       .sort((x, y) => x.fire_at - y.fire_at);
     expect(sent).toHaveLength(4);
     const recipients = sent.map((s) => s.recipient_count);

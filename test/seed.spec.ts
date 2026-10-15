@@ -28,7 +28,7 @@ const SUPPRESSED = 5;
 const AUDIENCE_NOW = CONFIRMED - SUPPRESSED_CONFIRMED; // 155
 const SENT_RECIPIENTS = [140, 141, 142, 148]; // oldest → newest
 // Before them, the operator's email-only test send, to their own second address (SPEC §5).
-const TEST_SUBJECT = "Testing, testing";
+const TEST_SUBJECT = "Test email";
 const TOTAL_DELIVERIES = SENT_RECIPIENTS.reduce((a, b) => a + b, 1); // 572
 
 /** The sends on the list's timeline, oldest first: every sent send but the test send. */
@@ -258,7 +258,7 @@ describe("dev seed (Field Notes dataset)", () => {
     expect(proof!.confirmed_at).toBeLessThan(test.fire_at);
     expect(proof!.unsubscribed_at).toBeLessThan(sends[1]!.fire_at);
     // Its page answers for the email's link, unindexed; the lists leave it out.
-    const page = await SELF.fetch(`${base}/archive/testing-testing`);
+    const page = await SELF.fetch(`${base}/archive/test-email`);
     expect(page.status).toBe(200);
     expect(page.headers.get("x-robots-tag")).toBe("noindex");
     for (const path of ["/archive", "/"]) {

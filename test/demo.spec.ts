@@ -35,7 +35,7 @@ describe("demo content", () => {
     // The first issue shows the kestrel photo, found from its Markdown, not a field.
     expect(posts.flatMap((p) => p.images)).toEqual(["kestrel.webp"]);
     // It opens with the operator's email-only test send, to their own address (SPEC §5).
-    expect(posts[0]?.bundle).toBe("0-testing-testing");
+    expect(posts[0]?.bundle).toBe("0-test-email");
     expect(posts[0]?.emailOnly).toBe(true);
     expect(posts[0]?.sentTo).toEqual(["proof@fieldnotes.example"]);
     expect(posts.filter((p) => p.emailOnly)).toHaveLength(1);

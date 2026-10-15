@@ -1,12 +1,12 @@
 ---
-subject: Testing, testing
-slug: testing-testing
+subject: Test email
+slug: test-email
 status: sent
 email_only: true
 sent_to: proof@fieldnotes.example
 ---
 
-# Testing, testing
+# Test email
 
 This is the test send that proved Field Notes works end to end, before its list came in: subscribing, confirming, scheduling, and a real send landing in a real inbox.
 
