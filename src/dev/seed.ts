@@ -848,6 +848,7 @@ function renderInputFor(
     slug_auto: demoPost.slug === slugify(demoPost.subject),
     subject: demoPost.subject,
     status: demoPost.status,
+    email_only: false,
     current_revision: `${id}-rev`,
     created_at: at,
     updated_at: at,

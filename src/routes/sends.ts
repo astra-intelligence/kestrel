@@ -12,9 +12,9 @@ import {
   type SendResponse,
   type SendView,
 } from "../../shared/sends";
-import { getPost } from "../db/posts";
+import { getPost, setEmailOnly } from "../db/posts";
 import * as sends from "../db/sends";
-import { oneOf, readJsonObject } from "../lib/body";
+import { oneOf, optBoolean, readJsonObject } from "../lib/body";
 import { badRequest, HttpError, json, notFound } from "../lib/errors";
 import { listPage, parseListParams } from "../lib/list";
 import { POST_PAGE_SECURITY_HEADERS } from "../lib/page_headers";
@@ -359,8 +359,17 @@ export async function cancel(c: RequestContext): Promise<Response> {
 export async function reschedule(c: RequestContext): Promise<Response> {
   const body = await readJsonObject(c);
   const fireAt = parseFireAt(body.fire_at);
+  const emailOnly = optBoolean(body, "email_only");
   const id = param(c, "id");
-  const { changed } = await rescheduleSend(c.env, id, fireAt, c.config.minLeadMs);
+  const moved = await rescheduleSend(c.env, id, fireAt, c.config.minLeadMs);
+  // The listing changes only once the move is accepted, so a refused reschedule changes
+  // nothing. Neither is part of the frozen copy (SPEC §5, §6).
+  let listed = false;
+  if (emailOnly !== undefined) {
+    const post = await getPost(c.env.DB, moved.send.post_id);
+    listed = post ? await setEmailOnly(c.env.DB, post, emailOnly) : false;
+  }
+  const changed = moved.changed || listed;
   const response: SendActionResponse = { ...(await answerWith(c, id)), changed };
   return json(response);
 }

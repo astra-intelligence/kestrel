@@ -161,9 +161,12 @@ export function tickEstimate(
   return { perTick, finishAt: nextTick + (ticks - 1) * TICK_MS + TICK_RUN_MS };
 }
 
-/** A stored send as a view reads it: the row without its frozen bodies, and its post's
- *  slug, which names the published post's archive page. */
-export type SendViewRow = SendSummary & { post_slug: string | null };
+/** A stored send as a view reads it: the row without its frozen bodies, its post's slug,
+ *  which names the published post's archive page, and its post's listing (SPEC §5). */
+export type SendViewRow = SendSummary & {
+  post_slug: string | null;
+  post_email_only: number | null;
+};
 
 /**
  * Build the view of a send (the frozen bodies play no part). `hasRetries` is the cheap
@@ -241,6 +244,7 @@ export function buildSendView(
     post_id: send.post_id,
     subject: send.subject,
     status: send.status,
+    email_only: send.post_email_only === 1,
     rev: send.rev,
     as_of: now,
     fire_at: send.fire_at,

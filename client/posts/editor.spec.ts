@@ -44,6 +44,7 @@ const draft = (over: Record<string, unknown> = {}): Draft => ({
     slug: "owls",
     slug_auto: true,
     status: "draft",
+    email_only: false,
     current_revision: "r1",
     updated_at: "2026-09-20T10:00:00Z",
     ...over,
@@ -1793,7 +1794,10 @@ describe("editor view", () => {
     $("#schGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const scheduled = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/schedule");
-    expect(scheduled?.json()).toEqual({ fire_at: new Date("2026-09-25T15:00").toISOString() });
+    expect(scheduled?.json()).toEqual({
+      fire_at: new Date("2026-09-25T15:00").toISOString(),
+      email_only: false,
+    });
     expect($("#toasts").textContent).toMatch(/Scheduled for/);
     expect($(".banner-scheduled").textContent).toMatch(/Scheduled for .+ · Sends in /);
     expect(body().readOnly).toBe(true);
@@ -1889,6 +1893,47 @@ describe("editor view", () => {
       unmount();
       fake.restore();
     }
+  });
+
+  it("offers Email only under the time, says where the post will appear, and keeps the choice into Send now (SPEC §5)", async () => {
+    const server = draftServer();
+    await open([
+      { path: "/api/posts/p1", reply: server.get },
+      { method: "PUT", path: "/api/posts/p1", reply: (req) => server.put(req) },
+      { path: "/api/subscribers", reply: () => ({ counts: { confirmed: 3 }, page: { total: 3 } }) },
+      {
+        method: "POST",
+        path: "/api/posts/p1/send",
+        reply: () => ({ send: { id: "s2", fire_at: Date.now() + 360_000 } }),
+      },
+    ]);
+    $("#scheduleBtn").click();
+    const box = $<HTMLInputElement>("#schEmailOnly");
+    expect(box.checked).toBe(false); // unchecked by default: listed in the archive
+    expect($(".modal .listing-check").textContent).toBe(
+      "Email onlySent to subscribers, but not listed in your public archive. Anyone with the email can still open its web version.",
+    );
+    // The default is stated, not only implied by the unchecked box.
+    expect($(".modal .hint").textContent).toMatch(/, and is listed in your archive\.$/);
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+    expect($(".modal .hint").textContent).toMatch(/, email only: not listed in your archive\.$/);
+    $("#toSendNow").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect($<HTMLInputElement>("#snEmailOnly").checked).toBe(true);
+    expect($("#snListing").textContent).toBe(", email only: not listed in your archive.");
+    $("#snGo").click();
+    await vi.advanceTimersByTimeAsync(0);
+    const sent = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/send");
+    expect(sent?.json()).toEqual({ email_only: true });
+  });
+
+  it("starts the Email only box from the post's listing", async () => {
+    const server = draftServer(draft({ email_only: true }));
+    await open([{ path: "/api/posts/p1", reply: server.get }]);
+    $("#scheduleBtn").click();
+    expect($<HTMLInputElement>("#schEmailOnly").checked).toBe(true);
+    expect($("#schListing").textContent).toBe(", email only: not listed in your archive.");
   });
 
   it("sends now from the schedule dialog's demoted link, naming the audience: confirmed, less the suppressed (SPEC §6)", async () => {
@@ -1992,14 +2037,14 @@ describe("editor view", () => {
     ]);
     $("#scheduleBtn").click();
     expect($(".modal .hint").textContent).toBe(
-      "It sends at the time you pick, with a cancelable window until then.",
+      "It sends at the time you pick, with a cancelable window until then, and is listed in your archive.",
     );
     // One lead plus the minute the picker can't show: 10:00:30 + 2 min, to the minute.
     expect($<HTMLInputElement>("#schWhen").min).toBe("2026-09-23T10:02");
     $("#toSendNow").click();
     await vi.advanceTimersByTimeAsync(0);
     expect($(".modal .hint").textContent).toBe(
-      "Sends this draft, as it is now, to your subscribers in 1 to 2 minutes. The post locks until then, and you can cancel any time before it starts sending.",
+      "Sends this draft, as it is now, to your subscribers in 1 to 2 minutes, and is listed in your archive. The post locks until then, and you can cancel any time before it starts sending.",
     );
     $("#snGo").click();
     await vi.advanceTimersByTimeAsync(0);

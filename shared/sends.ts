@@ -243,6 +243,12 @@ export interface SendView {
   subject: string;
   /** The stored lifecycle state (SPEC §2); `phase` is the finer reading of it. */
   status: SendStatus;
+  /**
+   * The post's listing (SPEC §5): true when it is email only, mailed as usual but left out
+   * of the archive index and the landing page. The post's, not the send's, so every send of
+   * a post reads the same, and a change to it is a change to each of them (a new `rev`).
+   */
+  email_only: boolean;
   /** Where the send's last visible change sits in the change sequence: of two views of one send, the higher `rev` is the newer. */
   rev: number;
   /** The server's clock when the view was read: what the clock derives (phase, conditions, actions, `next_change_at`) is as of then. */
@@ -290,7 +296,7 @@ export interface SendView {
    * can change it (wedged, missed, finished).
    */
   next_change_at: number | null;
-  /** Where the send's other resources are. `archive` is the published post, absolute, once the send has started; null before. */
+  /** Where the send's other resources are. `archive` is the published post's page, absolute, once the send has started (an email-only post's included, which the page still serves); null before. */
   links: {
     self: string;
     email_html: string;

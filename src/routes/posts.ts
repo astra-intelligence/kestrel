@@ -3,6 +3,7 @@
 import { encodeSendCursor } from "../../shared/cursor";
 import type {
   BaseRequiredError,
+  ListingResponse,
   PostListResponse,
   PostResponse,
   PostSavedResponse,
@@ -266,4 +267,30 @@ export async function getRevision(c: RequestContext): Promise<Response> {
     markdown: rev.markdown,
     metadata: JSON.parse(rev.metadata),
   });
+}
+
+/**
+ * Change a post's listing (SPEC §5): in the archive, or email only. Any state, a sent post's
+ * included, since the listing is not part of the frozen copy (I3); a repeat of the listing
+ * the post already has answers `changed: false`.
+ */
+export async function setListing(c: RequestContext): Promise<Response> {
+  const body = await readJsonObject(c);
+  const emailOnly = optBoolean(body, "email_only");
+  if (emailOnly === undefined) {
+    throw fieldError(
+      "email_only",
+      "email_only is required: true for email only, false to list the post in the archive",
+    );
+  }
+  const post = await posts.getPost(c.env.DB, param(c, "id"));
+  if (!post) {
+    throw notFound("post");
+  }
+  const changed = await posts.setEmailOnly(c.env.DB, post, emailOnly);
+  const answer: ListingResponse = {
+    post: changed ? { ...post, email_only: emailOnly } : post,
+    changed,
+  };
+  return json(answer);
 }

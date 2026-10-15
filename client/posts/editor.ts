@@ -37,8 +37,8 @@ import {
 } from "../deployment";
 import { at, every, mount, onAbort, poll, type ViewHandle } from "../lifecycle";
 import { followSend, readSendsNow, type StageChange } from "../send_state";
-import { openRescheduleModal } from "../sends/dialogs";
-import { can, conditionOf, has } from "../sends/progress";
+import { emailOnlyFieldHtml, openRescheduleModal, wireListing } from "../sends/dialogs";
+import { can, conditionOf, emailOnlyNote, has } from "../sends/progress";
 import { $, $$ } from "../ui/dom";
 import { EMAIL_FRAME_SANDBOX, openLinksInNewTab } from "../ui/email_frame";
 import {
@@ -977,6 +977,7 @@ export async function renderEditor(
       ...scheduled,
       phase: "scheduled",
       conditions: [],
+      email_only: post.email_only,
     };
     const whenEl = $("#schedWhen");
     const controls = $("#schedControls");
@@ -1096,7 +1097,8 @@ export async function renderEditor(
     }
 
     // --- reschedule (from the scheduled banner): move the fire time, content stays frozen ---
-    reschedBtn.onclick = () => openRescheduleModal(current.id, current.fire_at, remount, signal);
+    reschedBtn.onclick = () =>
+      openRescheduleModal(current.id, current.fire_at, current.email_only, remount, signal);
 
     // --- cancel schedule (from the scheduled banner) ---
     cancelBtn.onclick = () =>
@@ -1350,8 +1352,12 @@ export async function renderEditor(
       // While no provider is connected the server would refuse both views, so the dialog
       // drops the picker and the Send now row and leaves only the standing line (DESIGN §4).
       const notConnected = providerNotConnected();
-      const scheduleView = html`<h3 id="schHead">Schedule this post</h3><p class="hint">It sends at the time you pick, with a cancelable window until then.</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}">`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
-      const m = modal(scheduleView, signal);
+      // The post's listing (SPEC §5), as the dialog's Email only box holds it: it starts as the
+      // post's, and keeps its state when the dialog switches between its two views.
+      let emailOnly = post.email_only;
+      const scheduleView = () =>
+        html`<h3 id="schHead">Schedule this post</h3><p class="hint">It sends at the time you pick, with a cancelable window until then${notConnected ? "." : html`<span id="schListing"></span>`}</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}">${emailOnlyFieldHtml("schEmailOnly", emailOnly)}`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
+      const m = modal(scheduleView(), signal);
       const box = $(".modal", m.el);
       // Who a send would reach now: the confirmed addresses that aren't suppressed (SPEC §6),
       // read at most once, when a view first needs it. Neither view waits on it: their copy
@@ -1414,7 +1420,7 @@ export async function renderEditor(
             }
             await api<ScheduleResponse>(`/api/posts/${id}/schedule`, {
               method: "POST",
-              json: { fire_at: new Date(t).toISOString() },
+              json: { fire_at: new Date(t).toISOString(), email_only: emailOnly },
             });
             m.close();
             // Stay on the post, re-rendered in its scheduled state: the window is the
@@ -1450,6 +1456,7 @@ export async function renderEditor(
             // rounded up to the minute (SPEC §6), so it can be up to a minute past the lead.
             const { send } = await api<ScheduleResponse>(`/api/posts/${id}/send`, {
               method: "POST",
+              json: { email_only: emailOnly },
             });
             m.close();
             toast(withNoProviderNote(`Sends at ${fmt(send.fire_at)}, cancelable until then.`));
@@ -1476,6 +1483,11 @@ export async function renderEditor(
           return;
         }
         $("#toSendNow", box).onclick = showSendNow;
+        wireListing($<HTMLInputElement>("#schEmailOnly", box), $("#schListing", box), {
+          onChange: (v) => {
+            emailOnly = v;
+          },
+        });
         $("#schWhen", box).focus();
         void paintDailyWrites();
       }
@@ -1483,14 +1495,19 @@ export async function renderEditor(
       async function showSendNow() {
         setHtml(
           box,
-          html`<h3 id="snHead">Send now?</h3><p class="hint">Sends this draft, as it is now, to <strong id="snWho">your subscribers</strong> in ${sendNowWhenText()}. The post locks until then, and you can cancel any time before it starts sending.</p>${dailyWritesLine()}<div class="altrow altrow-top"><button type="button" class="linkbtn" id="toSchedule">← Back to schedule</button></div><div class="actions"><button type="button" id="snCancel">Cancel</button><button type="button" class="primary" id="snGo">Send now</button></div>`,
+          html`<h3 id="snHead">Send now?</h3><p class="hint">Sends this draft, as it is now, to <strong id="snWho">your subscribers</strong> in ${sendNowWhenText()}<span id="snListing"></span> The post locks until then, and you can cancel any time before it starts sending.</p>${emailOnlyFieldHtml("snEmailOnly", emailOnly)}${dailyWritesLine()}<div class="altrow altrow-top"><button type="button" class="linkbtn" id="toSchedule">← Back to schedule</button></div><div class="actions"><button type="button" id="snCancel">Cancel</button><button type="button" class="primary" id="snGo">Send now</button></div>`,
         );
         box.setAttribute("aria-labelledby", "snHead");
         $("#snCancel", box).onclick = m.close;
         $("#snGo", box).onclick = doSendNow;
+        wireListing($<HTMLInputElement>("#snEmailOnly", box), $("#snListing", box), {
+          onChange: (v) => {
+            emailOnly = v;
+          },
+        });
         $<HTMLButtonElement>("#snGo", box).disabled = providerNotConnected();
         $("#toSchedule", box).onclick = () => {
-          setHtml(box, scheduleView);
+          setHtml(box, scheduleView());
           wireSchedule();
         };
         $("#snGo", box).focus();
@@ -1511,7 +1528,10 @@ export async function renderEditor(
 
 /** What the scheduled banner reads of its send. `actions` is absent only until the send's
  *  own read answers (the post's read does not carry them). */
-type BannerSend = Pick<SendView, "id" | "fire_at" | "phase" | "conditions" | "remade_at"> &
+type BannerSend = Pick<
+  SendView,
+  "id" | "fire_at" | "phase" | "conditions" | "remade_at" | "email_only"
+> &
   Partial<Pick<SendView, "actions">>;
 
 /**
@@ -1539,12 +1559,12 @@ function movedOn(send: SendView, remount: () => void): boolean {
  */
 function scheduledBannerHtml(send: BannerSend, due: boolean): Html {
   if (has(send, "missed")) {
-    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown countdown-missed">${lateStr(send.fire_at)}</span>`;
+    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown countdown-missed">${lateStr(send.fire_at)}</span>${emailOnlyNote(send)}`;
   }
   if (due) {
-    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at, true)}</span>`;
+    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at, true)}</span>${emailOnlyNote(send)}`;
   }
-  return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at)}</span>`;
+  return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at)}</span>${emailOnlyNote(send)}`;
 }
 
 /** Whether a read or write found its post (or its send, which goes with it) gone. */

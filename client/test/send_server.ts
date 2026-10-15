@@ -30,6 +30,8 @@ export interface SendExtras {
   eta_ms?: number | null;
   /** The published post's page, which the server links once the send has started. */
   archive?: string | null;
+  /** The post's listing (SPEC §5), when it is email only. */
+  email_only?: boolean;
 }
 
 /**
@@ -54,6 +56,7 @@ export function sendView(row: SendSummary, over: Partial<SendView> = {}): SendVi
     post_id: row.post_id,
     subject: row.subject,
     status: row.status,
+    email_only: false,
     rev: row.rev,
     as_of: Date.now(),
     fire_at: row.fire_at,
@@ -264,6 +267,7 @@ export function sendServer(rows: SendSummary[] = []) {
       conditions,
       actions,
       next_change_at: nextChange(s, now),
+      email_only: s.extras.email_only ?? false,
       dispatch: { done: 0, percent: 0, rate_per_min: null, eta_ms: s.extras.eta_ms ?? null },
       ...(s.extras.archive === undefined
         ? {}

@@ -10,6 +10,17 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+**Upgrading from 1.11.0.** One database migration: run `npm run sync-migrations`, then `npx wrangler d1 migrations apply DB --remote --env production` (and `--local` for local development) before deploying. `0007_post_email_only` adds each post's listing, reading every existing post as listed in the archive, so the archive shows what it did before; it adds a column with a default and rewrites no rows. An instance verified with an earlier release has its test post in the archive: open it under **Sent** and select **Make email only**.
+
+### Added
+
+- **Email only**: a post can be sent to subscribers without being listed in the public archive or on the home page (SPEC §5). Choose it with the **Email only** box when you schedule, Send now, or reschedule, and change it later on a sent post's page (**Make email only**, or **Add to archive…**, which asks first). Its page still answers at its address, so the email's "view in browser" link works, and asks search engines not to index it. Sent lists mark it with a grey **Email only** label. The API carries it as `email_only` on posts and sends, on the schedule, Send now, and reschedule bodies, and through `PUT /api/posts/:id/listing`.
+- The dashboard keeps setup's steps after the first post, as a **Finish setting up** card, until the first post listed in the archive goes out. Each step shows done from what the app knows, so a test send that's email only, like Verify it works' own, leaves the publisher their guided start.
+
+### Changed
+
+- Verify it works sends its test post as **Email only**, and ends by erasing the SES simulator addresses and any test subscriber that won't be a reader.
+
 ## [1.11.0] - 2026-10-15
 
 **Upgrading from 1.10.0.** No database migrations. Run `npm run check-context` in your instance's repository: `/migrate-list` now reads the import format from "Bring your existing list".

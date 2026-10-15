@@ -44,6 +44,7 @@ function post(over: Partial<PostRow> = {}): PostRow {
     slug_auto: false,
     subject: "This week in cats",
     status: "draft",
+    email_only: false,
     current_revision: "r1",
     created_at: 0,
     updated_at: 0,

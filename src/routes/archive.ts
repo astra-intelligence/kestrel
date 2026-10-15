@@ -1,7 +1,7 @@
 /**
  * Public reader pages: the landing page at `/` (§5 front door — identity + a
  * subscribe CTA, never a bounce to admin), the archive index at the archive base
- * path (every published post), and each post page — a started Send's frozen rendered_html,
+ * path (every published post listed in the archive), and each post page — a started Send's frozen rendered_html,
  * the reviewed, delivered copy (I3), with edits that leave the content untouched and
  * only fill reserved anchors: the per-recipient unsubscribe sentinel becomes a generic
  * manage-subscription link (a public page has no single recipient), the inert
@@ -69,8 +69,8 @@ export async function landing(c: RequestContext): Promise<Response> {
   });
 }
 
-/** The full public archive index: every published post (its send has started), newest
- *  first, linking to their permanent (canonical) archive URLs — the same address emails carry. */
+/** The full public archive index: every published post (its send has started) listed in the
+ *  archive, an email-only post left out (SPEC §5), newest first, linking to their permanent (canonical) archive URLs — the same address emails carry. */
 export async function archiveIndex(c: RequestContext): Promise<Response> {
   const [posts, identity] = await Promise.all([
     listPublishedPosts(c.env.DB),
@@ -160,6 +160,10 @@ export async function archivePage(c: RequestContext): Promise<Response> {
       ...POST_PAGE_SECURITY_HEADERS,
       "content-type": "text/html; charset=utf-8",
       "cache-control": "public, max-age=3600",
+      // An email-only post answers at its address for the email's link, but no public list
+      // shows it, so search engines aren't offered it either (SPEC §5). A header, not a meta
+      // tag, so the frozen copy is served unchanged (I3).
+      ...(post.email_only ? { "x-robots-tag": "noindex" } : {}),
     },
   });
 }

@@ -147,6 +147,7 @@ export function createRouter({
     post_id: "p_abc123",
     subject: "Spring migration",
     status: "sending",
+    email_only: false,
     rev: 57,
     as_of: 1768467610000,
     fire_at: 1768467600000,
@@ -557,6 +558,25 @@ export function createRouter({
       handler: postRoutes.deletePost,
     },
     {
+      method: "PUT",
+      path: "/api/posts/:id/listing",
+      access: "admin",
+      accepts: JSON_BODY,
+      resource: "posts",
+      summary:
+        "Set where a post is listed: `email_only: true` leaves it out of the archive index and the landing page, `false` lists it there (SPEC §5).",
+      description:
+        "Allowed in any state, a scheduled or sent post's included: the listing is not part of the frozen email, so changing it never re-makes a scheduled send or alters a sent one (I3). An email-only post is mailed exactly as a listed one, and its post page still answers at its address, with `X-Robots-Tag: noindex`. Schedule, Send now, and a reschedule set it too. Each of the post's sends carries it as `email_only`, so they take a new `rev` and the send feed reports them. Setting the listing the post already has answers `changed: false`. A missing or non-boolean `email_only` is a 400 naming it.",
+      example: {
+        request: { email_only: true },
+        response: {
+          post: { id: "p_abc123", status: "sent", slug: "hello-world", email_only: true },
+          changed: true,
+        },
+      },
+      handler: postRoutes.setListing,
+    },
+    {
       method: "GET",
       path: "/api/posts/:id/revisions",
       access: "admin",
@@ -698,7 +718,7 @@ export function createRouter({
       description:
         "Freezes the current draft, with the template and identity as they stand, onto a send row and soft-locks the post; cancelable until its fire time. A later template or identity change re-makes that frozen email after the publisher confirms it (SPEC §6); there is no per-send template to name, and a `template_revision` field is a 400. `fire_at` is epoch milliseconds or an ISO-8601 timestamp with a `Z` or `±hh:mm` offset; a timestamp without one is a 400, since the Worker cannot know which local time was meant. `fire_at` must be at least the minimum lead out, a 400 `fire_at_too_soon` otherwise (for the soonest send, use Send now, `POST /api/posts/:id/send`): " +
         lead +
-        ". The time is then rounded up to the next whole minute (one already on the minute stays), since the sweep fires sends on the minute; the lead is checked on the time as requested, so rounding only lengthens the window. Answers with the new send's view (as `GET /api/sends/:id` describes it) and a `cursor` to follow it from. Refusals: 409 `active_send_exists` when the post already has its one active send (carried as `send`), 409 `post_not_draft`, 400 `subject_required` for an empty subject, 409 `settings_changed` when a template or identity save kept landing while it froze (try again), and 409 `provider_not_connected` while no email provider is connected (SPEC §9).",
+        ". The time is then rounded up to the next whole minute (one already on the minute stays), since the sweep fires sends on the minute; the lead is checked on the time as requested, so rounding only lengthens the window. `email_only` (optional) sets the post's listing as it is scheduled (SPEC §5): `true` mails it as usual but leaves it out of the archive index and the landing page, `false` lists it; absent, the post keeps the listing it has, which is in the archive unless it was set otherwise. The listing is not part of the frozen email. Answers with the new send's view (as `GET /api/sends/:id` describes it) and a `cursor` to follow it from. Refusals: 409 `active_send_exists` when the post already has its one active send (carried as `send`), 409 `post_not_draft`, 400 `subject_required` for an empty subject, 409 `settings_changed` when a template or identity save kept landing while it froze (try again), and 409 `provider_not_connected` while no email provider is connected (SPEC §9).",
       example: {
         request: { fire_at: "2026-01-16T09:00:00Z" },
         response: { send: scheduledExample, cursor: "57.1768467610000" },
@@ -716,8 +736,9 @@ export function createRouter({
       description:
         "The same freeze as scheduling, with the template and identity as they stand, and `fire_at` set to now plus the minimum lead, rounded up to the next whole minute as every fire time is: " +
         lead +
-        ". For nearly all of that window the send is inside the minimum lead, so a template or identity save that would re-make it is refused until it has fired. A second call for a post already in its window answers with that send and `idempotent: true`; the other refusals are as for scheduling.",
+        ". For nearly all of that window the send is inside the minimum lead, so a template or identity save that would re-make it is refused until it has fired. An optional JSON body may carry `email_only`, the post's listing, as for scheduling. A second call for a post already in its window answers with that send and `idempotent: true`, and changes nothing, its listing included; the other refusals are as for scheduling.",
       example: {
+        request: { email_only: true },
         response: { send: scheduledExample, cursor: "57.1768467610000" },
       },
       handler: scheduleRoutes.sendNow,
@@ -958,10 +979,10 @@ export function createRouter({
       description:
         "Updates only `fire_at` on a send still in its review window: the frozen render is untouched (the audience is resolved when the send fires) and the review window is preserved; a re-made send keeps its `remade_at`. Distinct from cancel → edit → schedule again, which is for content changes. The same `fire_at` form as scheduling (epoch milliseconds or an ISO-8601 timestamp with a `Z` or `±hh:mm` offset), and the same minimum lead, a 400 `fire_at_too_soon` otherwise: " +
         lead +
-        ". As when scheduling, the new time is rounded up to the next whole minute, after the lead is checked on the time as requested. A move to the time the send already has (after that rounding) answers 200 with `changed: false` before the lead is checked, so a retried move is safe. Once the fire time has passed it is a 409 `window_closed`, and a canceled send is a 409 `send_canceled` (schedule the post again instead). " +
+        ". As when scheduling, the new time is rounded up to the next whole minute, after the lead is checked on the time as requested. A move to the time the send already has (after that rounding) answers 200 with `changed: false` before the lead is checked, so a retried move is safe. Once the fire time has passed it is a 409 `window_closed`, and a canceled send is a 409 `send_canceled` (schedule the post again instead). `email_only` (optional) changes the post's listing along with the time (SPEC §5), only once the move is accepted; `changed` is true when either changed. " +
         actionText,
       example: {
-        request: { fire_at: "2026-01-16T09:00:00Z" },
+        request: { fire_at: "2026-01-16T09:00:00Z", email_only: false },
         response: { send: scheduledExample, cursor: "58.1768467620000", changed: true },
       },
       handler: sendRoutes.reschedule,

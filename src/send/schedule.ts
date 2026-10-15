@@ -17,7 +17,7 @@
 import { tooSoonMessage } from "../../shared/sends";
 import { listImages } from "../db/images";
 import type { PostRow } from "../db/posts";
-import { getCurrentRevision, setPostStatusStmt } from "../db/posts";
+import { getCurrentRevision, setEmailOnlyStmt, setPostStatusStmt } from "../db/posts";
 import {
   cancelStmt,
   type FrozenRender,
@@ -28,6 +28,7 @@ import {
   rescheduleStmt,
   type SendRow,
   settingsVersionIs,
+  stampSendsOfPostStmt,
 } from "../db/sends";
 import { readSettings } from "../db/settings";
 import { audienceCount } from "../db/subscribers";
@@ -102,12 +103,15 @@ const FREEZE_RETRIES = 3;
 const ACTIVE_SEND_EXISTS =
   "This post already has a send scheduled or going out. Reschedule or cancel that send instead.";
 
-/** Create a scheduled Send from the post's current content and lock the post. */
+/** Create a scheduled Send from the post's current content and lock the post. `emailOnly`,
+ *  when given, sets the post's listing in the same batch (SPEC §5): it is not part of the
+ *  render, so it lands beside the lock rather than in the frozen copy. */
 export async function freeze(
   env: AppEnv,
   config: Config,
   post: PostRow,
   fireAt: number,
+  emailOnly?: boolean,
 ): Promise<SendRow> {
   const active = await getActiveSendForPost(env.DB, post.id);
   if (active) {
@@ -144,6 +148,15 @@ export async function freeze(
     const now = Date.now();
     const id = newId();
     const settingsVersion = version ?? 0;
+    // The listing lands only with the lock, under the same settings guard, and stamps the
+    // post's earlier sends, whose views carry it too (SPEC §8).
+    const listing =
+      emailOnly !== undefined && emailOnly !== post.email_only
+        ? [
+            setEmailOnlyStmt(env.DB, post.id, emailOnly, settingsVersionIs(settingsVersion)),
+            stampSendsOfPostStmt(env.DB, post.id),
+          ]
+        : [];
     let results: D1Result[];
     try {
       results = await env.DB.batch([
@@ -161,6 +174,7 @@ export async function freeze(
           now,
           settingsVersionIs(settingsVersion),
         ),
+        ...listing,
       ]);
     } catch (err) {
       // The pre-check above is UX, not the guarantee: a concurrent freeze() for the

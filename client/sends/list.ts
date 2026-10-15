@@ -41,6 +41,8 @@ import {
   countdownHtml,
   countdowns,
   deliveredCell,
+  emailOnlyLabel,
+  emailOnlyNote,
   needsOperator,
   sendsNow,
 } from "./progress";
@@ -289,7 +291,7 @@ export async function renderSent(root: HTMLElement, signal: AbortSignal): Promis
       }
       const { sends } = res;
       const schedCard = (s: SendView) =>
-        html`<div class="card spread clickable sched-card" data-post="${s.post_id}"><div><a class="card-link sched-subj" href="#/edit/${s.post_id}">${s.subject}</a><div class="muted">${countdownHtml(s)} · ${fmt(s.fire_at)} · ${s.audience.count} recipients</div></div>${windowControls(s)}</div>`;
+        html`<div class="card spread clickable sched-card" data-post="${s.post_id}"><div><a class="card-link sched-subj" href="#/edit/${s.post_id}">${s.subject}</a><div class="muted">${countdownHtml(s)} · ${fmt(s.fire_at)} · ${s.audience.count} recipients${emailOnlyNote(s)}</div></div>${windowControls(s)}</div>`;
       const [first, ...rest] = sends;
       if (!first) {
         setHtml(schedEl, html`<p class="muted">Nothing scheduled.</p>`);
@@ -330,7 +332,7 @@ export async function renderSent(root: HTMLElement, signal: AbortSignal): Promis
       for (const b of $$<HTMLButtonElement>("[data-reschedule]", schedEl)) {
         const s = sends.find((x) => x.id === b.dataset.reschedule);
         if (s) {
-          b.onclick = () => openRescheduleModal(s.id, s.fire_at, afterAct, signal);
+          b.onclick = () => openRescheduleModal(s.id, s.fire_at, s.email_only, afterAct, signal);
         }
       }
       for (const b of $$<HTMLButtonElement>("[data-cancel]", schedEl)) {
@@ -386,7 +388,7 @@ export async function renderSent(root: HTMLElement, signal: AbortSignal): Promis
         listEl,
         html`<div class="table-wrap"><table class="list-table sent-table stacks"><colgroup><col><col class="c-date"><col class="c-num"><col class="c-delivered"></colgroup><thead><tr>${th("Subject", "subject", state)}${th("When", "fire", state)}${th("Recipients", "recipients", state, "num")}<th class="num">Delivered</th></tr></thead><tbody>${sends.map(
           (s) =>
-            html`<tr class="clickable" data-id="${s.id}"><td class="subject"><a href="#/sent/${s.id}">${s.subject}</a></td><td class="muted">${fmt(s.completed_at ?? s.fire_at)}</td><td class="num recipients"><span class="n">${s.audience.count.toLocaleString()}</span></td><td class="num delivered">${deliveredCell(s.counts)}</td></tr>`,
+            html`<tr class="clickable" data-id="${s.id}"><td class="subject"><a href="#/sent/${s.id}">${s.subject}</a>${emailOnlyLabel(s)}</td><td class="muted">${fmt(s.completed_at ?? s.fire_at)}</td><td class="num recipients"><span class="n">${s.audience.count.toLocaleString()}</span></td><td class="num delivered">${deliveredCell(s.counts)}</td></tr>`,
         )}</tbody></table></div>`,
       );
       wireSort(listEl, state, loadList);

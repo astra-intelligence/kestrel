@@ -197,6 +197,45 @@ describe("sent view", () => {
     expect(feedReads(fake)).toHaveLength(2);
   });
 
+  it("marks only an email-only post, with a grey label in Sent posts and a line on its scheduled card (DESIGN §3, §4)", async () => {
+    const srv = sendServer();
+    srv.put(scheduled(), { email_only: true });
+    srv.put(send(), { email_only: true });
+    srv.put(send({ id: "x9", post_id: "p9", subject: "Wrens" }));
+    fake = world(srv);
+    await mount(renderSent);
+    await vi.advanceTimersByTimeAsync(0);
+    expect($(".sched-card .sched-email-only").textContent).toBe("Email only, not listed");
+    const rows = $$(".sent-table tbody tr");
+    const label = (id: string) =>
+      rows.find((r) => r.dataset.id === id)?.querySelector(".badge.email-only")?.textContent ??
+      null;
+    expect(label("x1")).toBe("Email only");
+    expect(label("x9")).toBeNull();
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("reschedules with the Email only box showing the current choice, and sends the change", async () => {
+    const srv = sendServer();
+    srv.put(scheduled(), { email_only: true });
+    fake = world(srv, [{ method: "POST", path: "/api/sends/sch/reschedule", reply: () => ({}) }]);
+    await mount(renderSent);
+    await vi.advanceTimersByTimeAsync(0);
+    $("[data-reschedule='sch']").click();
+    const box = $<HTMLInputElement>("#rsEmailOnly");
+    expect(box.checked).toBe(true);
+    expect($("#rsListing").textContent).toBe("It’s email only: not listed in your archive.");
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    expect($("#rsListing").textContent).toBe("It’s listed in your archive.");
+    $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
+    $("#rsGo").click();
+    await vi.advanceTimersByTimeAsync(0);
+    const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
+    expect(posted?.json()).toMatchObject({ email_only: false });
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("reschedules a scheduled send from its card, refreshes the queue, and has the layer read at once", async () => {
     const srv = sendServer([scheduled(), send()]);
     fake = world(srv, [
@@ -222,7 +261,10 @@ describe("sent view", () => {
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
-    expect(posted?.json()).toEqual({ fire_at: new Date(toLocalInput(moved)).toISOString() });
+    expect(posted?.json()).toEqual({
+      fire_at: new Date(toLocalInput(moved)).toISOString(),
+      email_only: false,
+    });
     expect(document.querySelector(".modal")).toBeNull();
     expect($("#toasts").textContent).toMatch(/Rescheduled/);
     expect($(".sched-card .countdown").textContent).toBe("Sends in 3 days");

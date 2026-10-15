@@ -243,6 +243,7 @@ export function sampleRenderInput(subject = TEMPLATE_TEST_SUBJECT): RenderInput 
     slug_auto: false,
     subject,
     status: "draft",
+    email_only: false,
     current_revision: "sample-rev",
     created_at: now,
     updated_at: now,

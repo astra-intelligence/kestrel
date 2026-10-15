@@ -3,7 +3,7 @@
 import type { ScheduleResponse } from "../../shared/sends";
 import { getPost } from "../db/posts";
 import { getActiveSendForPost, type SendRow } from "../db/sends";
-import { fieldError, readJsonObject } from "../lib/body";
+import { fieldError, optBoolean, readJsonObject } from "../lib/body";
 import { HttpError, json, notFound } from "../lib/errors";
 import { unwrap } from "../lib/unwrap";
 import { requireConnectedProvider } from "../providers";
@@ -78,9 +78,10 @@ export async function schedule(c: RequestContext): Promise<Response> {
 
   const body = await readJsonObject(c);
   rejectStrayTemplateChoice(body);
+  const emailOnly = optBoolean(body, "email_only");
   requireConnectedProvider(c.config);
   const fireAt = parseFutureFireAt(body.fire_at, c.config.minLeadMs);
-  const send = await freeze(c.env, c.config, post, fireAt);
+  const send = await freeze(c.env, c.config, post, fireAt, emailOnly);
   const frozen: ScheduleResponse = unwrap(await viewWithCursor(c.env, send.id), "send");
   return json(frozen, 201);
 }
@@ -91,10 +92,13 @@ export async function sendNow(c: RequestContext): Promise<Response> {
     throw notFound("post");
   }
   // Send-now needs no body, so an empty one needs no content type; one that is sent is
-  // read like any other JSON body, only to refuse a stray template choice.
-  rejectStrayTemplateChoice(await readJsonObject(c, { optional: true }));
+  // read like any other JSON body: to refuse a stray template choice, and for the listing.
+  const body = await readJsonObject(c, { optional: true });
+  rejectStrayTemplateChoice(body);
+  const emailOnly = optBoolean(body, "email_only");
 
-  // Idempotent: if a send is already in flight for this post, return it.
+  // Idempotent: if a send is already in flight for this post, return it. A repeat changes
+  // nothing, its listing included: the post's listing has its own route.
   const active = await getActiveSendForPost(c.env.DB, post.id);
   if (active) {
     return repeatAnswer(c, active.id);
@@ -107,7 +111,7 @@ export async function sendNow(c: RequestContext): Promise<Response> {
   const fireAt = acceptFireAt(now + c.config.minLeadMs, c.config.minLeadMs, { now });
   let send: SendRow;
   try {
-    send = await freeze(c.env, c.config, post, fireAt);
+    send = await freeze(c.env, c.config, post, fireAt, emailOnly);
   } catch (err) {
     // A concurrent send-now (the editor and Claude at once) passed the check above too and froze first.
     // The repeat gets the same answer as one that came after it (SPEC §6); a schedule

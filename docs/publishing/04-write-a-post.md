@@ -33,6 +33,12 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Send now →**, under the time picker, is for a post you've already reviewed. It still waits out the window, scheduling the post for the minimum lead from now.
 
+### Email only
+
+**Email only**, under the time in the Schedule dialog and in Send now, sends the post to your list as usual but leaves it out of your public archive and your home page. Use it for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. Its web version stays at its address, so the email's "view in browser" link works, and anyone with the email can open it, but search engines are asked not to list it.
+
+You can change it later. **Reschedule** shows the box too, and a sent post's page under **Sent** says where the post is listed: **Make email only** takes it off the archive at once, and **Add to archive…** asks first, since it puts the post in front of anyone visiting. Neither changes what was sent.
+
 ### Changing your mind
 
 **Cancel**, on the post's banner or its card under **Sent**, makes the post a draft again at once. Edit it, test again, and schedule it again. **Reschedule** moves the send time without unlocking the post, and your tests still count. You can do either until the send time.

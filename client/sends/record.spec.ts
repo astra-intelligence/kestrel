@@ -177,6 +177,69 @@ describe("sent record", () => {
     expect(fake.unhandled).toHaveLength(0);
   });
 
+  // DESIGN §3: the record's one control that changes anything, and what it changes is the
+  // post's listing, never the record (SPEC §5, I3).
+  describe("where the post is listed", () => {
+    const listingRoute = (emailOnly: () => boolean) => ({
+      method: "PUT",
+      path: "/api/posts/p1/listing",
+      reply: () => ({ post: { id: "p1", status: "sent", email_only: emailOnly() }, changed: true }),
+    });
+
+    it("says a listed post is in the archive, and Make email only acts at once", async () => {
+      const server = sendServer([send()]);
+      fake = fakeApi([...server.routes, noRows, listingRoute(() => true)]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($("#recListing span").textContent).toBe("Listed in your archive.");
+      expect($("#listingBtn").textContent).toBe("Make email only");
+      $("#listingBtn").click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector(".modal")).toBeNull(); // no confirmation
+      const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
+      expect(put?.method).toBe("PUT");
+      expect(put?.json()).toEqual({ email_only: true });
+      expect($("#recListing span").textContent).toBe("Email only: not listed in your archive.");
+      expect($("#listingBtn").textContent).toBe("Add to archive…");
+      expect($("#toasts").textContent).toContain("Email only: no longer listed in your archive");
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("asks before adding an email-only post to the archive, and changes nothing on Cancel", async () => {
+      const server = sendServer();
+      server.put(send(), { email_only: true });
+      fake = fakeApi([...server.routes, noRows, listingRoute(() => false)]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($("#recListing span").textContent).toBe("Email only: not listed in your archive.");
+      $("#listingBtn").click();
+      expect($(".modal h3").textContent).toBe("Add this post to your archive?");
+      $("#addArchCancel").click();
+      expect(document.querySelector(".modal")).toBeNull();
+      expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p1/listing")).toBe(false);
+      $("#listingBtn").click();
+      $("#addArchGo").click();
+      await vi.advanceTimersByTimeAsync(0);
+      const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
+      expect(put?.json()).toEqual({ email_only: false });
+      expect(document.querySelector(".modal")).toBeNull();
+      expect($("#recListing span").textContent).toBe("Listed in your archive.");
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("follows a listing change made elsewhere, from the send's next report", async () => {
+      const server = sendServer([send(SETTLING)]);
+      fake = fakeApi([...server.routes, noRows]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($("#listingBtn").textContent).toBe("Make email only");
+      server.edit("x1", {}, { email_only: true }); // Claude made it email only
+      await vi.advanceTimersByTimeAsync(3000);
+      expect($("#listingBtn").textContent).toBe("Add to archive…");
+      expect(fake.unhandled).toHaveLength(0);
+    });
+  });
+
   it("saves the deliveries CSV as the server sends it, under the server's name or deliveries.csv", async () => {
     const csv = "email,outcome\r\nada@example.com,delivered\r\n";
     let disposition: string | null = 'attachment; filename="owls-deliveries.csv"';

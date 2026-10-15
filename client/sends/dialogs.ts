@@ -1,5 +1,6 @@
 // The send actions a publisher takes from more than one surface: resolving a wedged send
-// (the list, the watch) and rescheduling (the list's scheduled card, the editor's banner).
+// (the list, the watch), rescheduling (the list's scheduled card, the editor's banner), and
+// the Email only choice that scheduling, Send now, and rescheduling share.
 
 import type { ResolveResponse, SendSummary, StuckResolution } from "../../shared/sends";
 import { ApiError, api, describeError } from "../api";
@@ -7,7 +8,7 @@ import { earliestFireAt, isTooSoon, notConnectedRescheduleLine, tooSoonText } fr
 import { readSendsNow } from "../send_state";
 import { $ } from "../ui/dom";
 import { toLocalInput } from "../ui/format";
-import { html } from "../ui/html";
+import { type Html, html } from "../ui/html";
 import { busy, modal, toast } from "../ui/widgets";
 
 const message = describeError;
@@ -55,6 +56,48 @@ export function openResolveModal(
   accepted.onclick = () => doResolve(accepted, "accepted", "sent");
 }
 
+/** The helper under the Email only checkbox, in the Schedule, Send now, and Reschedule views. */
+const EMAIL_ONLY_HELP =
+  "Sent to subscribers, but not listed in your public archive. Anyone with the email can still open its web version.";
+
+/**
+ * The Email only checkbox (SPEC §5), checked when the post is email only. `id` names the
+ * input, so each dialog can read it back.
+ */
+export function emailOnlyFieldHtml(id: string, checked: boolean): Html {
+  return html`<label class="listing-check"><input type="checkbox" id="${id}"${checked ? html` checked` : null}><span><strong>Email only</strong><span class="listing-help">${EMAIL_ONLY_HELP}</span></span></label>`;
+}
+
+/**
+ * How a dialog's line ends, saying where the post will appear, so the default is stated
+ * rather than implied by an unchecked box (DESIGN §3).
+ */
+export function listingClause(emailOnly: boolean): string {
+  return emailOnly
+    ? ", email only: not listed in your archive."
+    : ", and is listed in your archive.";
+}
+
+/** Keep a dialog's line in step with its checkbox: `clause` holds the words `words` gives
+ *  for the box's state (by default, the line's ending). */
+export function wireListing(
+  input: HTMLInputElement,
+  clause: HTMLElement,
+  {
+    words = listingClause,
+    onChange,
+  }: { words?: (emailOnly: boolean) => string; onChange?: (v: boolean) => void } = {},
+): void {
+  const paint = () => {
+    clause.textContent = words(input.checked);
+  };
+  input.onchange = () => {
+    paint();
+    onChange?.(input.checked);
+  };
+  paint();
+}
+
 /**
  * Move a scheduled send's fire time without canceling or re-editing: the content stays
  * frozen (I3) and the cancelable review window is preserved (I6); only fire_at moves,
@@ -66,6 +109,7 @@ export function openResolveModal(
 export function openRescheduleModal(
   sendId: string,
   currentFireAt: number,
+  currentEmailOnly: boolean,
   onDone: () => void,
   signal: AbortSignal,
 ): void {
@@ -73,9 +117,10 @@ export function openRescheduleModal(
   const cur = toLocalInput(new Date(currentFireAt));
   const m = modal(
     html`<h3 id="rsHead">Reschedule this post</h3>
-      <p class="hint">Move when it sends. The content stays frozen and the cancelable window is kept. Only the time changes.</p>
+      <p class="hint">Move when it sends. The content stays frozen and the cancelable window is kept. <span id="rsListing"></span></p>
       ${notConnectedRescheduleLine()}
       <label for="rsWhen">Send at</label><input type="datetime-local" id="rsWhen" min="${minStr}" value="${cur}">
+      ${emailOnlyFieldHtml("rsEmailOnly", currentEmailOnly)}
       <div class="actions"><button type="button" id="rsCancel">Cancel</button><button type="button" class="primary" id="rsGo">Reschedule</button></div>`,
     signal,
   );
@@ -83,6 +128,11 @@ export function openRescheduleModal(
   box.setAttribute("aria-labelledby", "rsHead");
   const go = $<HTMLButtonElement>("#rsGo", box);
   const when = $<HTMLInputElement>("#rsWhen", box);
+  const emailOnly = $<HTMLInputElement>("#rsEmailOnly", box);
+  wireListing(emailOnly, $("#rsListing", box), {
+    words: (v) =>
+      v ? "It’s email only: not listed in your archive." : "It’s listed in your archive.",
+  });
   $("#rsCancel", box).onclick = m.close;
   go.onclick = () =>
     busy(go, "Rescheduling…", async () => {
@@ -100,7 +150,7 @@ export function openRescheduleModal(
       try {
         await api(`/api/sends/${sendId}/reschedule`, {
           method: "POST",
-          json: { fire_at: new Date(t).toISOString() },
+          json: { fire_at: new Date(t).toISOString(), email_only: emailOnly.checked },
         });
         m.close();
         toast("Rescheduled");

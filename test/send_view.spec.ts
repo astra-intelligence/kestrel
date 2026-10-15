@@ -47,6 +47,7 @@ const VIEW_KEYS = [
   "counts",
   "delivery",
   "dispatch",
+  "email_only",
   "fire_at",
   "id",
   "links",

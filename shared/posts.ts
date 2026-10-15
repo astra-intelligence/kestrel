@@ -16,6 +16,13 @@ export interface Post {
   slug_auto: boolean;
   subject: string;
   status: PostStatus;
+  /**
+   * The post's listing (SPEC §5): true when it is email only, mailed as usual but left out of
+   * the archive index and the landing page; false, the default, when it is listed in the
+   * archive. Not part of the frozen render, so it can change in any state, a sent post's
+   * included (`PUT /api/posts/:id/listing`).
+   */
+  email_only: boolean;
   /** The current revision's id; the editor carries it on every save (optimistic concurrency). */
   current_revision: string | null;
   created_at: number;
@@ -119,4 +126,16 @@ export interface StaleRevisionError {
   current_revision: string | null;
   updated_at: number;
   author: string | null;
+}
+
+/** What PUT /api/posts/:id/listing takes: the post's listing (SPEC §5). */
+export interface ListingBody {
+  email_only: boolean;
+}
+
+/** PUT /api/posts/:id/listing: the post as it now stands, and whether the act changed it. */
+export interface ListingResponse {
+  post: Post;
+  /** False when the post was already listed as asked: nothing was written. */
+  changed: boolean;
 }

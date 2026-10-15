@@ -44,7 +44,7 @@ When those two pull against each other, prefer the smaller API and a documented 
 
 | Resource | What it is | Notes |
 | --- | --- | --- |
-| Post | A subject and a Markdown body, plus the slug | Editable only as a draft. A save carries its base revision. |
+| Post | A subject and a Markdown body, plus the slug and the listing | Editable only as a draft. A save carries its base revision. The listing, `email_only` (SPEC §5), is the exception: it is set by scheduling, Send now, or a reschedule, and changed on its own route in any state, a sent post included, since it is not part of the frozen copy. Each of the post's sends carries it too, so a change to it gives those sends a new `rev`, and a client following sends sees it like any other change. |
 | Revision | One saved version of a post | Read-only. The post's current revision is its version. |
 | Image | A file belonging to a post, referenced by name | Uploaded to the post. It never hands back a URL to paste. |
 | Send | One dispatch of a post: the frozen email, the fire time, and the record | The one shape is the send's view. Its email and its rows have routes of their own. |

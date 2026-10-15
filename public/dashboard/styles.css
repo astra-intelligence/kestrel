@@ -1558,6 +1558,18 @@ td a:hover {
   color: var(--status-sending-fg);
   border-color: var(--status-sending-line);
 }
+/* Email only (SPEC §5): a fact about where a post lives, so the draft grey (DESIGN §8). It
+   sits beside a subject, a little smaller than a status badge. */
+.badge.email-only {
+  background: var(--status-draft-bg);
+  color: var(--status-draft-fg);
+  border-color: var(--status-draft-line);
+  font-size: 11.5px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
 /* Subscriber consent states borrow a hue that matches the state's meaning: confirmed →
    the sent green, unsubscribed → the draft grey, suppressed → danger red (below). Pending
    awaits double-opt-in — a waiting/attention state — so it takes the amber `warn` scale,
@@ -3285,6 +3297,43 @@ textarea.is-invalid {
   font-size: 12.5px;
   color: var(--status-scheduled-fg);
 }
+/* The Email only box under a dialog's time: the label, then its helper beneath. */
+.listing-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.listing-check input {
+  width: auto;
+  margin: 3px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--ring);
+  cursor: pointer;
+}
+.listing-check strong {
+  font-weight: 600;
+}
+.listing-help {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* Where a sent post is listed, on its record: the line and its one control. */
+.rec-listing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
 
 .grid2 {
   display: grid;
@@ -4209,7 +4258,8 @@ button.api-filter-clear svg {
   gap: 10px;
 }
 
-/* Setup checklist — shared by the first-run dashboard and Getting started. */
+/* Setup steps: the first-run checklist, and the regular dashboard's Finish setting up card
+   (one component, two layouts). The card is the compact one. */
 .setup-title {
   margin-top: 0;
 }
@@ -4281,6 +4331,20 @@ button.api-filter-clear svg {
   font: 12.5px var(--mono);
   color: var(--muted);
   word-break: break-all;
+}
+.setup-card {
+  margin-bottom: 20px;
+}
+.setup-card .setup-title {
+  font-size: 16px;
+}
+.setup-card .setup-steps li {
+  padding: 8px 2px;
+}
+.setup-card .setup-steps li::before {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
 }
 
 /* ============================================================

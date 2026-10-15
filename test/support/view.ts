@@ -23,7 +23,7 @@ export function viewOf(
     rendered_text?: string;
   };
   return buildSendView(
-    { ...row, post_slug: null },
+    { ...row, post_slug: null, post_email_only: 0 },
     {
       provider,
       archiveOrigin: base,

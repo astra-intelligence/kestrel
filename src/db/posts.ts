@@ -5,7 +5,7 @@ import { EMPTY_SUBJECT_SLUG, slugify } from "../../shared/slug";
 import { newId } from "../lib/ids";
 import { type ListParams, type ListSpec, orderByClause } from "../lib/list";
 import { unwrap } from "../lib/unwrap";
-import { tombstoneSendsStmt } from "./sends";
+import { stampSendsOfPostStmt, tombstoneSendsStmt } from "./sends";
 
 // The row shapes live in shared/ so the editor reads the same definitions; the names here
 // are the Worker's own.
@@ -28,12 +28,15 @@ export interface PostInput {
   markdown?: string;
 }
 
-// SQLite has no boolean: `slug_auto` is stored as 0 or 1, and every read turns it back into
-// the wire's boolean here, so nothing above this module sees the integer.
-type Stored<T extends Post> = Omit<T, "slug_auto"> & { slug_auto: number };
+// SQLite has no boolean: `slug_auto` and `email_only` are stored as 0 or 1, and every read
+// turns them back into the wire's booleans here, so nothing above this module sees the integer.
+type Stored<T extends Post> = Omit<T, "slug_auto" | "email_only"> & {
+  slug_auto: number;
+  email_only: number;
+};
 
 function fromStored<T extends Post>(row: Stored<T>): T {
-  return { ...row, slug_auto: row.slug_auto === 1 } as T;
+  return { ...row, slug_auto: row.slug_auto === 1, email_only: row.email_only === 1 } as T;
 }
 
 /**
@@ -53,6 +56,41 @@ export function setPostStatusStmt(
   return db
     .prepare(`UPDATE posts SET status = ?, updated_at = ? WHERE id = ? AND status = ?${extra}`)
     .bind(to, now, postId, from, ...(guard?.binds ?? []));
+}
+
+/**
+ * Set a post's listing (SPEC §5) as a statement, so a freeze can batch it with the lock it
+ * lands beside (`guard`, as for `setPostStatusStmt`). Never touches `updated_at`: the listing
+ * is not an edit, so the post keeps its place in the Drafts list.
+ */
+export function setEmailOnlyStmt(
+  db: D1Database,
+  postId: string,
+  emailOnly: boolean,
+  guard?: { sql: string; binds: unknown[] },
+): D1PreparedStatement {
+  const extra = guard ? ` AND ${guard.sql}` : "";
+  return db
+    .prepare(`UPDATE posts SET email_only = ? WHERE id = ?${extra}`)
+    .bind(emailOnly ? 1 : 0, postId, ...(guard?.binds ?? []));
+}
+
+/**
+ * Change a post's listing (SPEC §5), in whatever state it is: answers whether anything
+ * changed, so a repeat of the same choice writes nothing. Each of the post's sends carries
+ * the listing on its view, so the same batch gives them a new `rev` and a client following
+ * sends sees the change (SPEC §8). The frozen render and the record are untouched (I3).
+ */
+export async function setEmailOnly(
+  db: D1Database,
+  post: PostRow,
+  emailOnly: boolean,
+): Promise<boolean> {
+  if (post.email_only === emailOnly) {
+    return false;
+  }
+  await db.batch([setEmailOnlyStmt(db, post.id, emailOnly), stampSendsOfPostStmt(db, post.id)]);
+  return true;
 }
 
 export async function getPost(db: D1Database, id: string): Promise<PostRow | null> {

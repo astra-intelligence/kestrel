@@ -1,5 +1,6 @@
 // The sent record view and the live in-flight watch.
 
+import type { ListingResponse } from "../../shared/posts";
 import type {
   DeliveryListResponse,
   DeliveryOutcomes,
@@ -14,13 +15,13 @@ import { isErasedPlaceholder } from "../../shared/subscribers";
 import { ApiError, api, apiFile, describeError } from "../api";
 import { heldAdviceHtml, noEmailProvider, providerNotConnected } from "../deployment";
 import { every, mount } from "../lifecycle";
-import { followSend } from "../send_state";
+import { followSend, readSendsNow } from "../send_state";
 import { $, $$ } from "../ui/dom";
 import { saveFile } from "../ui/download";
 import { fmt } from "../ui/format";
 import { type Html, html, setHtml } from "../ui/html";
 import { type ListState, renderPager, th, wireSort } from "../ui/list_controls";
-import { busy, renderError, toast } from "../ui/widgets";
+import { busy, type Modal, modal, renderError, toast } from "../ui/widgets";
 import { openResolveModal } from "./dialogs";
 import { can, clampPct, conditionOf, fmtDuration, has } from "./progress";
 
@@ -521,6 +522,7 @@ function renderFrozenRecord(
       <div class="rec-head">
         <div class="watch-title"><h1>${send.subject || html`<em>untitled</em>`}</h1><span id="recPill">${phasePill(send.phase)}</span></div>
         <div class="rec-meta">Sent ${fmt(sentAt)} · ${total.toLocaleString()} recipients</div>
+        <div class="rec-listing" id="recListing">${listingLineHtml(send.email_only)}</div>
       </div>
       <p class="rec-tiles-cap muted">Delivery outcomes keep updating as receipts arrive; the audience at fire and the published post are fixed.</p>
       <div class="rec-tiles">${outcomeTilesHtml(outcomes)}</div>
@@ -542,7 +544,7 @@ function renderFrozenRecord(
         <div id="recRows" class="muted">Loading…</div>
         <div id="recPager"></div>
       </div>
-      <p class="rec-note muted">This is the record of what went out: the published post is the exact frozen copy readers received, and nothing here is editable.</p>
+      <p class="rec-note muted">This is the record of what went out: the published post is the exact frozen copy readers received, and nothing here is editable. Only where the post is listed can change.</p>
     </div>`,
   );
 
@@ -550,6 +552,57 @@ function renderFrozenRecord(
   if (viewBtn && archive) {
     viewBtn.onclick = () => window.open(archive, "_blank", "noopener");
   }
+
+  // Where the post is listed (SPEC §5): the record's one control that changes anything, and
+  // what it changes is the listing, never the record (I3). It follows the send's view, so a
+  // change made elsewhere (Claude, another tab) shows on the next report.
+  const listingEl = $("#recListing", root);
+  let emailOnly = send.email_only;
+  const paintListing = () => {
+    setHtml(listingEl, listingLineHtml(emailOnly));
+    const btn = listingEl.querySelector<HTMLButtonElement>("button");
+    if (btn) {
+      btn.onclick = () => (emailOnly ? confirmAddToArchive() : setListing(btn, true));
+    }
+  };
+  // From the confirming dialog, `dialog` closes on success and shows a refusal in place.
+  const setListing = (btn: HTMLButtonElement, next: boolean, dialog?: Modal) =>
+    busy(btn, next ? "Updating…" : "Adding…", async () => {
+      dialog?.clearError();
+      try {
+        const res = await api<ListingResponse>(`/api/posts/${send.post_id}/listing`, {
+          method: "PUT",
+          json: { email_only: next },
+        });
+        dialog?.close();
+        emailOnly = res.post.email_only;
+        paintListing();
+        toast(next ? "Email only: no longer listed in your archive" : "Added to your archive");
+        readSendsNow();
+      } catch (e) {
+        if (dialog) {
+          dialog.error(message(e));
+        } else {
+          toast(message(e));
+        }
+      }
+    });
+  // Listing a post puts it in front of anyone visiting the home page, so it asks first;
+  // taking it off the lists does not (DESIGN §7).
+  const confirmAddToArchive = () => {
+    const m = modal(
+      html`<h3 id="addArchHead">Add this post to your archive?</h3>
+        <p class="hint">It will be listed on your home page and in your public archive, where anyone visiting can find it. You can make it email only again at any time.</p>
+        <div class="actions"><button type="button" id="addArchCancel">Cancel</button><button type="button" class="primary" id="addArchGo">Add to archive</button></div>`,
+      signal,
+    );
+    $(".modal", m.el).setAttribute("aria-labelledby", "addArchHead");
+    $("#addArchCancel", m.el).onclick = m.close;
+    const go = $<HTMLButtonElement>("#addArchGo", m.el);
+    go.onclick = () => setListing(go, false, m);
+    go.focus();
+  };
+  paintListing();
 
   // The per-recipient record, its own paged/filtered state. Default view is "failures" so
   // the rows that went wrong lead; default sort mirrors the CSV (email asc). It reloads on
@@ -694,6 +747,10 @@ function renderFrozenRecord(
           return;
         }
         setHtml($("#recPill", root), phasePill(fresh.phase));
+        if (fresh.email_only !== emailOnly) {
+          emailOnly = fresh.email_only;
+          paintListing();
+        }
         const now = outcomesOf(fresh);
         if (sameOutcomes(shown, now)) {
           return;
@@ -708,6 +765,13 @@ function renderFrozenRecord(
     },
     signal,
   );
+}
+
+/** Where a sent post is listed, with the one control that changes it (DESIGN §3). */
+function listingLineHtml(emailOnly: boolean): Html {
+  return emailOnly
+    ? html`<span>Email only: not listed in your archive.</span><button type="button" class="ghost" id="listingBtn">Add to archive…</button>`
+    : html`<span>Listed in your archive.</span><button type="button" class="ghost" id="listingBtn">Make email only</button>`;
 }
 
 /** A sent send's outcomes from its counters: the same buckets as the record's own read,

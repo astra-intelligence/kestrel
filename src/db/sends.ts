@@ -92,6 +92,13 @@ export function tombstoneSendsStmt(
     .bind(...binds);
 }
 
+/** Give every send of a post a new number, with nothing else changed: a change to the post
+ *  that its sends' views carry (its listing, SPEC §5) is a change to those sends a client
+ *  following them must see (SPEC §8). */
+export function stampSendsOfPostStmt(db: D1Database, postId: string): D1PreparedStatement {
+  return db.prepare(`UPDATE sends SET rev = ${NEXT_REV} WHERE post_id = ?`).bind(postId);
+}
+
 // --- denormalized counter maintenance (`sends.c_*`) --------------------------
 //
 // The counters mirror `deliveryOutcomes`: each recipient falls in exactly one of
@@ -254,14 +261,14 @@ export interface PublishedPost {
 }
 
 /** Published posts for the public archive index, newest first — one row per post
- *  (a re-send collapses to its latest). SQLite carries the bare `subject`/`slug`
+ *  (a re-send collapses to its latest), leaving out an email-only post (SPEC §5). SQLite carries the bare `subject`/`slug`
  *  from the MAX(published_at) row of each group. */
 export async function listPublishedPosts(db: D1Database, limit = 200): Promise<PublishedPost[]> {
   const { results } = await db
     .prepare(
       `SELECT p.slug AS slug, s.subject AS subject, MAX(${PUBLISHED_AT}) AS published_at
          FROM sends s JOIN posts p ON p.id = s.post_id
-         WHERE ${PUBLISHED_SEND}
+         WHERE ${PUBLISHED_SEND} AND p.email_only = 0
          GROUP BY s.post_id
          ORDER BY published_at DESC
          LIMIT ?`,
@@ -297,11 +304,16 @@ export const SEND_LIST_SPEC: ListSpec = {
 const SEND_LIST_COLS =
   "id, post_id, status, fire_at, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, remade_at, tested_at, halt_reason, halt_cause, halt_error, halted_at, halt_retries, halt_retry_at, c_pending, c_in_flight, c_accepted, c_delivered, c_bounced, c_complained, c_skipped, c_unsent, rev";
 
-// A view's columns: the list projection and the post's slug, for the archive link.
-const VIEW_COLS = `${SEND_LIST_COLS}, (SELECT p.slug FROM posts p WHERE p.id = sends.post_id) AS post_slug`;
+// A view's columns: the list projection, the post's slug for the archive link, and the
+// post's listing (SPEC §5).
+const VIEW_COLS = `${SEND_LIST_COLS}, (SELECT p.slug FROM posts p WHERE p.id = sends.post_id) AS post_slug, (SELECT p.email_only FROM posts p WHERE p.id = sends.post_id) AS post_email_only`;
 
-/** A stored send as a view is built from it: the list projection and its post's slug. */
-export type SendViewSource = SendSummary & { post_slug: string | null };
+/** A stored send as a view is built from it: the list projection, its post's slug, and its
+ *  post's listing (0 or 1; null only for a send whose post is gone). */
+export type SendViewSource = SendSummary & {
+  post_slug: string | null;
+  post_email_only: number | null;
+};
 
 /** One send as a view reads it, with the retry probe its phase needs; null when it is gone. */
 export async function getSendViewRow(
