@@ -446,7 +446,7 @@ describe("dashboard", () => {
         "Name your publication",
         "Connect Amazon SES",
         "Bring your existing list",
-        "Write your first post",
+        "Send your first post to the archive",
         "Share your subscribe link",
       ]);
       expect($(".setup-connect button").dataset.nav).toBe("#/docs/ses");
@@ -551,7 +551,7 @@ describe("dashboard", () => {
           "Name your publication",
           "Check your setup",
           "Bring your existing list",
-          "Write your first post",
+          "Send your first post to the archive",
           "Share your subscribe link",
         ]);
         expect($(".setup-url").textContent, provider).toBe("https://app.birds.example/subscribe");
@@ -586,7 +586,7 @@ describe("dashboard", () => {
         "Name your publication",
         "Check your setup",
         "Bring your existing list",
-        "Write your first post",
+        "Send your first post to the archive",
         "Share your subscribe link",
       ]);
       expect($("#dashSetup").previousElementSibling?.id).toBe("dashHealth");
@@ -596,16 +596,18 @@ describe("dashboard", () => {
       expect(fake.unhandled).toEqual([]);
     });
 
-    it("marks done only what the app knows: a name set, a post scheduled, subscribers, a post written", async () => {
-      fake = world([post()], sendServer([scheduled()]), counts);
+    it("marks done only what the app knows: a name set, subscribers; never checking the setup, which is guidance", async () => {
+      // A scheduled send and a sent email-only one: an operator's checks say nothing about
+      // whether the publisher checked theirs, and neither is in the archive.
+      const srv = sendServer([scheduled()]);
+      srv.put(send(), { email_only: true });
+      fake = world([post()], srv, counts);
       await mount(renderDashboard);
       await vi.advanceTimersByTimeAsync(0);
-      expect(done()).toEqual([
-        "Name your publication",
-        "Check your setup",
-        "Bring your existing list",
-        "Write your first post",
-      ]);
+      expect(done()).toEqual(["Name your publication", "Bring your existing list"]);
+      expect($(".setup-card .setup-check button").textContent).toBe("Docs");
+      // Every step but the archive one can be done, and the card still waits on it.
+      expect($(".setup-card .setup-write button").textContent).toBe("New post");
       unmount();
       fake.restore();
       const c = config();
@@ -614,7 +616,7 @@ describe("dashboard", () => {
       fake = world([post()], sendServer(), none);
       await mount(renderDashboard);
       await vi.advanceTimersByTimeAsync(0);
-      expect(done()).toEqual(["Write your first post"]);
+      expect(done()).toEqual([]);
       expect(fake.unhandled).toEqual([]);
     });
 

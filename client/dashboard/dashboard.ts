@@ -212,12 +212,15 @@ export async function renderDashboard(view: HTMLElement, signal: AbortSignal): P
   const pub = derivePublication(appState.appConfig);
   const deployment = appState.appConfig?.deployment ?? null;
 
+  // A post listed in the archive has been published (its send started): the step that ends
+  // setup. An email-only post (Verify it works' test send) doesn't count (SPEC §5).
+  const archived = () =>
+    sends.some((s) => (s.status === "sending" || s.status === "sent") && !s.email_only);
   // What the setup steps read as done, from what the app already knows (DESIGN §3).
   const setupProgress = (): SetupProgress => ({
     named: Boolean(appState.appConfig?.settings.publication?.name?.trim()),
-    checked: sends.some((s) => s.status !== "canceled"),
     onList: counts.confirmed + counts.pending,
-    written: posts.length > 0,
+    archived: archived(),
   });
 
   // First run, with nothing written yet: replace the body with the setup checklist rather
@@ -235,10 +238,9 @@ export async function renderDashboard(view: HTMLElement, signal: AbortSignal): P
     return;
   }
 
-  // The Finish setting up card, while setup is open: until a post listed in the archive is
-  // published. An email-only post (Verify it works' test send) doesn't close it (SPEC §5).
-  const setupOpen = () =>
-    !sends.some((s) => (s.status === "sending" || s.status === "sent") && !s.email_only);
+  // The Finish setting up card, while setup is open: until its last step, a post listed in
+  // the archive published, is done, so the step's check and the card ending are one moment.
+  const setupOpen = () => !archived();
   const setupCardHtml = () =>
     setupOpen() ? setupStepsHtml(pub, deployment, setupProgress(), "card") : html``;
   const healthNow = () =>
@@ -528,16 +530,18 @@ function apiConnectCard(connected: boolean): Html {
   </div>`;
 }
 
-/** What the setup steps read as done, each from what the app already knows (DESIGN §3). */
+/**
+ * What the setup steps read as done, each from what the app already knows (DESIGN §3).
+ * Checking the setup is never read as done: a send the operator made to verify the instance
+ * says nothing about whether the publisher has checked theirs.
+ */
 interface SetupProgress {
   /** A name has been set in Settings. */
   named: boolean;
-  /** A post has been scheduled or sent, so a test was likely sent too. */
-  checked: boolean;
   /** Confirmed and pending subscribers on the list. */
   onList: number;
-  /** A post exists. */
-  written: boolean;
+  /** A post listed in the archive has been published: setup is done. */
+  archived: boolean;
 }
 
 /**
@@ -547,8 +551,9 @@ interface SetupProgress {
  * steps go in the order they depend on each other, each the publisher's to take except
  * connecting a provider, which shows only until one is: while none is, connecting replaces
  * the check-your-setup step (nothing can be checked before it) and the subscribe step says
- * signups wait for it. A step reads as done only from what the app knows, and none has to be
- * done: sharing the link can't be known, so it never reads as done. The Publishing docs'
+ * signups wait for it. A step reads as done only from what the app knows. Checking the setup
+ * and sharing the link are guidance and never read as done; sending a post to the archive is
+ * the one that ends setup, so its check and the card clearing happen together. The Publishing docs'
  * section of the same name (docs/publishing/README.md) follows these steps, so a change here
  * changes it.
  */
@@ -569,14 +574,14 @@ function setupStepsHtml(
       ${
         notConnected
           ? html`<li class="setup-connect"><div class="setup-step-main"><strong>Connect Amazon SES</strong><span class="muted">Nothing can be sent, and signups stay closed, until SES is connected.</span></div><button data-nav="${CONNECT_PROVIDER_HREF}">Connect Amazon SES</button></li>`
-          : html`<li class="setup-check${done(progress.checked)}"><div class="setup-step-main"><strong>Check your setup</strong><span class="muted">Send yourself a test, and see how Kestrel tells you when something needs attention.</span></div><button data-nav="#/docs/check-your-setup">Docs</button></li>`
+          : html`<li class="setup-check"><div class="setup-step-main"><strong>Check your setup</strong><span class="muted">Send yourself a test, and see how Kestrel tells you when something needs attention.</span></div><button data-nav="#/docs/check-your-setup">Docs</button></li>`
       }
       ${
         onList
           ? html`<li class="setup-done setup-list"><div class="setup-step-main"><strong>Bring your existing list</strong><span class="muted">${onList.toLocaleString()} ${onList === 1 ? "subscriber" : "subscribers"} on your list.</span></div><button data-nav="#/subscribers">Subscribers</button></li>`
           : html`<li class="setup-list"><div class="setup-step-main"><strong>Bring your existing list</strong><span class="muted">Import the subscribers you have on another service, with the consent they gave there. Skip this if you’re starting fresh.</span></div><button data-nav="#/subscribers/import">Import</button></li>`
       }
-      <li class="setup-write${done(progress.written)}"><div class="setup-step-main"><strong>Write your first post</strong><span class="muted">Draft a post in Markdown and preview it exactly as the email.</span></div>${progress.written ? html`<button data-act="new-post">New post</button>` : html`<button class="primary" data-act="new-post">New post</button>`}</li>
+      <li class="setup-write${done(progress.archived)}"><div class="setup-step-main"><strong>Send your first post to the archive</strong><span class="muted">Write a post, test it, and send it. Setup is done once a post listed in your archive goes out.</span></div>${layout === "card" ? html`<button data-act="new-post">New post</button>` : html`<button class="primary" data-act="new-post">New post</button>`}</li>
       ${
         notConnected
           ? html`<li class="setup-subscribe"><div class="setup-step-main"><strong>Share your subscribe link</strong><span class="muted">Signups open once an email provider is connected; until then the page says they aren’t open yet.</span></div></li>`

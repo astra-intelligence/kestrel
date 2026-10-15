@@ -15,7 +15,7 @@ To move a running instance from one version to another, follow [Upgrade to a new
 ### Added
 
 - **Email only**: a post can be sent to subscribers without being listed in the public archive or on the home page (SPEC §5). Choose it with the **Email only** box when you schedule, Send now, or reschedule, and change it later on a sent post's page (**Make email only**, or **Add to archive…**, which asks first). Its page still answers at its address, so the email's "view in browser" link works, and asks search engines not to index it. Sent lists mark it with a grey **Email only** label. The API carries it as `email_only` on posts and sends, on the schedule, Send now, and reschedule bodies, and through `PUT /api/posts/:id/listing`.
-- The dashboard keeps setup's steps after the first post, as a **Finish setting up** card, until the first post listed in the archive goes out. Each step shows done from what the app knows, so a test send that's email only, like Verify it works' own, leaves the publisher their guided start.
+- The dashboard keeps setup's steps after the first post, as a **Finish setting up** card, until the first post listed in the archive goes out. Its last step, **Send your first post to the archive** (formerly Write your first post), is the one that clears it, so a test send that's email only, like Verify it works' own, leaves the publisher their guided start. **Check your setup** is guidance and never shows as done.
 
 ### Changed
 
