@@ -2930,6 +2930,10 @@ body.web-mode .content {
   border-top: 0;
   justify-content: flex-start;
 }
+/* Under the Email only box, the back link keeps a line's space from its helper. */
+.modal .listing-check ~ .altrow-top {
+  margin-top: 14px;
+}
 /* Link — a text-link-styled action (DESIGN §7), not one of the button roles. Reserved
    for a deliberately subordinate choice, like the in-modal Send now that sits below
    the Schedule Primary: it must read as clearly demoted, so it is a link, not a Ghost
