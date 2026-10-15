@@ -41,7 +41,7 @@ A change to your template, or to a publication detail it shows, re-makes every s
 
 A post goes to your list as it stands when it sends: every confirmed subscriber, except addresses that bounced, complained, or were blocked. Someone who confirms while it's scheduled receives it. Someone who unsubscribes before their email is handed to your provider doesn't, even partway through the send.
 
-So a recipient count shown before the send is a snapshot. An import that adds subscribers while a post is scheduled adds them to its audience too, and asks you first ([Bring your existing list](01-your-list.md#what-an-import-does)).
+So a recipient count shown before the send is a snapshot. An import that adds subscribers while a post is scheduled adds them to its audience too, and asks you first ([Bring your existing list](01-your-list.md#3-import-it)).
 
 ### Warnings when you schedule
 

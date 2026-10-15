@@ -35,19 +35,20 @@ Readers subscribe on a page the app hosts. Every signup confirms by email before
 
 ## As your list grows
 
-A new instance runs on Cloudflare's free Workers plan. As your list grows, three limits come into play.
+A new instance runs on Cloudflare's free Workers plan with your starting SES limits. That suits a list of up to about 5,000 subscribers. Two upgrades take it further: one with AWS, which helps on either plan, and one with Cloudflare, which a larger list needs.
 
-- **Your SES quota.** AWS caps how many emails your account sends a day. A send that hits the cap waits, and the app emails you. It resumes on its own once the quota frees up, or after AWS raises it.
-- **How fast a send goes out.** A send goes out a slice at a time, one slice a minute. SES takes one request a second, of up to 50 recipients, and no more recipients a second than your account's maximum send rate. So each request carries one second of that rate, up to 50.
-- **Your database's daily writes.** On the free plan, D1, the database the app runs on, allows 100,000 rows written a day. Past that, it refuses every query until midnight UTC, and the whole app stops: sends, signups, the public pages, and the editor.
+**Ask AWS to raise your SES limits, on either plan.** SES caps how many emails your account sends a day, and how many a second. A send that hits the daily quota waits, emails you, and resumes on its own once the quota frees up. Raising your maximum send rate to 50 a second costs nothing. Once AWS grants it, set [`SES_MAX_SEND_RATE`](../reference/01-configuration.md#ses_max_send_rate) to match, and deploy again.
 
-Kestrel is built to run on the free plan until your list outgrows it. Each recipient of a send writes about 14 rows, delivery receipts included, so a send to 1,000 subscribers uses about 14% of the day's writes. A single send fills the day at about 7,000 recipients, and sooner on a day you also import.
+**Move to the $5 Workers Paid plan from about 5,000 subscribers.** On the free plan, [D1](https://developers.cloudflare.com/d1/platform/pricing/) allows a fixed number of database writes a day. A send to about 7,000 recipients uses them all, and then the whole app stops until midnight UTC. Workers Paid has no daily limit. After you move, set [`SUBREQUEST_BUDGET`](../reference/01-configuration.md#subrequest_budget) to `10000` and deploy again, so each minute sends far more. Until then, the app warns you before a send or an import that could use up the day.
 
-So move to the $5 Workers Paid plan from about 5,000 subscribers. It counts [D1's writes](https://developers.cloudflare.com/d1/platform/pricing/) by the month, with 50 million included, and never stops the database for them. Until then, the app warns you before a send or an import that could use up the day. It never stops you, since your account may already be on Workers Paid.
+How long a send takes, with each upgrade:
 
-The free Workers plan sends four requests a minute. At 14 messages a second, a common starting rate, that's 56 recipients a minute, and 1,000 subscribers take about 18 minutes. At 50 a second or more, it's 200 a minute.
-
-To send faster, first ask AWS to raise your maximum send rate to 50, which costs nothing, then set [`SES_MAX_SEND_RATE`](../reference/01-configuration.md#ses_max_send_rate) to match, and deploy again. A rate above 50 adds nothing on the free plan, where a rate of 50 sends 5,000 subscribers in about 25 minutes. A larger list belongs on Workers Paid for its database writes anyway. On Workers Paid, set [`SUBREQUEST_BUDGET`](../reference/01-configuration.md#subrequest_budget) to `10000`. It sends about 50 requests a minute: about 700 recipients at 14 a second, and about 2,500 at 50 or more.
+| Setup | 1,000 subscribers | 5,000 subscribers | 10,000 subscribers |
+| --- | --- | --- | --- |
+| Free plan, a starting SES rate of 14 | about 18 minutes | about 1.5 hours | over the free plan's daily writes |
+| Free plan, SES rate raised to 50 | about 5 minutes | about 25 minutes | over the free plan's daily writes |
+| Workers Paid, SES rate of 14 | about 2 minutes | about 7 minutes | about 15 minutes |
+| Workers Paid, SES rate of 50 | under a minute | about 2 minutes | about 4 minutes |
 
 ## Check it
 

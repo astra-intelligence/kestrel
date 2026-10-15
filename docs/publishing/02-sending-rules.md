@@ -6,7 +6,7 @@ This page covers what Kestrel handles, what you handle, and how to act on a read
 
 ## What Kestrel handles
 
-- **Consent.** Kestrel mails only people who confirmed they want your newsletter. Someone who subscribes gets an email with a link, and only once they confirm do they receive posts. People you import come with your old service's record of their consent, and your word for it ([Bring your existing list](01-your-list.md#why-your-old-services-record-is-honored)).
+- **Consent.** Kestrel mails only people who confirmed they want your newsletter. Someone who subscribes gets an email with a link, and only once they confirm do they receive posts. People you import come with your old service's record of their consent, and your word for it ([Bring your existing list](01-your-list.md#what-carries-over)).
 - **Unsubscribing.** Every email has an unsubscribe link, and the one-click unsubscribe header that Gmail and Yahoo ask bulk senders for. It takes effect at once. US law allows up to 10 business days.
 - **Bounces and complaints.** An address that bounces, or a reader who marks your email as spam, is never mailed again. So a bad address can't keep hurting your sending reputation.
 - **Sender authentication.** Your emails are signed with DKIM for your own domain, and SPF and DMARC records in its DNS vouch for them. Whoever manages your Kestrel instance sets these up, and mailbox providers now expect them.
