@@ -8,17 +8,17 @@ When a send needs you, its page and the dashboard's health block say so in a red
 
 A problem with your email provider never marks anyone unsent. The send waits where it is, and carries on from there once the problem clears.
 
-- **"The provider is refusing the account".** Your provider won't take mail from your account, and its own words follow, with the fix they point to. The fix is almost always for whoever manages your Kestrel instance, so send them the message. The one you may simply wait out is a spent daily sending quota, which frees up within a day. They can also ask for a higher one, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
-- **"No email provider is connected".** The send is held until whoever manages your Kestrel instance connects one ([Connect Amazon SES](../get-started/04-ses.md)). It goes out once they do.
+- **"The provider is refusing the account".** Your provider won't take mail from your account, and its own words follow, with the fix they point to. The fix is almost always in your Amazon SES account or Kestrel's deployment, and the message names it. A spent daily sending quota frees up within a day, and you can ask AWS for a higher one, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
+- **"No email provider is connected".** The send is held until one is connected ([Connect Amazon SES](../get-started/04-ses.md)), and goes out once it is.
 - **"The provider is unavailable".** An outage or a rate limit on the provider's side. The send retries on its own, so there's nothing to do.
-- **"Still sending … after it started".** A send is taking longer than expected, and may be retrying. If the line stays, tell whoever manages your Kestrel instance.
-- **"The fire time passed … and the send has not started".** The part of Kestrel that starts sends on time isn't running. The send goes out as soon as it runs again. Tell whoever manages your Kestrel instance, since only they can restart it.
+- **"Still sending … after it started".** A send is taking longer than expected, and may be retrying. If the line stays, read the app's logs, as [Read the logs](../get-started/05-verify.md#7-read-the-logs) describes.
+- **"The fire time passed … and the send has not started".** The Cloudflare Cron Trigger that starts sends on time isn't running. The send goes out as soon as it runs again. Check the Worker's trigger, as [`triggers.crons`](../reference/01-configuration.md#triggerscrons) describes.
 - **"The provider never answered for …".** Rarely, Kestrel can't tell whether your provider took some emails, and sending again could mail those readers twice. **Resolve…** on the send's page asks you to decide. **Assume not sent** is the safe default: those readers may miss this post, but get your next one. Choose **Assume sent** only when you know they got it.
 
 ## Before a send
 
 - **"The template or publication details changed this email's look after your last test".** Send a new test of the post, since your last one no longer shows what goes out.
-- **The daily database writes warning.** On the free hosting plan, a large send may use up the day's writes, which stops your newsletter until midnight UTC. [Bring your existing list](01-your-list.md#limits) explains the limit, and when to move to the paid plan.
+- **The daily database writes warning.** On Cloudflare's free Workers plan, a large send may use up the day's writes, and then the app stops working until midnight UTC. [Bring your existing list](01-your-list.md#limits) explains the limit, and when to upgrade to Workers Paid.
 
 ## Reading a send's record
 
@@ -71,4 +71,4 @@ With an address set, Kestrel emails you:
 
 Each links to the page it's about, and is sent once while the problem lasts. A bounce spike shows on the dashboard but isn't emailed. **Send a test notification** checks that one arrives.
 
-By default, notifications go through your newsletter's own email provider. So when that provider refuses your account, the notification about it can't reach you either. Whoever manages your Kestrel instance can send them another way, as [Notifications through Cloudflare's email](../guides/03-notifications.md) describes.
+By default, notifications go through your newsletter's own email provider. So when that provider refuses your account, the notification about it can't reach you either. You can send them another way, as [Notifications through Cloudflare's email](../guides/03-notifications.md) describes.

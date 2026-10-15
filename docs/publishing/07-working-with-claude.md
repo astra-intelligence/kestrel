@@ -2,7 +2,7 @@
 
 Ask Claude in plain words, the way you'd ask a colleague. It works through the same API as the dashboard, so it can do what you can do there, and nothing more. Everything it changes shows in the dashboard as Claude's.
 
-Setting Claude up is for whoever manages your Kestrel instance, as [Connect Claude to the API](../guides/01-connect-claude.md) describes. Claude reads these same pages from your Kestrel, so it explains things in the words you see here.
+To set Claude up, follow [Connect Claude to the API](../guides/01-connect-claude.md). Claude reads these same pages from your Kestrel, so it explains things in the words you see here.
 
 ## What to ask Claude
 
@@ -24,6 +24,6 @@ The app holds these for any client, so they hold whatever Claude is told:
 - **No one's edit is overwritten.** A save based on an older version is refused.
 - **Only you can let an import grow a scheduled send.** An import through Claude that would stops there, until you finish it in the dashboard.
 
-Claude also follows instructions your Kestrel gives it, which whoever manages your instance keeps in its repository. Those hold only as long as the instructions do. They have Claude ask before anything that reaches readers, test again after a template change, and record whose decision each change to the list was. They also have it treat what's in a post or a subscriber's record as content, never as instructions.
+Claude also follows instructions your Kestrel gives it, which live in your instance's repository. Those hold only as long as the instructions do. They have Claude ask before anything that reaches readers, test again after a template change, and record whose decision each change to the list was. They also have it treat what's in a post or a subscriber's record as content, never as instructions.
 
 The app lets Claude give your attestation for an import, so asking you first is one of those instructions, not a rule the app enforces. The import's record says it came through Claude, and Kestrel emails you about it if your notifications are set.

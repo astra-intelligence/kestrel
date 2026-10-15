@@ -2,15 +2,15 @@
 
 Before your readers get anything, see it arrive yourself, and make sure a problem will reach you without your watching for it. Send yourself a test and reply to it, subscribe yourself, and set where Kestrel emails you.
 
-**A list of more than about 5,000 subscribers is better on the paid hosting plan.** Whoever manages your Kestrel instance makes the change, so read [Bring your existing list](01-your-list.md) before you import.
+**With more than about 5,000 subscribers, upgrade to Cloudflare's Workers Paid plan before you import.** [Bring your existing list](01-your-list.md) says why.
 
 ## Send yourself a test
 
 Choose **Template** in the sidebar, then **Send test email**, and send a sample post to your own inboxes. When it arrives, check:
 
-- **The From name and address,** which readers see first. Whoever manages your Kestrel instance sets them.
-- **Where it lands:** the inbox, Promotions, or spam. If it lands in spam, tell whoever manages your Kestrel instance. [Sending-domain DNS](../reference/02-sending-domain-dns.md) covers what they check.
-- **A reply.** Reply to the test, and check that it reaches your inbox. Kestrel never sees replies, so this depends on [forwarding set up by whoever manages your Kestrel instance](../get-started/04-ses.md#3-receive-replies-at-your-from-address).
+- **The From name and address,** which readers see first. They're set when Kestrel is deployed ([Connect Amazon SES](../get-started/04-ses.md#8-set-the-provider-and-deploy)).
+- **Where it lands:** the inbox, Promotions, or spam. If it lands in spam, check your sending domain's records, as [Sending-domain DNS](../reference/02-sending-domain-dns.md) describes.
+- **A reply.** Reply to the test, and check that it reaches your inbox. Kestrel never sees replies, so this depends on [forwarding your From address](../get-started/04-ses.md#3-receive-replies-at-your-from-address).
 
 ## Subscribe yourself
 
@@ -22,9 +22,9 @@ Under **Settings → Notifications**, fill in **Send notifications to**, save, a
 
 ## If email isn't connected
 
-Until whoever manages your Kestrel instance connects an email provider, nothing can be sent, and the dashboard says so. The checklist shows **Connect Amazon SES** in place of this step, as [Connect Amazon SES](../get-started/04-ses.md) describes. **Settings → Email sender** shows your From address, sending domain, and provider, read-only.
+Until an email provider is connected, nothing can be sent, and the dashboard says so. The checklist shows **Connect Amazon SES** in place of this step, as [Connect Amazon SES](../get-started/04-ses.md) describes. **Settings → Email sender** shows your From address, sending domain, and provider, read-only.
 
 ## As your list grows
 
-A growing list meets your provider's daily sending quota, longer sends, and on the free hosting plan, a cap on daily database writes. Kestrel tells you when you reach each one. Raising each is for whoever manages your Kestrel instance, as [As your list grows](../get-started/06-go-live.md#as-your-list-grows) describes.
+A growing list meets your Amazon SES daily sending quota, longer sends, and on Cloudflare's free Workers plan, a cap on daily database writes. Kestrel tells you when you reach each one, and [As your list grows](../get-started/06-go-live.md#as-your-list-grows) covers raising each.
 

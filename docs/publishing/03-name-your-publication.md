@@ -44,5 +44,5 @@ Afterwards, each of those posts says its look changed since your last test, unti
 
 ## Who sets the From name and address
 
-Whoever manages your Kestrel instance sets the From name and address your emails come from, and **Settings → Email sender** shows them read-only. [Connect Amazon SES](../get-started/04-ses.md#8-set-the-provider-and-deploy) covers setting them.
+The From name and address your emails come from are set when Kestrel is deployed, so **Settings → Email sender** shows them read-only. To change them, follow [Connect Amazon SES](../get-started/04-ses.md#8-set-the-provider-and-deploy).
 

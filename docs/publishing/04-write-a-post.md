@@ -19,11 +19,11 @@ A few things to know as you write:
 
 **Send test email** sends the real email, through the same template and code as the send, to the addresses you name. **Settings → Default test recipients** fills them in for you. Nobody on your list gets anything, and a test's unsubscribe link unsubscribes no one.
 
-Mail clients each draw email a little differently, so trust a test over **Preview**, especially for tables, code, and HTML. A test needs an email provider, which whoever manages your Kestrel instance connects ([Connect Amazon SES](../get-started/04-ses.md)).
+Mail clients each draw email a little differently, so trust a test over **Preview**, especially for tables, code, and HTML. A test needs an email provider, which [Connect Amazon SES](../get-started/04-ses.md) sets up.
 
 ## Schedule and send
 
-Choose **Schedule** at the foot of the editor, pick a time under **Send at**, and confirm. The time must be at least the minimum lead away: five minutes, unless whoever manages your Kestrel instance set a different one ([Configuration](../reference/01-configuration.md#min_lead_seconds)). Neither the dashboard nor Claude can shorten it. Times are to the minute, and one with seconds rounds up.
+Choose **Schedule** at the foot of the editor, pick a time under **Send at**, and confirm. The time must be at least the minimum lead away: five minutes, unless your deployment sets a different [`MIN_LEAD_SECONDS`](../reference/01-configuration.md#min_lead_seconds). Neither the dashboard nor Claude can shorten it. Times are to the minute, and one with seconds rounds up.
 
 Scheduling makes the email once, from the post, your template, and your publication's details as they are at that moment. That frozen copy is what goes out, and it's also the post's page in your archive. So the post is locked, and **Preview** and **Send test email** show the frozen copy.
 
@@ -45,8 +45,8 @@ So a recipient count shown before the send is a snapshot. An import that adds su
 
 ### Warnings when you schedule
 
-- **No email provider connected.** The Schedule dialog can't schedule until whoever manages your Kestrel instance connects one. If the provider goes after a post is scheduled, the post is held, stays cancelable, and goes out once one is connected.
-- **Daily database writes.** On the free hosting plan, a large send may use up the day's writes. The dialog warns you without stopping you, as [Bring your existing list](01-your-list.md#limits) explains.
+- **No email provider connected.** The Schedule dialog can't schedule until one is connected ([Connect Amazon SES](../get-started/04-ses.md)). If the provider goes after a post is scheduled, the post is held, stays cancelable, and goes out once one is connected.
+- **Daily database writes.** On Cloudflare's free Workers plan, a large send may use up the day's writes. The dialog warns you without stopping you, as [Bring your existing list](01-your-list.md#limits) explains.
 
 ### When it sends
 

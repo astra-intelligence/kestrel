@@ -2,7 +2,7 @@
 
 Your publication's subscribe page is at `/subscribe` on your Kestrel's address, such as `https://newsletter.example.com/subscribe`. Copy it from the dashboard's checklist or **Settings → Ways to subscribe**, and share it wherever your readers are. A reader joins only once they confirm by email.
 
-**Signups open only once an email provider is connected.** Until then, the page says the newsletter isn't taking subscribers yet, and the dashboard says so too. You can share the link anyway, and it opens once whoever manages your Kestrel instance connects email ([Connect Amazon SES](../get-started/04-ses.md)).
+**Signups open only once an email provider is connected.** Until then, the page says the newsletter isn't taking subscribers yet, and the dashboard says so too. You can share the link anyway, and it opens once email is connected ([Connect Amazon SES](../get-started/04-ses.md)).
 
 ## How a reader joins
 
@@ -22,4 +22,4 @@ Change its subject, message, button label, and reassurance line under **Settings
 
 **Settings → Ways to subscribe → Embed a form** gives you HTML to paste into any page you control. **Styled** looks like your subscribe page, and **Plain** takes your site's own styles. A reader who submits it confirms by email, as on the subscribe page.
 
-**Settings → Reader pages** shows every page a reader can land on, at desktop and phone widths, without walking through the steps. Whoever manages your Kestrel instance can also limit how often anyone submits the form, which slows down abuse ([Rate-limit the subscribe form](../guides/05-rate-limit.md)).
+**Settings → Reader pages** shows every page a reader can land on, at desktop and phone widths, without walking through the steps. You can also limit how often anyone submits the form, which slows down abuse ([Rate-limit the subscribe form](../guides/05-rate-limit.md)).
