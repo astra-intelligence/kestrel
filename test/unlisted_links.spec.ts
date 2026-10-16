@@ -70,7 +70,7 @@ describe("every email carries the post's unlisted link (SPEC §5)", () => {
     const id = await makeDraft("Barn Owls");
     const { post } = await read(id);
     const link = `${ORIGIN}/email/${post.unlisted_token}`;
-    expect(post.unlisted_token).toMatch(/^[0-9a-f]{32}$/);
+    expect(post.unlisted_token).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){3}$/);
 
     await call("POST", `/api/posts/${id}/test`, { to: "me@example.com" });
     const sendId = await schedule(id);

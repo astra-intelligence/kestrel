@@ -47,7 +47,7 @@ import { recomputeSendCounters } from "../db/sends";
 import { getSettings, newLogoKey, setPublicationLogo, updateSettings } from "../db/settings";
 import { audienceEmails } from "../db/subscribers";
 import type { AppEnv, Config } from "../env";
-import { newId, newToken } from "../lib/ids";
+import { newId, newToken, newUnlistedToken } from "../lib/ids";
 import { probeImageDimensions } from "../lib/image_dims";
 import { DEFAULT_SEED, makePrng } from "../lib/prng";
 import { unwrap } from "../lib/unwrap";
@@ -872,7 +872,7 @@ function renderInputFor(
     // A demo slug that is just its subject's reads as following it, as a new post's would.
     slug_auto: demoPost.slug === slugify(demoPost.subject),
     // Made here rather than by the database, since the render below carries it.
-    unlisted_token: newToken(16),
+    unlisted_token: newUnlistedToken(),
     subject: demoPost.subject,
     status: demoPost.status,
     email_only: demoPost.emailOnly ?? false,

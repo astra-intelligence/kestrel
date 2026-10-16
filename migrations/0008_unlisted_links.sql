@@ -7,7 +7,8 @@
 -- `/email/<token>` on the app's own origin, which every test and send carries instead, and the
 -- archive address answers only while the post is listed.
 --
--- posts.unlisted_token: about 128 bits of randomness, made with the post and never changed.
+-- posts.unlisted_token: 128 bits of randomness, made with the post and never changed, written as
+-- 32 hex digits in four groups of eight joined by hyphens, so a reader can keep their place in it.
 -- A column added to an existing table can't take a per-row default, so existing posts are
 -- given theirs here, and a trigger gives one to every post inserted without it, so no way of
 -- inserting a post leaves it without a link. The unique index keeps every link a post's own.
@@ -22,12 +23,16 @@
 
 ALTER TABLE posts ADD COLUMN unlisted_token TEXT;
 UPDATE posts SET unlisted_token = lower(hex(randomblob(16)));
+UPDATE posts SET unlisted_token = substr(unlisted_token, 1, 8) || '-' || substr(unlisted_token, 9, 8)
+  || '-' || substr(unlisted_token, 17, 8) || '-' || substr(unlisted_token, 25, 8);
 CREATE UNIQUE INDEX idx_posts_unlisted_token ON posts (unlisted_token);
 
 CREATE TRIGGER posts_unlisted_token AFTER INSERT ON posts
   WHEN NEW.unlisted_token IS NULL
 BEGIN
   UPDATE posts SET unlisted_token = lower(hex(randomblob(16))) WHERE id = NEW.id;
+  UPDATE posts SET unlisted_token = substr(unlisted_token, 1, 8) || '-' || substr(unlisted_token, 9, 8)
+    || '-' || substr(unlisted_token, 17, 8) || '-' || substr(unlisted_token, 25, 8) WHERE id = NEW.id;
 END;
 
 ALTER TABLE sends ADD COLUMN web_link TEXT NOT NULL DEFAULT 'unlisted'

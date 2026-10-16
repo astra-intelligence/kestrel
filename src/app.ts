@@ -481,7 +481,7 @@ export function createRouter({
             status: "draft",
             slug: "hello-world",
             slug_auto: true,
-            unlisted_token: "9f2c41d07ab35e8c6d1f04b2a7e9c350",
+            unlisted_token: "9f2c41d0-7ab35e8c-6d1f04b2-a7e9c350",
           },
           slug_taken: null,
           revision_id: "r_1",

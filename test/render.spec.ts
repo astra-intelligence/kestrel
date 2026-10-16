@@ -42,7 +42,7 @@ function post(over: Partial<PostRow> = {}): PostRow {
     id: "p1",
     slug: "weekly-news",
     slug_auto: false,
-    unlisted_token: "0123456789abcdef0123456789abcdef",
+    unlisted_token: "01234567-89abcdef-01234567-89abcdef",
     subject: "This week in cats",
     status: "draft",
     email_only: false,
@@ -168,7 +168,7 @@ describe("render (the single render path)", async () => {
       { post: post({ slug: "weekly-news" }), revision: revision("body"), images: [] },
       config,
     );
-    const link = "https://app.example/email/0123456789abcdef0123456789abcdef";
+    const link = "https://app.example/email/01234567-89abcdef-01234567-89abcdef";
     expect(result.text).toContain(`View in browser: ${link}`);
     expect(result.html).not.toContain("weekly-news");
   });
@@ -181,7 +181,7 @@ describe("render (the single render path)", async () => {
     expect(result.text).toContain("here (https://x.com)");
     expect(result.text).toContain(`Unsubscribe: ${UNSUB_SENTINEL}`);
     expect(result.text).toContain(
-      "View in browser: https://app.example/email/0123456789abcdef0123456789abcdef",
+      "View in browser: https://app.example/email/01234567-89abcdef-01234567-89abcdef",
     );
   });
 
@@ -192,7 +192,7 @@ describe("render (the single render path)", async () => {
       "",
       "—",
       "Powered by Kestrel",
-      "View in browser: https://app.example/email/0123456789abcdef0123456789abcdef",
+      "View in browser: https://app.example/email/01234567-89abcdef-01234567-89abcdef",
       `Unsubscribe: ${UNSUB_SENTINEL}`,
     ];
     const blank = await render(input, config);
@@ -316,7 +316,7 @@ describe("render (the single render path)", async () => {
     expect(result.html).toContain("Field Notes");
     expect(result.html).toContain(UNSUB_SENTINEL);
     // The view-in-browser variable is filled with the archive URL.
-    expect(result.html).toContain("https://app.example/email/0123456789abcdef0123456789abcdef");
+    expect(result.html).toContain("https://app.example/email/01234567-89abcdef-01234567-89abcdef");
     expect(result.warnings).toEqual([]);
   });
 

@@ -377,8 +377,8 @@ describe("schema (0008_unlisted_links)", () => {
       unlisted_token: string;
     }>();
     const [a, b] = results.map((r) => r.unlisted_token);
-    expect(a).toMatch(/^[0-9a-f]{32}$/);
-    expect(b).toMatch(/^[0-9a-f]{32}$/);
+    expect(a).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){3}$/);
+    expect(b).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){3}$/);
     expect(a).not.toBe(b);
   });
 
