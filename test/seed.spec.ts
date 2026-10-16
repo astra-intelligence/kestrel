@@ -243,11 +243,11 @@ describe("dev seed (Field Notes dataset)", () => {
       .bind(test.post_id)
       .first<{ email_only: number }>();
     expect(post?.email_only).toBe(1);
-    // Every other post is listed, as a publication's are.
+    // Every other post is listed, as a publication's are, but the scheduled quick note.
     const listed = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM posts WHERE email_only = 0",
     ).first<{ n: number }>();
-    expect(listed?.n).toBe(7);
+    expect(listed?.n).toBe(6);
     // The test address joined and left around the test, so it is in no later audience.
     const proof = await env.DB.prepare(
       "SELECT status, confirmed_at, unsubscribed_at FROM subscribers WHERE email = ?",
@@ -277,6 +277,14 @@ describe("dev seed (Field Notes dataset)", () => {
       const res = await SELF.fetch(`${base}/archive/${slug}`);
       expect(res.status).toBe(404);
     }
+  });
+
+  it("schedules its quick note as email only, so the demo shows both listings (SPEC §5)", async () => {
+    await seedDatabase(env, config());
+    const listed = await env.DB.prepare(
+      "SELECT slug, email_only FROM posts WHERE status = 'scheduled'",
+    ).all<{ slug: string; email_only: number }>();
+    expect(listed.results).toEqual([{ slug: "a-quick-note", email_only: 1 }]);
   });
 
   it("is idempotent — re-seeding resets and reloads to the same counts", async () => {
