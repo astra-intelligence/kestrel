@@ -215,7 +215,7 @@ describe("editor view", () => {
     expect(body().value).toBe("# Owls\n\nHoot.");
     // In the archive, the default: the head marks nothing, and a draft names no destination.
     expect($("#headEmailOnly").hidden).toBe(true);
-    expect(document.querySelector("#pubDest")).toBeNull();
+    expect(document.querySelector("#schedDest")).toBeNull();
     expect($("#saveStatus").textContent).toBe("Saved");
     expect(handle().dirty()).toBe(false);
   });
@@ -1875,20 +1875,21 @@ describe("editor view", () => {
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
       expect(put?.json()).toEqual({ slug: "Dusk Owls" });
     });
-    it("names a scheduled post's destination under its locked subject, and keeps settings open", async () => {
+    it("names a scheduled post's destination in its banner, in place of the head's mark, and keeps settings open", async () => {
       const post = scheduledPost();
       await open([...post.routes, listingRoute(post.server)]);
       expect($<HTMLInputElement>("#f-subject").readOnly).toBe(true);
-      expect($("#pubDest").textContent).toBe("Will be in your archive at /archive/owls");
+      expect($("#schedDest").textContent).toBe("Will be in your archive at /archive/owls");
       $("#settingsBtn").click();
       const include = $<HTMLInputElement>("#psInclude");
       include.checked = false;
       include.dispatchEvent(new Event("change"));
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#pubDest").textContent).toBe("Will be sent as email only, not in your archive.");
-      // The banner marks only the exception, at once.
-      expect($("#schedWhen .sched-email-only").textContent).toBe("Email only");
+      expect($("#schedDest").textContent).toBe("Will be sent as email only, not in your archive.");
+      // Said once: the banner's line, not a tag after the time, nor the head's mark.
+      expect(document.querySelector("#schedWhen .sched-email-only")).toBeNull();
+      expect($("#headEmailOnly").hidden).toBe(true);
       expect(puts()).toHaveLength(0);
     });
 

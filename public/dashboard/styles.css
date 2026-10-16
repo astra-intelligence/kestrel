@@ -3318,15 +3318,17 @@ textarea.is-invalid {
   line-height: 1.45;
   color: var(--muted);
 }
-/* Post settings (DESIGN §3). A scheduled post's line under its locked subject names where it
-   is going; the Schedule and Send now dialogs say the same in a box with Change…. */
-.pub-dest {
-  margin: 8px 0 0;
-  font-size: 13.5px;
-  color: var(--muted);
+/* Post settings (DESIGN §3). A scheduled post's banner names where it is going, in a line under
+   its time, in the banner's own violet. */
+.sched-dest {
+  margin-top: 4px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
-.pub-dest code,
+.sched-dest code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
 .pub-taken code {
   font-family: var(--mono);
   font-size: 12.5px;

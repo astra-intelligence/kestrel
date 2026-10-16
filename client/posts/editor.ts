@@ -41,7 +41,7 @@ import {
 import { at, every, mount, onAbort, poll, type ViewHandle } from "../lifecycle";
 import { followSend, readSendsNow, type StageChange } from "../send_state";
 import { openRescheduleModal } from "../sends/dialogs";
-import { can, conditionOf, emailOnlyNote, has } from "../sends/progress";
+import { can, conditionOf, has } from "../sends/progress";
 import { $, $$ } from "../ui/dom";
 import { EMAIL_FRAME_SANDBOX, openLinksInNewTab } from "../ui/email_frame";
 import {
@@ -224,17 +224,16 @@ export async function renderEditor(
     <div class="editor-head">
       <a href="#/drafts" class="back">← Drafts</a>
       <div class="editor-head-right">
-        <span class="badge email-only" id="headEmailOnly"${post.email_only ? null : HIDDEN}>Email only</span>
+        <span class="badge email-only" id="headEmailOnly"${post.email_only && !locked ? null : HIDDEN}>Email only</span>
         <a class="ghost btn" id="webLink" href="${webVersionUrl}" target="_blank" rel="noopener" aria-label="Web version (opens in a new tab)">Web version ↗</a>
         <button type="button" class="ghost" id="settingsBtn">${icon("settings")}<span>Post settings</span></button>
       </div>
     </div>
-    ${locked && scheduled ? html`<div class="banner banner-scheduled"><div class="sched-main"><span id="schedWhen"></span>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Reschedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div>` : null}
+    ${locked && scheduled ? html`<div class="banner banner-scheduled"><div class="sched-main"><span id="schedWhen"></span><div class="sched-dest" id="schedDest">${destinationHtml(pub)}</div>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Reschedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div>` : null}
     <div id="freshnessBanner" class="banner banner-conflict" role="alert" hidden></div>
     <div class="card">
       <label for="f-subject">Subject</label>
       <input id="f-subject" value="${post.subject}" placeholder="Untitled"${ro}>
-      ${locked ? html`<p class="pub-dest" id="pubDest">${destinationHtml(pub)}</p>` : null}
 
       <label for="f-markdown">Body</label>
       <div class="composer">
@@ -332,13 +331,14 @@ export async function renderEditor(
   }
 
   // --- Post settings (DESIGN §3): whether the post is in the archive, and its address ---
-  // The head marks only the exception, a post left out of the archive, and a scheduled post
-  // names where it is going under its locked subject. The settings themselves are in a dialog
-  // that saves nothing until Save.
+  // A draft's head marks only the exception, a post left out of the archive; a scheduled post's
+  // banner names where it is going instead, in a line under its time. The settings themselves
+  // are in a dialog that saves nothing until Save.
   const headEmailOnly = $("#headEmailOnly");
   const paintPublishing = () => {
-    headEmailOnly.hidden = !pub.emailOnly;
-    const dest = root.querySelector<HTMLElement>("#pubDest");
+    // A scheduled post's banner names where it is going, so the head's mark is a draft's.
+    headEmailOnly.hidden = locked || !pub.emailOnly;
+    const dest = root.querySelector<HTMLElement>("#schedDest");
     if (dest) {
       setHtml(dest, destinationHtml(pub));
     }
@@ -1589,12 +1589,12 @@ function movedOn(send: SendView, remount: () => void): boolean {
  */
 function scheduledBannerHtml(send: BannerSend, due: boolean): Html {
   if (has(send, "missed")) {
-    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown countdown-missed">${lateStr(send.fire_at)}</span>${emailOnlyNote(send)}`;
+    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown countdown-missed">${lateStr(send.fire_at)}</span>`;
   }
   if (due) {
-    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at, true)}</span>${emailOnlyNote(send)}`;
+    return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at, true)}</span>`;
   }
-  return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at)}</span>${emailOnlyNote(send)}`;
+  return html`Scheduled for <strong>${fmt(send.fire_at)}</strong> · <span class="countdown">${untilStr(send.fire_at)}</span>`;
 }
 
 /** Whether a read or write found its post (or its send, which goes with it) gone. */

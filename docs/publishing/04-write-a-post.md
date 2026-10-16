@@ -41,7 +41,7 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Future archive address** shows where the post's page will be in your archive. Its slug, the last part, follows the subject: uncheck **Auto-generate slug from subject** to type your own. If another post already has the slug, the address shows the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
 
-The Schedule, Send now, and Reschedule dialogs show the same settings under the time, so you can still change them there. A change made in a dialog applies when you schedule, send, or reschedule, and canceling leaves the post as it was. Once a post is scheduled, a line under its subject names where it's going.
+The Schedule, Send now, and Reschedule dialogs show the same settings under the time, so you can still change them there. A change made in a dialog applies when you schedule, send, or reschedule, and canceling leaves the post as it was. Once a post is scheduled, its banner names where it's going.
 
 Every email links its web version through the post's own **unlisted link**, which never changes. It opens the archive page while the post is in your archive, and the page itself while it's email only. Anyone with the email can open it, but nothing lists it, and search engines are asked not to.
 

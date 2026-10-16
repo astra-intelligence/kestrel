@@ -131,10 +131,10 @@ The writing side: drafts and scheduled posts. A sent post is a record and lives 
 
 The editor opens only a draft or a scheduled post (§2), and carries no status pill: the editable layout says draft, and the scheduled banner says scheduled. Opening a post that isn't there toasts that it was deleted and goes to Drafts, rather than showing an error whose Retry can only fail. Top to bottom:
 
-- **Head**: ← Drafts on the left. On the right, the grey **Email only** label while the post is left out of the archive (only the exception is marked), **Web version ↗**, and, rightmost, **⚙ Post settings** (Ghost), which opens the post's settings (below). It sits beside Web version because the one shows the public page and the other changes it, and it stays put whether the post is a draft or scheduled. Its words say "Post settings", not "Settings", since the sidebar's Settings is the app's own.
+- **Head**: ← Drafts on the left. On the right, on a draft, the grey **Email only** label while it is left out of the archive (only the exception is marked; a scheduled post's banner says where it is going instead), **Web version ↗**, and, rightmost, **⚙ Post settings** (Ghost), which opens the post's settings (below). It sits beside Web version because the one shows the public page and the other changes it, and it stays put whether the post is a draft or scheduled. Its words say "Post settings", not "Settings", since the sidebar's Settings is the app's own.
 - **Scheduled banner**, for a scheduled post (§4).
 - **Conflict banner**, when another writer has saved (§5).
-- **Subject**, full width. A draft shows nothing under it: where the post will go is in Post settings and the Schedule dialog. A scheduled post shows one read-only line under its locked subject naming its destination, "Will be in your archive at `newsletter.example.com/archive/spring-update`" or "Will be sent as email only, not in your archive.", since by then it is part of what is being reviewed.
+- **Subject**, full width, with nothing under it: where the post will go is in Post settings and the Schedule dialog, and, once it is scheduled, in its banner.
 - **Composer**: **Edit | Preview** tabs, a formatting toolbar, the Markdown, and a foot that takes images ("Paste, drop, or click to add images"). An image is uploaded to the post and referenced by name, never as a URL (SPEC §4).
 - **Actions bar**: **Save draft** with the save cue beside it, **Send test email** (Secondary), and **Schedule** (Primary).
 
@@ -152,7 +152,7 @@ Cancel and Save (Primary): nothing is saved until Save, and Cancel, Escape, or a
 
 **A scheduled post.** The lock is presented without hiding the content, and without locking what isn't part of the email:
 
-- The subject reads as locked, and the line under it names where the post is going. **Post settings** still opens and saves, since neither setting is part of the email.
+- The subject reads as locked, and the banner names where the post is going. **Post settings** still opens and saves, since neither setting is part of the email.
 
 - It opens on **Preview**, since the preview is the copy that will send. The Edit tab is somewhere the publisher goes on purpose.
 - On Edit, the text stays legible, selectable, and copyable on a recessed surface, and the composer's foot says the way out: "Cancel the schedule to edit". It's a hint, not a control; Cancel lives on the banner.
@@ -345,7 +345,7 @@ What each screen shows at each stage:
 - **Past the server's tolerance**, both read "Missed its fire time · N min late" in red.
 - **Cancel** acts at once, with no confirmation, because a cancel is fully reversible: schedule again. A Cancel that loses the race with the fire time says so plainly: the send time has passed, so the email is going out.
 - **Reschedule** opens the Schedule dialog again, titled for it and without Send now: the time, then the post's settings, applied only when Reschedule is pressed. The content stays frozen and the window is kept. Its control stays live even when no provider is connected, since moving a send sends nothing.
-- **An email-only post** says so on the banner's line and the card's, after the time: "Email only". Only the exception is marked: a listed post says nothing, since being listed is the default.
+- **Where the post is going.** The editor's banner says it in a second line under the time, in the future tense: "Will be in your archive at `newsletter.example.com/archive/spring-update`" or "Will be sent as email only, not in your archive." It is said once, so the banner's first line carries no tag and the head no Email only label. A scheduled card under Sent, a compact row with no room for the full line, marks only the exception after the time: "Email only".
 
 ### A send the database may not cover
 
