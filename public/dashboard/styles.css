@@ -2944,17 +2944,10 @@ body.web-mode .content {
   flex: none;
   white-space: nowrap;
 }
-/* The back link at the top of the Send-now view needs no divider — it returns from,
-   rather than demotes below, the Schedule view. */
-.modal .altrow-top {
-  margin: -4px 0 10px;
-  padding-top: 0;
-  border-top: 0;
-  justify-content: flex-start;
-}
-/* Under the Email only box, the back link keeps a line's space from its helper. */
-.modal .listing-check ~ .altrow-top {
-  margin-top: 14px;
+/* The Send-now view's way back to the Schedule view, at the start of its button row: it
+   returns from, rather than demotes below, the Schedule view, so it takes no row of its own. */
+.modal .actions .actions-back {
+  margin-right: auto;
 }
 /* Link — a text-link-styled action (DESIGN §7), not one of the button roles. Reserved
    for a deliberately subordinate choice, like the in-modal Send now that sits below
@@ -3467,9 +3460,19 @@ textarea.is-invalid {
   height: 16px;
 }
 .pub-taken {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin: 8px 0 0;
   font-size: 13px;
-  color: var(--warn-fg);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.pub-taken svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  margin-top: 2px;
 }
 .pub-note {
   margin: 8px 0 0;

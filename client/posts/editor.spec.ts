@@ -116,7 +116,9 @@ function draftServer(initial = draft()) {
         if (server.taken.has(want)) {
           slug_taken = want;
           let n = 2;
-          while (server.taken.has(`${want}-${n}`)) n += 1;
+          while (server.taken.has(`${want}-${n}`)) {
+            n += 1;
+          }
           post.slug = `${want}-${n}`;
         } else {
           post.slug = want;
@@ -1897,8 +1899,8 @@ describe("editor view", () => {
       await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
       $("#settingsBtn").click();
       expect($<HTMLInputElement>("#psSlug").value).toBe("owls-2");
-      expect($("#psNote").textContent).toBe(
-        "Another post has owls, so this one takes a number. Type another if you’d like.",
+      expect($("#psNote").textContent?.trim()).toBe(
+        "Another post has owls, so a number was added. You can change it above.",
       );
       typeInto($<HTMLInputElement>("#psSlug"), "dusk-owls");
       expect($("#psNote").textContent).toBe("");
