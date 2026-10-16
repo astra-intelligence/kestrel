@@ -41,7 +41,7 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Archive address** is where the post's page will be in your archive. Only the last part, the slug, is yours to type; it follows the subject until you do. Each post's address is its own: if you type one another post has, or one with spaces or capitals, Kestrel says so and keeps the address as it was. If another post already has the address your subject would give, Kestrel adds a number (`spring-update-2`) and tells you, so you can choose another. The address is fixed once the post starts sending.
 
-The Schedule, Send now, and Reschedule dialogs show the same settings under the time, so you can still change them there. A change made in a dialog applies when you schedule, send, or reschedule, and canceling leaves the post as it was. Once a post is scheduled, its banner names where it's going.
+The Schedule, Send now, and Edit schedule dialogs show the same settings under the time, so you can still change them there. A change made in a dialog applies when you schedule, send, or save, and canceling leaves the post as it was. Once a post is scheduled, its banner names where it's going.
 
 Every email links its web version through the post's own **unlisted link**, which never changes. It opens the archive page while the post is in your archive, and the page itself while it's email only. Anyone with the email can open it, but nothing lists it, and search engines are asked not to.
 
@@ -49,7 +49,7 @@ A sent post's page under **Sent** shows its address with **Remove from archiveâ€
 
 ### Changing your mind
 
-**Cancel**, on the post's banner or its card under **Sent**, makes the post a draft again at once. Edit it, test again, and schedule it again. **Reschedule** moves the send time without unlocking the post, and your tests still count. You can do either until the send time.
+**Cancel**, on the post's banner or its card under **Sent**, makes the post a draft again at once. Edit it, test again, and schedule it again. **Edit schedule** changes the send time, whether the post is in your archive, or both, without unlocking the post, and your tests still count. You can do either until the send time.
 
 ### Who receives it
 

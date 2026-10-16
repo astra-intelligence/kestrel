@@ -229,7 +229,7 @@ export function notConnectedScheduleLine(): Html | null {
 }
 
 /**
- * The Reschedule dialog's line. Moving a send already scheduled is still accepted (it sends
+ * The Edit schedule dialog's line. Moving a send already scheduled is still accepted (it sends
  * nothing), so its control stays live; the line says the send is held when it fires.
  */
 export function notConnectedRescheduleLine(): Html | null {

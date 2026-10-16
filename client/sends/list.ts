@@ -49,13 +49,13 @@ import {
 
 const message = describeError;
 
-/** A scheduled card's Reschedule and Cancel: offered while the server would take them, and
+/** A scheduled card's Edit schedule and Cancel: offered while the server would take them, and
  *  hidden at the fire time, when the review window closes (SPEC §6), by the countdown's
  *  tick rather than the next read. */
 function windowControls(s: SendView) {
   const buttons = [
     can(s, "reschedule")
-      ? html`<button class="ghost" data-reschedule="${s.id}">Reschedule</button>`
+      ? html`<button class="ghost" data-reschedule="${s.id}">Edit schedule</button>`
       : null,
     can(s, "cancel") ? html`<button class="ghost" data-cancel="${s.id}">Cancel</button>` : null,
   ];

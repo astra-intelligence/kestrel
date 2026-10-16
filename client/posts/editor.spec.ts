@@ -1938,6 +1938,7 @@ describe("editor view", () => {
       await open([...post.routes, listingRoute(post.server)]);
       expect($<HTMLInputElement>("#f-subject").readOnly).toBe(true);
       expect($("#schedDest").textContent).toBe("In your archive at /archive/owls");
+      expect($("#rescheduleSchedule").textContent).toBe("Edit schedule");
       // On a row of its own, apart from the controls that act on the time.
       expect($("#schedDest").closest(".banner-bottom")).not.toBeNull();
       expect($(".banner-top").contains($("#schedDest"))).toBe(false);

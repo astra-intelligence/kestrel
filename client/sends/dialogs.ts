@@ -65,10 +65,11 @@ export function openResolveModal(
 }
 
 /**
- * Reschedule a scheduled send: the Schedule dialog again, for a post already scheduled. It moves
- * the fire time without canceling or re-editing (the content stays frozen, I3, and the
- * cancelable window is kept, I6), and holds the post's settings under the time, as the
- * Schedule dialog does, applying a change to them only when Reschedule is pressed. Shared by
+ * Edit a scheduled send's schedule: the Schedule dialog again, for a post already scheduled, with
+ * its time and, under it, the post's settings. Save applies whatever changed, through one
+ * reschedule (SPEC §6): a moved time moves the send without canceling or re-editing (the content
+ * stays frozen, I3, and the cancelable window is kept, I6), and the time it already has stays,
+ * so a change to the settings alone is saved as it is. Cancel leaves both as they were. Shared by
  * the editor's scheduled banner and the Sent page's scheduled card (SPEC §8), so `onDone`
  * re-renders whichever surface opened it. The banner passes the post's settings it holds; the
  * card has only the send, so the dialog reads the post first.
@@ -98,12 +99,12 @@ export async function openRescheduleModal(
   const cur = new Date(toLocalInput(new Date(send.fire_at)));
 
   const m = modal(
-    html`<h3 id="rsHead">Reschedule this post</h3>
+    html`<h3 id="rsHead">Edit schedule</h3>
       <p class="hint" id="rsHint">It sends at the time you pick, with a cancelable window until then.</p>
       ${notConnectedRescheduleLine()}
       <label for="rsWhen">Send at</label><input type="datetime-local" id="rsWhen" min="${minStr}" value="${toLocalInput(cur)}">
       <div class="dialog-settings" id="rsForm"></div>
-      <div class="actions"><button type="button" id="rsCancel">Cancel</button><button type="button" class="primary" id="rsGo">Reschedule</button></div>`,
+      <div class="actions"><button type="button" id="rsCancel">Cancel</button><button type="button" class="primary" id="rsGo">Save</button></div>`,
     signal,
   );
   const box = $(".modal", m.el);
@@ -113,7 +114,7 @@ export async function openRescheduleModal(
   const when = $<HTMLInputElement>("#rsWhen", box);
   $("#rsCancel", box).onclick = m.close;
   go.onclick = () =>
-    busy(go, "Rescheduling…", async () => {
+    busy(go, "Saving…", async () => {
       m.clearError();
       const v = when.value;
       const t = v ? new Date(v).getTime() : Number.NaN;
@@ -140,7 +141,8 @@ export async function openRescheduleModal(
           },
         });
         m.close();
-        toast("Rescheduled");
+        // Said after the act, so it can say exactly what changed.
+        toast(unchanged ? "Saved" : "Rescheduled");
         onDone();
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {

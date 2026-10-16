@@ -237,7 +237,7 @@ describe("sent view", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
-  it("reschedules in the Schedule dialog's shape, with the post's settings under the time (DESIGN §4)", async () => {
+  it("edits a schedule in the Schedule dialog's shape, the time with the post's settings under it, saved together (DESIGN §4)", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
     fake = fakeApi([
@@ -249,7 +249,9 @@ describe("sent view", () => {
     await vi.advanceTimersByTimeAsync(0);
     $("[data-reschedule='sch']").click();
     await vi.advanceTimersByTimeAsync(0);
-    expect($(".modal h3").textContent).toBe("Reschedule this post");
+    expect($("[data-reschedule='sch']").textContent).toBe("Edit schedule");
+    expect($(".modal h3").textContent).toBe("Edit schedule");
+    expect($("#rsGo").textContent).toBe("Save");
     const include = $<HTMLInputElement>("#rsInclude");
     expect(include.checked).toBe(false);
     // The box says where it will go, so the line above it doesn't repeat it.
@@ -267,7 +269,7 @@ describe("sent view", () => {
     expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p7/listing")).toBe(false);
     expect(fake.unhandled).toEqual([]);
   });
-  it("keeps the time a send already has, however near, so a reschedule can change only its settings (SPEC §6)", async () => {
+  it("keeps the time a send already has, however near, so Save can change only its settings, and says Saved (SPEC §6)", async () => {
     const soon = Math.ceil(NOW / 60_000) * 60_000; // under a minute away, inside any lead
     const srv = sendServer();
     srv.put(scheduled({ fire_at: soon }), { email_only: true });
@@ -290,6 +292,8 @@ describe("sent view", () => {
       fire_at: new Date(soon).toISOString(),
       email_only: false,
     });
+    expect($("#toasts").textContent).toContain("Saved");
+    expect($("#toasts").textContent).not.toContain("Rescheduled");
     expect(fake.unhandled).toEqual([]);
   });
 
