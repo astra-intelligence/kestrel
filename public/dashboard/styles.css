@@ -4703,6 +4703,17 @@ button.copied svg {
 .pub-row button.copy-btn {
   flex: 0 0 auto;
 }
+/* In a sent post's link field, Copy is a segment of the field like Open: square, full height,
+   and divided from the address, so its hover fills the segment rather than a chip inside it. */
+.rec-link button.copy-btn {
+  padding: 0 11px;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--card);
+}
+.rec-link button.copy-btn:hover {
+  background: var(--hover);
+}
 
 /* --- groups: the sections kept together by whom they serve (DESIGN §3). A group has no
    heading, since each section's title already says what it is; a wider gap than the one
