@@ -3346,7 +3346,7 @@ textarea.is-invalid {
   padding: 9px 16px;
   border-top: 1px solid var(--status-scheduled-line);
   /* A shade deeper than the banner, so the row reads as its footer rather than a strip of its own. */
-  background: color-mix(in srgb, var(--status-scheduled-fg) 8%, var(--status-scheduled-bg));
+  background: color-mix(in srgb, var(--status-scheduled-fg) 6%, var(--status-scheduled-bg));
   font-size: 13px;
 }
 .banner-bottom svg {

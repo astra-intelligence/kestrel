@@ -256,7 +256,9 @@ describe("sent view", () => {
     expect($("#rsHint").textContent).toMatch(/It will be sent as email only\.$/);
     include.checked = true;
     include.dispatchEvent(new Event("change"));
-    expect($("#rsHint").textContent).toMatch(/It will be in your archive\.$/);
+    expect($("#rsHint").textContent).toMatch(
+      /It will be sent as email and included in your archive\.$/,
+    );
     expect($("#rsAddress").textContent).toBe("/archive/waxwings");
     $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
     $("#rsGo").click();

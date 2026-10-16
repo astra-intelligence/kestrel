@@ -94,13 +94,15 @@ describe("web version", () => {
     const url = "https://newsletter.example.com/archive/herons";
     const short = "newsletter.example.com/archive/herons";
     const draft = bar({ scheduled: false, url });
-    expect(draft.textContent).toBe(`Web version Draft · will be in your archive at ${short}`);
+    expect(draft.textContent).toBe(
+      `Web version Draft · will be sent as email and included in your archive at ${short}`,
+    );
     // The address doesn't answer yet, so it is text, and the bar has no link at all.
     expect(draft.querySelectorAll("a")).toHaveLength(0);
     // The tag is the dev pill's chip, apart from the sentence.
     expect(draft.querySelector(".web-bar-tag")?.textContent).toBe("Web version");
     expect(bar({ scheduled: true, url }).textContent).toBe(
-      `Web version Scheduled · will be in your archive at ${short}`,
+      `Web version Scheduled · will be sent as email and included in your archive at ${short}`,
     );
     // Email only: it will have no archive address, so the bar names none (SPEC §5).
     expect(bar({ scheduled: false, url, emailOnly: true }).textContent).toBe(
@@ -127,7 +129,7 @@ describe("web version", () => {
     expect(sandbox).not.toContain("allow-scripts");
     expect(sandbox).not.toContain("allow-forms");
     expect($(".web-bar").textContent).toBe(
-      "Web version Scheduled · will be in your archive at newsletter.example.com/archive/herons",
+      "Web version Scheduled · will be sent as email and included in your archive at newsletter.example.com/archive/herons",
     );
     // The window scrolls the page: the frame has no scrolling of its own.
     expect(frame.getAttribute("scrolling")).toBe("no");

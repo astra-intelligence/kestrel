@@ -61,7 +61,7 @@ export function webBar(state: WebBarState | null): Html {
   const at = state.emailOnly
     ? html` · will be sent as email only`
     : state.url
-      ? html` · will be in your archive at ${shortUrl(state.url)}`
+      ? html` · will be sent as email and included in your archive at ${shortUrl(state.url)}`
       : null;
   return html`${tag} <span class="web-bar-text">${stage}${at}</span>`;
 }
