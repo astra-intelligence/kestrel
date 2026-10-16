@@ -7,9 +7,8 @@
 
 import type { ListingBody, Post } from "../../shared/posts";
 import { slugify } from "../../shared/slug";
-import { postArchiveUrl, postUnlistedUrl } from "../deployment";
-import { type Html, html } from "../ui/html";
-import { icon } from "../ui/icons";
+import { postArchiveUrl } from "../deployment";
+import { type Html, html, setHtml } from "../ui/html";
 
 /** An address as the app shows it: without its scheme, which says nothing to a publisher. */
 export function shortUrl(url: string): string {
@@ -68,88 +67,118 @@ export function willAppearClause(emailOnly: boolean): string {
     : " It will be in your archive.";
 }
 
-/**
- * The archive address as a URL field: the base, then the slug. `id` names the input, so a
- * surface can read it back. `readonly` is for a reserved address, which can no longer change.
- */
-export function addressFieldHtml(
-  slug: string,
-  { id, readonly = false }: { id?: string; readonly?: boolean } = {},
-): Html {
-  return html`<div class="url-field${readonly ? " readonly" : ""}"><span class="url-base">${archiveBase()}</span><input type="text"${id ? html` id="${id}"` : null} value="${slug}" spellcheck="false" autocomplete="off" aria-label="Archive address"${readonly ? html` readonly` : null}></div>`;
-}
+/** The helper under Include in archive, in every dialog that shows the box. */
+const INCLUDE_HELP =
+  "Listed on your home page and in your public archive. Unchecked, it’s sent as email only: anyone with the email can still open its web version.";
 
 /**
- * The warning beside an address another post already holds: the server numbers it when it is
- * reserved, and `archiveSlug` (from the post's read) is what it will take. Null while the
- * address is free.
+ * The address a working copy will have: the server's answer while the slug is the one it
+ * checked (numbered past one another post holds), else the typed slug as the server will make
+ * it, whose number, if any, comes when it is saved.
  */
-export function takenNoteHtml(slug: string, archiveSlug: string): Html | null {
-  return archiveSlug !== slug
-    ? html`<p class="pub-taken">Another post has this address, so this one will be <code>${archiveSlug}</code>.</p>`
+function effectiveSlug(p: Publishing): string {
+  if (p.slug === p.checkedSlug) {
+    return p.archiveSlug;
+  }
+  return slugify(p.slug) || p.checkedSlug;
+}
+
+/** What the read-only address says under it: why it is numbered, that it is permanent, or that
+ *  a slug typed since is checked when it is saved. */
+function addressNoteHtml(p: Publishing, reservedNote: string): Html | null {
+  if (p.reserved) {
+    return html`<p class="pub-note">${reservedNote}</p>`;
+  }
+  if (p.slug !== p.checkedSlug) {
+    return html`<p class="pub-note">Checked against your other posts when it’s saved.</p>`;
+  }
+  return p.archiveSlug !== p.slug
+    ? html`<p class="pub-taken">Another post has <code>${p.slug}</code>, so this one gets a number.</p>`
     : null;
 }
 
-/** The helper under Include in archive, in every dialog that shows the box. */
-const INCLUDE_HELP =
-  "Listed on your home page and in your public archive, at the address below. Unchecked, it’s sent as email only: anyone with the email can still open its web version.";
+/** What a reserved address says under it, unless a surface says otherwise. */
+const RESERVED_NOTE = "Permanent: this address has been public, so it can’t change.";
+
+/** How a settings form is drawn: with or without the Include in archive box (Add to archive is
+ *  itself that choice), and the words under a reserved address. */
+export interface SettingsFormOptions {
+  include?: boolean;
+  reservedNote?: string;
+  /** Called after each change to the working copy, for a line that says where it will go. */
+  onChange?: () => void;
+}
 
 /**
- * The two settings as a form over `p`: Include in archive and, while it is checked, the archive
- * address with Auto-generate from subject. `prefix` names the inputs (`<prefix>Include`,
- * `<prefix>Slug`, `<prefix>Auto`), so two forms on one page never share an id.
+ * The settings as a form over `p` (DESIGN §3): Include in archive and, while it is checked, the
+ * address the post will have, read-only, with Auto-generate slug from subject; unchecking that
+ * shows the Slug to type. `prefix` names the inputs (`<prefix>Include`, `<prefix>Auto`,
+ * `<prefix>Slug`) and the address (`<prefix>Address`), so two forms never share an id.
  */
-export function settingsFormHtml(p: Publishing, prefix: string): Html {
-  const address = p.emailOnly
+export function settingsFormHtml(
+  p: Publishing,
+  prefix: string,
+  { include = true, reservedNote = RESERVED_NOTE }: SettingsFormOptions = {},
+): Html {
+  const box = include
+    ? html`<label class="listing-check"><input type="checkbox" id="${prefix}Include"${p.emailOnly ? null : html` checked`}><span><strong>Include in archive</strong><span class="listing-help">${INCLUDE_HELP}</span></span></label>`
+    : null;
+  if (p.emailOnly) {
+    return html`${box}`;
+  }
+  const slugControls = p.reserved
     ? null
-    : html`<label for="${prefix}Slug">Archive address</label>${addressFieldHtml(p.slug, {
-        id: `${prefix}Slug`,
-        readonly: p.reserved,
-      })}${
-        p.reserved
-          ? html`<p class="pub-note">Permanent: this address has been public, so it can’t change.</p>`
-          : html`<label class="slug-auto-toggle"><input type="checkbox" id="${prefix}Auto"${p.slugAuto ? html` checked` : null}>Auto-generate from subject</label>`
-      }<div id="${prefix}Taken">${p.slug === p.checkedSlug ? takenNoteHtml(p.slug, p.archiveSlug) : null}</div>`;
-  return html`<label class="listing-check"><input type="checkbox" id="${prefix}Include"${p.emailOnly ? null : html` checked`}><span><strong>Include in archive</strong><span class="listing-help">${INCLUDE_HELP}</span></span></label>${address}`;
+    : html`<label class="slug-auto-toggle"><input type="checkbox" id="${prefix}Auto"${p.slugAuto ? html` checked` : null}>Auto-generate slug from subject</label>${
+        p.slugAuto
+          ? null
+          : html`<label for="${prefix}Slug">Slug</label><input type="text" id="${prefix}Slug" class="slug-input" value="${p.slug}" spellcheck="false" autocomplete="off">`
+      }`;
+  return html`${box}<div class="pub-address"><span class="pub-label">${p.reserved ? "Archive address" : "Future archive address"}</span><div class="url-readonly" id="${prefix}Address">${archiveBase()}<strong>${effectiveSlug(p)}</strong></div><div id="${prefix}Note">${addressNoteHtml(p, reservedNote)}</div>${slugControls}</div>`;
 }
 
 /**
  * Wire a form `settingsFormHtml` drew inside `root` to the working copy `p`. `repaint` redraws
- * the form, for a change that shows or hides the address. Typing an address takes it by hand;
- * ticking Auto-generate hands it back to the subject.
+ * the form, for a change that shows or hides a part of it; typing a slug only updates the
+ * address it previews, so the field keeps its cursor.
  */
 export function wireSettingsForm(
   root: Element,
   p: Publishing,
   prefix: string,
   repaint: () => void,
+  { reservedNote = RESERVED_NOTE, onChange }: SettingsFormOptions = {},
 ): void {
   const include = root.querySelector<HTMLInputElement>(`#${prefix}Include`);
   if (include) {
     include.onchange = () => {
       p.emailOnly = !include.checked;
       repaint();
+      onChange?.();
+    };
+  }
+  const auto = root.querySelector<HTMLInputElement>(`#${prefix}Auto`);
+  if (auto) {
+    auto.onchange = () => {
+      p.slugAuto = auto.checked;
+      if (auto.checked) {
+        p.slug = slugify(p.subject) || p.checkedSlug;
+      }
+      repaint();
+      if (!auto.checked) {
+        root.querySelector<HTMLInputElement>(`#${prefix}Slug`)?.focus();
+      }
     };
   }
   const slug = root.querySelector<HTMLInputElement>(`#${prefix}Slug`);
-  const auto = root.querySelector<HTMLInputElement>(`#${prefix}Auto`);
-  const taken = root.querySelector<HTMLElement>(`#${prefix}Taken`);
-  if (!slug || !auto || p.reserved) {
-    return;
+  const address = root.querySelector<HTMLElement>(`#${prefix}Address`);
+  const note = root.querySelector<HTMLElement>(`#${prefix}Note`);
+  if (slug && address && note) {
+    slug.oninput = () => {
+      p.slug = slug.value;
+      setHtml(address, html`${archiveBase()}<strong>${effectiveSlug(p)}</strong>`);
+      setHtml(note, addressNoteHtml(p, reservedNote) ?? html``);
+    };
   }
-  slug.oninput = () => {
-    p.slug = slug.value;
-    p.slugAuto = false;
-    auto.checked = false;
-    taken?.replaceChildren(); // the server hasn't checked this one yet
-  };
-  auto.onchange = () => {
-    p.slugAuto = auto.checked;
-    if (auto.checked) {
-      p.slug = slugify(p.subject) || p.checkedSlug;
-    }
-    repaint();
-  };
 }
 
 /**
@@ -174,18 +203,18 @@ export function settingsChange(saved: Publishing, working: Publishing): ListingB
 }
 
 /**
- * Where the post will go, as the Schedule and Send now dialogs say it, with the Change… that
- * opens the settings in place: its archive address (and the number it will take, when another
- * post holds it), or its unlisted link while it is email only.
+ * Draw the settings form into `el` over the working copy `p`, and keep it wired: each change
+ * that shows or hides a part redraws it. For a dialog that holds the form beside other fields.
  */
-export function whereHtml(p: Publishing, token: string, changeId: string): Html {
-  const unlisted = postUnlistedUrl(token);
-  const what = p.emailOnly
-    ? html`<span class="where-text where-link">${icon("link")}<span>Email only. Its web version is at <code>${unlisted ? shortUrl(unlisted) : `/email/${token}`}</code>, for anyone with the email.</span></span>`
-    : html`<span class="where-text">In your archive at <code>${archiveBase()}${p.slug}</code>${
-        p.slug === p.checkedSlug && p.archiveSlug !== p.slug
-          ? html` <span class="pub-taken">(will be <code>${p.archiveSlug}</code>)</span>`
-          : null
-      }</span>`;
-  return html`<div class="where">${what}<button type="button" class="linkbtn where-change" id="${changeId}">Change…</button></div>`;
+export function mountSettingsForm(
+  el: HTMLElement,
+  p: Publishing,
+  prefix: string,
+  options: SettingsFormOptions = {},
+): void {
+  const paint = () => {
+    setHtml(el, settingsFormHtml(p, prefix, options));
+    wireSettingsForm(el, p, prefix, paint, options);
+  };
+  paint();
 }

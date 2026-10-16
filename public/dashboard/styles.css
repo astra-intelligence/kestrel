@@ -3327,42 +3327,45 @@ textarea.is-invalid {
   overflow-wrap: anywhere;
 }
 .pub-dest code,
-.pub-taken code,
-.where code {
+.pub-taken code {
   font-family: var(--mono);
   font-size: 12.5px;
   color: var(--fg);
 }
-.where {
-  display: flex;
-  align-items: baseline;
-  gap: 6px 12px;
-  flex-wrap: wrap;
+/* The settings form in a dialog under the time, set off from it by a rule. */
+.dialog-settings {
   margin-top: 14px;
-  padding: 10px 12px;
+  padding-top: 2px;
+}
+.dialog-settings .listing-check {
+  margin-top: 0;
+}
+/* The address the post will have, read-only, then how its slug is made. */
+.pub-address {
+  margin-top: 14px;
+}
+.pub-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.url-readonly {
+  padding: 8px 10px;
   background: var(--sunken);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 13.5px;
-}
-.where-text {
-  flex: 1 1 240px;
-  min-width: 0;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.where-link {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.url-readonly strong {
+  font-weight: 600;
+  color: var(--fg);
 }
-.where-link svg {
-  flex: none;
-  width: 14px;
-  height: 14px;
-}
-button.linkbtn.where-change {
-  flex: none;
+.slug-input {
+  font-family: var(--mono);
   font-size: 13px;
 }
 /* The Post settings button carries a gear before its words. */
@@ -3374,59 +3377,6 @@ button.linkbtn.where-change {
 #settingsBtn svg {
   width: 16px;
   height: 16px;
-}
-/* The archive address: the base read-only before the slug, which is the editable part. */
-.url-field {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--card);
-  font-family: var(--mono);
-  font-size: 13px;
-}
-.url-field:focus-within {
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.url-base {
-  display: flex;
-  align-items: center;
-  padding: 8px 2px 8px 10px;
-  white-space: nowrap;
-  color: var(--muted);
-  background: var(--sunken);
-}
-.url-field input {
-  flex: 1;
-  min-width: 6em;
-  border: 0;
-  border-radius: 0;
-  padding: 8px 10px 8px 2px;
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-}
-.url-field input:focus-visible {
-  outline: none;
-}
-.url-field.readonly input {
-  color: var(--muted);
-  font-weight: 500;
-  background: var(--sunken);
-}
-@media (max-width: 480px) {
-  .url-field {
-    flex-direction: column;
-  }
-  .url-base {
-    padding-bottom: 0;
-  }
-  .url-field input {
-    padding-left: 10px;
-  }
 }
 .pub-taken {
   margin: 8px 0 0;
@@ -3451,30 +3401,30 @@ button.linkbtn.where-change {
   color: var(--muted);
 }
 .rec-web {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 12px;
-  flex-wrap: wrap;
 }
 .rec-web-what {
   display: grid;
   gap: 2px;
-  flex: 1 1 260px;
   min-width: 0;
   font-size: 13.5px;
 }
+/* An address is one line, shortened at its end, since Copy link carries it whole. */
 .rec-web-what code {
   font-family: var(--mono);
   font-size: 12.5px;
   color: var(--muted);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .rec-web-btns {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
-/* The address Make email only takes down, struck through in its dialog. */
+/* The address Remove from archive takes down, struck through in its dialog. */
 .url-gone {
   padding: 8px 10px;
   background: var(--sunken);

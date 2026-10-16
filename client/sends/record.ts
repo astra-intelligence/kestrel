@@ -11,7 +11,6 @@ import type {
   SendResponse,
   SendView,
 } from "../../shared/sends";
-import { slugify } from "../../shared/slug";
 import { isErasedPlaceholder } from "../../shared/subscribers";
 import { ApiError, api, apiFile, describeError } from "../api";
 import {
@@ -21,7 +20,13 @@ import {
   providerNotConnected,
 } from "../deployment";
 import { every, mount } from "../lifecycle";
-import { addressFieldHtml, shortUrl, takenNoteHtml } from "../posts/publishing";
+import {
+  mountSettingsForm,
+  type Publishing,
+  publishingOf,
+  settingsChange,
+  shortUrl,
+} from "../posts/publishing";
 import { followSend, readSendsNow } from "../send_state";
 import { copyFace, copyWith } from "../ui/copy";
 import { $, $$ } from "../ui/dom";
@@ -634,44 +639,26 @@ function renderFrozenRecord(
       }
       return;
     }
-    const { post, archive_slug } = read;
-    const field = post.slug_reserved
-      ? html`${addressFieldHtml(post.slug, { readonly: true })}<p class="pub-note">Reserved from when it was in your archive, so links people shared work again.</p>`
-      : html`${addressFieldHtml(post.slug, { id: "addSlug" })}<label class="slug-auto-toggle"><input type="checkbox" id="addAuto"${post.slug_auto ? html` checked` : null}>Auto-generate from subject</label>${takenNoteHtml(post.slug, archive_slug)}<p class="pub-note">Permanent once it’s in your archive. The link in the email keeps working and now forwards here.</p>`;
+    // The same settings form as the editor's, without its Include in archive box, since adding
+    // the post is the choice: a post never in the archive sets its address here, and one in it
+    // before gets back the address reserved for it.
+    const saved = publishingOf(read.post, read.archive_slug);
+    const working: Publishing = { ...saved, emailOnly: false };
     const m = modal(
       html`<h3 id="addArchHead">Add this post to your archive?</h3>
-        <p class="hint">It will be listed on your home page and in your public archive, where anyone visiting can find it.</p>
-        <label${post.slug_reserved ? null : html` for="addSlug"`}>Archive address</label>${field}
+        <p class="hint">It will be listed on your home page and in your public archive, where anyone visiting can find it. The link in the email keeps working, and forwards to it.</p>
+        <div class="dialog-settings" id="addForm"></div>
         <div class="actions"><button type="button" id="addArchCancel">Cancel</button><button type="button" class="primary" id="addArchGo">Add to archive</button></div>`,
       signal,
     );
     $(".modal", m.el).setAttribute("aria-labelledby", "addArchHead");
     $("#addArchCancel", m.el).onclick = m.close;
-    const input = m.el.querySelector<HTMLInputElement>("#addSlug");
-    const auto = m.el.querySelector<HTMLInputElement>("#addAuto");
-    if (input && auto) {
-      // Typing an address takes it by hand; ticking the box has it follow the subject again.
-      input.addEventListener("input", () => {
-        auto.checked = false;
-      });
-      auto.addEventListener("change", () => {
-        if (auto.checked) {
-          input.value = slugify(post.subject) || post.slug;
-        }
-      });
-    }
+    mountSettingsForm($("#addForm", m.el), working, "add", {
+      include: false,
+      reservedNote: "Reserved from when it was in your archive, so links people shared work again.",
+    });
     const go = $<HTMLButtonElement>("#addArchGo", m.el);
-    go.onclick = () => {
-      const body: ListingBody = { email_only: false };
-      if (input && auto) {
-        if (auto.checked) {
-          body.slug_auto = true;
-        } else {
-          body.slug = input.value;
-        }
-      }
-      return setListing(go, body, m);
-    };
+    go.onclick = () => setListing(go, settingsChange(saved, working) ?? { email_only: false }, m);
     go.focus();
   };
   paintPost();
@@ -857,7 +844,7 @@ function postPartHtml(send: SendView): Html {
   const url = webUrl(send);
   const shown = url ? shortUrl(url) : null;
   if (send.email_only) {
-    return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code>${shown}</code>` : null}<span class="muted">Anyone with the link can open it. Nothing lists or indexes it.</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
+    return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code title="${shown}">${shown}</code>` : null}<span class="muted">Anyone with the link can open it. Nothing lists or indexes it.</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
   }
   return html`<div class="rec-web-what"><strong>In your archive</strong>${shown ? html`<code>${shown}</code>` : null}</div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View published post&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Remove from archive…</button></div>`;
 }

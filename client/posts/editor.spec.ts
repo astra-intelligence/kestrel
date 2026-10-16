@@ -880,7 +880,7 @@ describe("editor view", () => {
     body().focus();
     await vi.advanceTimersByTimeAsync(0);
     $("#settingsBtn").click();
-    expect($<HTMLInputElement>("#psSlug").value).toBe("welcome-to-the-compiler");
+    expect($("#psAddress").textContent).toBe("/archive/welcome-to-the-compiler");
     expect($<HTMLInputElement>("#psAuto").checked).toBe(true);
   });
 
@@ -1708,7 +1708,7 @@ describe("editor view", () => {
     }
   });
 
-  describe("where the post goes, from the Schedule dialog (SPEC §5)", () => {
+  describe("the post's settings in the Schedule dialog (SPEC §5)", () => {
     const routes = (server: ReturnType<typeof draftServer>) => [
       { path: "/api/posts/p1", reply: server.get },
       { method: "PUT", path: "/api/posts/p1", reply: (req: FakeRequest) => server.put(req) },
@@ -1731,36 +1731,35 @@ describe("editor view", () => {
     ];
     const listings = () => fake.calls.filter((c) => c.url.pathname === "/api/posts/p1/listing");
 
-    it("says, in the future tense, that the post will be in the archive, at its address", async () => {
+    it("shows the post's settings under the time, saying in the future tense where it will go", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
-      expect($(".modal .hint").textContent).toMatch(/\. It will be in your archive\.$/);
-      expect($(".modal .where").textContent).toBe("In your archive at /archive/owlsChange…");
+      expect($("#schHint").textContent).toBe(
+        "It sends at the time you pick, with a cancelable window until then. It will be in your archive.",
+      );
+      expect($<HTMLInputElement>("#schInclude").checked).toBe(true);
+      expect($("#schAddress").textContent).toBe("/archive/owls");
+      expect($<HTMLInputElement>("#schAuto").checked).toBe(true);
       expect(fake.unhandled).toEqual([]);
     });
 
-    it("changes it in place with Change…, and applies the change only with Send now", async () => {
+    it("applies a change only with Send now, and keeps it from Schedule into Send now", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
-      $("#toChange").click();
-      expect($(".modal h3").textContent).toBe("Where it will go");
-      const include = $<HTMLInputElement>("#chInclude");
-      expect(include.checked).toBe(true);
+      const include = $<HTMLInputElement>("#schInclude");
       include.checked = false;
       include.dispatchEvent(new Event("change"));
-      expect(document.querySelector("#chSlug")).toBeNull(); // no address while email only
-      $("#chDone").click();
-      expect($(".modal .hint").textContent).toMatch(
+      expect(document.querySelector("#schAddress")).toBeNull(); // no address while email only
+      expect($("#schHint").textContent).toMatch(
         /\. It will be sent as email only, not in your archive\.$/,
       );
-      expect($(".modal .where").textContent).toContain("Email only. Its web version is at");
       expect(listings()).toHaveLength(0); // nothing saved yet
       expect($("#headEmailOnly").hidden).toBe(true);
       $("#toSendNow").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#snHead").textContent).toBe("Send now?");
-      expect($(".modal .hint").textContent).toContain(
-        "It will be sent as email only, not in your archive.",
+      expect($<HTMLInputElement>("#schInclude").checked).toBe(false);
+      expect($("#snClause").textContent).toBe(
+        " It will be sent as email only, not in your archive.",
       );
       $("#snGo").click();
       await vi.advanceTimersByTimeAsync(0);
@@ -1772,27 +1771,25 @@ describe("editor view", () => {
     it("leaves the post as it was when the dialog is canceled", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
-      $("#toChange").click();
-      const slug = $<HTMLInputElement>("#chSlug");
-      typeInto(slug, "dusk-owls");
-      $("#chDone").click();
-      expect($(".modal .where").textContent).toBe("In your archive at /archive/dusk-owlsChange…");
+      const auto = $<HTMLInputElement>("#schAuto");
+      auto.checked = false;
+      auto.dispatchEvent(new Event("change"));
+      typeInto($<HTMLInputElement>("#schSlug"), "dusk-owls");
+      expect($("#schAddress").textContent).toBe("/archive/dusk-owls");
       $("#schCancel").click();
       $("#scheduleBtn").click();
-      expect($(".modal .where").textContent).toBe("In your archive at /archive/owlsChange…");
+      expect($("#schAddress").textContent).toBe("/archive/owls");
+      expect($<HTMLInputElement>("#schAuto").checked).toBe(true);
       expect(listings()).toHaveLength(0);
     });
 
-    it("saves a changed address before scheduling, and keeps the picked time through Change…", async () => {
+    it("saves a slug set by hand before scheduling", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
-      const when = $<HTMLInputElement>("#schWhen");
-      when.value = toLocalInput(new Date(Date.now() + 2 * 86_400_000));
-      const picked = when.value;
-      $("#toChange").click();
-      typeInto($<HTMLInputElement>("#chSlug"), "dusk-owls");
-      $("#chDone").click();
-      expect($<HTMLInputElement>("#schWhen").value).toBe(picked);
+      const auto = $<HTMLInputElement>("#schAuto");
+      auto.checked = false;
+      auto.dispatchEvent(new Event("change"));
+      typeInto($<HTMLInputElement>("#schSlug"), "dusk-owls");
       $("#schGo").click();
       await vi.advanceTimersByTimeAsync(0);
       expect(listings().map((c) => c.json())).toEqual([{ slug: "dusk-owls" }]);
@@ -1803,7 +1800,8 @@ describe("editor view", () => {
     it("starts from the post's listing", async () => {
       await open(routes(draftServer(draft({ email_only: true }))));
       $("#scheduleBtn").click();
-      expect($(".modal .hint").textContent).toMatch(
+      expect($<HTMLInputElement>("#schInclude").checked).toBe(false);
+      expect($("#schHint").textContent).toMatch(
         /\. It will be sent as email only, not in your archive\.$/,
       );
     });
@@ -1826,7 +1824,10 @@ describe("editor view", () => {
       $("#settingsBtn").click();
       expect($(".modal h3").textContent).toBe("Post settings");
       expect($<HTMLInputElement>("#psInclude").checked).toBe(true);
-      expect($<HTMLInputElement>("#psSlug").value).toBe("owls");
+      expect($(".modal .pub-label").textContent).toBe("Future archive address");
+      expect($("#psAddress").textContent).toBe("/archive/owls");
+      expect($<HTMLInputElement>("#psAuto").checked).toBe(true);
+      expect(document.querySelector("#psSlug")).toBeNull(); // the slug shows only by hand
       const include = $<HTMLInputElement>("#psInclude");
       include.checked = false;
       include.dispatchEvent(new Event("change"));
@@ -1852,24 +1853,28 @@ describe("editor view", () => {
       expect(puts()).toHaveLength(0); // no revision: the settings aren't part of the draft
     });
 
-    it("warns of an address another post holds, with the number it will take", async () => {
+    it("shows the number an address another post holds will take, and a slug typed by hand", async () => {
       const server = draftServer();
       server.taken.add("owls");
       server.apply({ json: () => ({}) } as FakeRequest); // the server's answer now numbers it
       await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
       $("#settingsBtn").click();
-      expect($("#psTaken").textContent).toBe(
-        "Another post has this address, so this one will be owls-2.",
-      );
-      typeInto($<HTMLInputElement>("#psSlug"), "dusk-owls");
-      expect($("#psTaken").textContent).toBe(""); // unchecked until saved
-      expect($<HTMLInputElement>("#psAuto").checked).toBe(false);
+      expect($("#psAddress").textContent).toBe("/archive/owls-2");
+      expect($("#psNote").textContent).toBe("Another post has owls, so this one gets a number.");
+      const auto = $<HTMLInputElement>("#psAuto");
+      auto.checked = false;
+      auto.dispatchEvent(new Event("change"));
+      const slug = $<HTMLInputElement>("#psSlug");
+      expect(slug.value).toBe("owls");
+      typeInto(slug, "Dusk Owls");
+      // Previewed as the server will make it; its number, if any, comes with the save.
+      expect($("#psAddress").textContent).toBe("/archive/dusk-owls");
+      expect($("#psNote").textContent).toBe("Checked against your other posts when it’s saved.");
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
-      expect(put?.json()).toEqual({ slug: "dusk-owls" });
+      expect(put?.json()).toEqual({ slug: "Dusk Owls" });
     });
-
     it("names a scheduled post's destination under its locked subject, and keeps settings open", async () => {
       const post = scheduledPost();
       await open([...post.routes, listingRoute(post.server)]);
@@ -1891,8 +1896,9 @@ describe("editor view", () => {
       const server = draftServer(draft({ slug_reserved: true, slug_auto: false }));
       await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
       $("#settingsBtn").click();
-      expect($<HTMLInputElement>("#psSlug").readOnly).toBe(true);
+      expect($(".modal .pub-label").textContent).toBe("Archive address");
       expect(document.querySelector("#psAuto")).toBeNull();
+      expect(document.querySelector("#psSlug")).toBeNull();
       expect($(".modal").textContent).toContain("Permanent");
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);

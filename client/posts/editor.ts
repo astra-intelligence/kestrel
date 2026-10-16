@@ -62,13 +62,11 @@ import { DirtyTracker } from "./dirty";
 import { trackSaves } from "./pending_save";
 import {
   destinationHtml,
+  mountSettingsForm,
   type Publishing,
   publishingOf,
   settingsChange,
-  settingsFormHtml,
-  whereHtml,
   willAppearClause,
-  wireSettingsForm,
 } from "./publishing";
 import { type Author, type Conflict, conflictFromError, RevisionTracker } from "./revisions";
 import { previewOpensWebVersion, webVersionHash } from "./web";
@@ -371,12 +369,7 @@ export async function renderEditor(
     );
     const box = $(".modal", m.el);
     box.setAttribute("aria-labelledby", "psHead");
-    const form = $("#psForm", box);
-    const paintForm = () => {
-      setHtml(form, settingsFormHtml(working, "ps"));
-      wireSettingsForm(form, working, "ps", paintForm);
-    };
-    paintForm();
+    mountSettingsForm($("#psForm", box), working, "ps");
     $("#psCancel", box).onclick = m.close;
     const save = $<HTMLButtonElement>("#psSave", box);
     save.onclick = () =>
@@ -1105,7 +1098,13 @@ export async function renderEditor(
     }
 
     // --- reschedule (from the scheduled banner): move the fire time, content stays frozen ---
-    reschedBtn.onclick = () => openRescheduleModal(current.id, current.fire_at, remount, signal);
+    reschedBtn.onclick = () =>
+      void openRescheduleModal(
+        { id: current.id, post_id: id, fire_at: current.fire_at },
+        remount,
+        signal,
+        { ...pub },
+      );
 
     // --- cancel schedule (from the scheduled banner) ---
     cancelBtn.onclick = () =>
@@ -1366,8 +1365,10 @@ export async function renderEditor(
       if (working.slugAuto) {
         working.slug = slugify(working.subject) || working.slug;
       }
+      const scheduleHint = () =>
+        `It sends at the time you pick, with a cancelable window until then.${notConnected ? "" : willAppearClause(working.emailOnly)}`;
       const scheduleView = () =>
-        html`<h3 id="schHead">Schedule this post</h3><p class="hint">It sends at the time you pick, with a cancelable window until then.${notConnected ? null : willAppearClause(working.emailOnly)}</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}">${whereHtml(working, post.unlisted_token, "toChange")}`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
+        html`<h3 id="schHead">Schedule this post</h3><p class="hint" id="schHint">${scheduleHint()}</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}"><div class="dialog-settings" id="schForm"></div>`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
       // The picked time survives a trip to Change… and back.
       let picked = def;
       const m = modal(scheduleView(), signal);
@@ -1410,27 +1411,13 @@ export async function renderEditor(
         freshnessEl.scrollIntoView({ block: "nearest" });
       };
 
-      /** Change… in place: the same two settings over the dialog's copy, then back to the view
-       *  it came from. Nothing is saved here. */
-      function showChange(back: () => void) {
-        const when = box.querySelector<HTMLInputElement>("#schWhen");
-        if (when) {
-          picked = when.value;
-        }
-        setHtml(
-          box,
-          html`<h3 id="chHead">Where it will go</h3><p class="hint">Applies when you schedule or send. Cancel the dialog to leave the post as it was.</p><div id="chForm"></div><div class="actions"><button type="button" class="primary" id="chDone">Done</button></div>`,
-        );
-        box.setAttribute("aria-labelledby", "chHead");
-        const form = $("#chForm", box);
-        const paintForm = () => {
-          setHtml(form, settingsFormHtml(working, "ch"));
-          wireSettingsForm(form, working, "ch", paintForm);
-        };
-        paintForm();
-        $("#chDone", box).onclick = back;
-        $<HTMLInputElement>("#chInclude", box).focus();
-      }
+      // The form under the time edits the dialog's copy; its first line follows the copy.
+      const showForm = (hintId: string, hint: () => string) =>
+        mountSettingsForm($("#schForm", box), working, "sch", {
+          onChange: () => {
+            $(`#${hintId}`, box).textContent = hint();
+          },
+        });
       /** The dialog's address change, saved before the post is scheduled (it is still a draft
        *  then); its listing goes with the schedule itself. */
       const saveAddress = async () => {
@@ -1530,11 +1517,7 @@ export async function renderEditor(
         }
         $("#toSendNow", box).onclick = showSendNow;
         $<HTMLInputElement>("#schWhen", box).value = picked;
-        $("#toChange", box).onclick = () =>
-          showChange(() => {
-            setHtml(box, scheduleView());
-            wireSchedule();
-          });
+        showForm("schHint", scheduleHint);
         $("#schWhen", box).focus();
         void paintDailyWrites();
       }
@@ -1546,12 +1529,12 @@ export async function renderEditor(
         }
         setHtml(
           box,
-          html`<h3 id="snHead">Send now?</h3><p class="hint">Sends this draft, as it is now, to <strong id="snWho">your subscribers</strong> in ${sendNowWhenText()}.${willAppearClause(working.emailOnly)} The post locks until then, and you can cancel any time before it starts sending.</p>${whereHtml(working, post.unlisted_token, "toChange")}${dailyWritesLine()}<div class="altrow altrow-top"><button type="button" class="linkbtn" id="toSchedule">← Back to schedule</button></div><div class="actions"><button type="button" id="snCancel">Cancel</button><button type="button" class="primary" id="snGo">Send now</button></div>`,
+          html`<h3 id="snHead">Send now?</h3><p class="hint">Sends this draft, as it is now, to <strong id="snWho">your subscribers</strong> in ${sendNowWhenText()}.<span id="snClause">${willAppearClause(working.emailOnly)}</span> The post locks until then, and you can cancel any time before it starts sending.</p><div class="dialog-settings" id="schForm"></div>${dailyWritesLine()}<div class="altrow altrow-top"><button type="button" class="linkbtn" id="toSchedule">← Back to schedule</button></div><div class="actions"><button type="button" id="snCancel">Cancel</button><button type="button" class="primary" id="snGo">Send now</button></div>`,
         );
         box.setAttribute("aria-labelledby", "snHead");
         $("#snCancel", box).onclick = m.close;
         $("#snGo", box).onclick = doSendNow;
-        $("#toChange", box).onclick = () => showChange(() => void showSendNow());
+        showForm("snClause", () => willAppearClause(working.emailOnly));
         $<HTMLButtonElement>("#snGo", box).disabled = providerNotConnected();
         $("#toSchedule", box).onclick = () => {
           setHtml(box, scheduleView());

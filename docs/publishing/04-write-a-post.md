@@ -13,7 +13,7 @@ A few things to know as you write:
 - **A blank line starts a new paragraph.** In an email, a single line break doesn't.
 - **The opening lines** are the preview a mail client shows beside the subject.
 - **Images** go in by paste or drop, and Kestrel inserts a reference by file name, such as `![cover.jpg](cover.jpg)`. Replace the words in brackets with a short description. PNG, JPEG, WebP, or GIF, up to 5 MB each.
-- **Where it will go** is in **Post settings**, at the top right: whether it's in your archive, and its address, such as `newsletter.example.com/archive/spring-update`, which follows the subject (below).
+- **Where it will go** is in **Post settings**, at the top right: whether it's in your archive, and its address, such as `newsletter.example.com/archive/spring-update`, whose slug follows the subject (below).
 
 ## Test it
 
@@ -39,9 +39,9 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Include in archive** is checked unless you uncheck it. Unchecked, the post goes to your list as usual but is sent as email only: it stays off your public archive and your home page, and gets no archive address. Use that for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. The editor marks such a post **Email only**.
 
-**Archive address** is where the post's page will be in your archive. It follows the subject until you type your own, and **Auto-generate from subject** hands it back. If another post already has the address, Kestrel says so and names the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
+**Future archive address** shows where the post's page will be in your archive. Its slug, the last part, follows the subject: uncheck **Auto-generate slug from subject** to type your own. If another post already has the slug, the address shows the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
 
-The Schedule dialog and Send now say where the post will go, and **Change…** changes it there. A change made in the dialog applies when you schedule or send, and canceling leaves the post as it was. Once a post is scheduled, a line under its subject names where it's going.
+The Schedule, Send now, and Reschedule dialogs show the same settings under the time, so you can still change them there. A change made in a dialog applies when you schedule, send, or reschedule, and canceling leaves the post as it was. Once a post is scheduled, a line under its subject names where it's going.
 
 Every email links its web version through the post's own **unlisted link**, which never changes. It opens the archive page while the post is in your archive, and the page itself while it's email only. Anyone with the email can open it, but nothing lists it, and search engines are asked not to.
 

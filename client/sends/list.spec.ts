@@ -47,8 +47,31 @@ describe("sent view", () => {
     vi.useRealTimers();
   });
 
+  // The scheduled card's post, which Reschedule reads for its settings.
+  const postRead = (over: Record<string, unknown> = {}) => ({
+    path: "/api/posts/p7",
+    reply: () => ({
+      post: {
+        id: "p7",
+        subject: "Waxwings",
+        slug: "waxwings",
+        slug_auto: true,
+        slug_reserved: false,
+        unlisted_token: "t-p7",
+        status: "scheduled",
+        email_only: false,
+        ...over,
+      },
+      archive_slug: "waxwings",
+      markdown: "",
+      author: null,
+      scheduled: null,
+      sending: null,
+      sent: null,
+    }),
+  });
   const world = (srv: ReturnType<typeof sendServer>, extra: FakeRoute[] = []) =>
-    fakeApi([...extra, ...srv.routes]);
+    fakeApi([...extra, postRead(), ...srv.routes]);
   const scheduled = (over: Partial<SendSummary> = {}) =>
     send({
       id: "sch",
@@ -215,19 +238,34 @@ describe("sent view", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
-  it("reschedules only the time: where the post goes is in its Post settings", async () => {
+  it("reschedules in the Schedule dialog's shape, with the post's settings under the time (DESIGN §4)", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
-    fake = world(srv, [{ method: "POST", path: "/api/sends/sch/reschedule", reply: () => ({}) }]);
+    fake = fakeApi([
+      { method: "POST", path: "/api/sends/sch/reschedule", reply: () => ({}) },
+      postRead({ email_only: true }),
+      ...srv.routes,
+    ]);
     await mount(renderSent);
     await vi.advanceTimersByTimeAsync(0);
     $("[data-reschedule='sch']").click();
-    expect(document.querySelector(".modal .listing-check")).toBeNull();
+    await vi.advanceTimersByTimeAsync(0);
+    expect($(".modal h3").textContent).toBe("Reschedule this post");
+    const include = $<HTMLInputElement>("#rsInclude");
+    expect(include.checked).toBe(false);
+    expect($("#rsHint").textContent).toMatch(
+      /It will be sent as email only, not in your archive\.$/,
+    );
+    include.checked = true;
+    include.dispatchEvent(new Event("change"));
+    expect($("#rsHint").textContent).toMatch(/It will be in your archive\.$/);
+    expect($("#rsAddress").textContent).toBe("/archive/waxwings");
     $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
-    expect(posted?.json()).not.toHaveProperty("email_only");
+    expect(posted?.json()).toMatchObject({ email_only: false });
+    expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p7/listing")).toBe(false);
     expect(fake.unhandled).toEqual([]);
   });
   it("reschedules a scheduled send from its card, refreshes the queue, and has the layer read at once", async () => {
@@ -248,6 +286,7 @@ describe("sent view", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(feedReads(fake)).toHaveLength(1);
     $("[data-reschedule='sch']").click();
+    await vi.advanceTimersByTimeAsync(0); // it reads the post's settings first
     const when = $<HTMLInputElement>("#rsWhen");
     expect(when.value).toBe(toLocalInput(new Date(NOW + 2 * 3_600_000))); // opens at its time
     const moved = new Date(NOW + 3 * 86_400_000);
@@ -255,7 +294,10 @@ describe("sent view", () => {
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
-    expect(posted?.json()).toEqual({ fire_at: new Date(toLocalInput(moved)).toISOString() });
+    expect(posted?.json()).toEqual({
+      fire_at: new Date(toLocalInput(moved)).toISOString(),
+      email_only: false,
+    });
     expect(document.querySelector(".modal")).toBeNull();
     expect($("#toasts").textContent).toMatch(/Rescheduled/);
     expect($(".sched-card .countdown").textContent).toBe("Sends in 3 days");
@@ -278,6 +320,7 @@ describe("sent view", () => {
     );
     expect($<HTMLAnchorElement>("a", warning).getAttribute("href")).toBe("#/docs/ses");
     $("[data-reschedule='sch']").click();
+    await vi.advanceTimersByTimeAsync(0); // it reads the post's settings first
     expect($(".modal .not-connected").textContent).toBe(
       "No email provider connected, so this send is held when it fires, until one is. Connect Amazon SES to send it.",
     );
@@ -336,6 +379,7 @@ describe("sent view", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(document.querySelector(".sent-not-connected")).toBeNull();
     $("[data-reschedule='sch']").click();
+    await vi.advanceTimersByTimeAsync(0); // it reads the post's settings first
     expect(document.querySelector(".modal .not-connected")).toBeNull();
   });
 

@@ -268,7 +268,7 @@ describe("sent record", () => {
       expect(fake.unhandled).toHaveLength(0);
     });
 
-    it("sets the address of a post never in the archive when adding it", async () => {
+    it("sets the address of a post never in the archive when adding it, with the editor's form", async () => {
       const server = sendServer();
       server.put(send(), { email_only: true });
       fake = fakeApi([
@@ -285,13 +285,14 @@ describe("sent record", () => {
       $("#recListing").click();
       await vi.advanceTimersByTimeAsync(0);
       expect($(".modal h3").textContent).toBe("Add this post to your archive?");
-      const slug = $<HTMLInputElement>("#addSlug");
-      expect(slug.value).toBe("owls");
-      expect($<HTMLInputElement>("#addAuto").checked).toBe(true);
+      expect(document.querySelector("#addInclude")).toBeNull(); // adding it is the choice
       // Another post holds it, so it will be numbered.
-      expect($(".modal .pub-taken").textContent).toContain("this one will be owls-2");
-      typeInto(slug, "dusk-owls");
-      expect($<HTMLInputElement>("#addAuto").checked).toBe(false);
+      expect($("#addAddress").textContent).toBe("birds.example/archive/owls-2");
+      const auto = $<HTMLInputElement>("#addAuto");
+      expect(auto.checked).toBe(true);
+      auto.checked = false;
+      auto.dispatchEvent(new Event("change"));
+      typeInto($<HTMLInputElement>("#addSlug"), "dusk-owls");
       $("#addArchGo").click();
       await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
@@ -316,7 +317,7 @@ describe("sent record", () => {
       await vi.advanceTimersByTimeAsync(0);
       $("#recListing").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect($<HTMLInputElement>(".modal .url-field input").readOnly).toBe(true);
+      expect($("#addAddress").textContent).toBe("birds.example/archive/owls");
       expect(document.querySelector("#addAuto")).toBeNull();
       expect($(".modal").textContent).toContain("Reserved from when it was in your archive");
       $("#addArchGo").click();

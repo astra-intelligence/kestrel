@@ -1,9 +1,18 @@
 // The send actions a publisher takes from more than one surface: resolving a wedged send
-// (the list, the watch) and rescheduling (the list's scheduled card, the editor's banner).
+// (the list, the watch) and rescheduling, the Schedule dialog for a scheduled post (the list's
+// scheduled card, the editor's banner).
 
+import type { ListingResponse, PostResponse } from "../../shared/posts";
 import type { ResolveResponse, SendSummary, StuckResolution } from "../../shared/sends";
 import { ApiError, api, describeError } from "../api";
 import { earliestFireAt, isTooSoon, notConnectedRescheduleLine, tooSoonText } from "../deployment";
+import {
+  mountSettingsForm,
+  type Publishing,
+  publishingOf,
+  settingsChange,
+  willAppearClause,
+} from "../posts/publishing";
 import { readSendsNow } from "../send_state";
 import { $ } from "../ui/dom";
 import { toLocalInput } from "../ui/format";
@@ -56,31 +65,55 @@ export function openResolveModal(
 }
 
 /**
- * Move a scheduled send's fire time without canceling or re-editing: the content stays
- * frozen (I3) and the cancelable review window is preserved (I6); only fire_at moves,
- * via POST /api/sends/:id/reschedule (SPEC §6). The same datetime picker as the Schedule
- * modal, prefilled with the current fire time and floored at the minimum lead. Shared
- * by the editor's scheduled banner and the Sent page's scheduled card (SPEC §8), so
- * `onDone` re-renders whichever surface opened it.
+ * Reschedule a scheduled send: the Schedule dialog again, for a post already scheduled. It moves
+ * the fire time without canceling or re-editing (the content stays frozen, I3, and the
+ * cancelable window is kept, I6), and holds the post's settings under the time, as the
+ * Schedule dialog does, applying a change to them only when Reschedule is pressed. Shared by
+ * the editor's scheduled banner and the Sent page's scheduled card (SPEC §8), so `onDone`
+ * re-renders whichever surface opened it. The banner passes the post's settings it holds; the
+ * card has only the send, so the dialog reads the post first.
  */
-export function openRescheduleModal(
-  sendId: string,
-  currentFireAt: number,
+export async function openRescheduleModal(
+  send: { id: string; post_id: string; fire_at: number },
   onDone: () => void,
   signal: AbortSignal,
-): void {
+  known?: Publishing,
+): Promise<void> {
+  let saved = known;
+  if (!saved) {
+    try {
+      const read = await api<PostResponse>(`/api/posts/${send.post_id}`, { signal });
+      saved = publishingOf(read.post, read.archive_slug);
+    } catch (e) {
+      if (!signal.aborted) {
+        toast(message(e));
+      }
+      return;
+    }
+  }
+  const stored = saved;
+  // The dialog's copy: Cancel leaves the post as it was.
+  const working: Publishing = { ...stored };
   const minStr = toLocalInput(earliestFireAt());
-  const cur = toLocalInput(new Date(currentFireAt));
+  const cur = toLocalInput(new Date(send.fire_at));
+  const hint = () =>
+    `It sends at the time you pick, with a cancelable window until then.${willAppearClause(working.emailOnly)}`;
   const m = modal(
     html`<h3 id="rsHead">Reschedule this post</h3>
-      <p class="hint">Move when it sends. The content stays frozen and the cancelable window is kept. Only the time changes.</p>
+      <p class="hint" id="rsHint">${hint()}</p>
       ${notConnectedRescheduleLine()}
       <label for="rsWhen">Send at</label><input type="datetime-local" id="rsWhen" min="${minStr}" value="${cur}">
+      <div class="dialog-settings" id="rsForm"></div>
       <div class="actions"><button type="button" id="rsCancel">Cancel</button><button type="button" class="primary" id="rsGo">Reschedule</button></div>`,
     signal,
   );
   const box = $(".modal", m.el);
   box.setAttribute("aria-labelledby", "rsHead");
+  mountSettingsForm($("#rsForm", box), working, "rs", {
+    onChange: () => {
+      $("#rsHint", box).textContent = hint();
+    },
+  });
   const go = $<HTMLButtonElement>("#rsGo", box);
   const when = $<HTMLInputElement>("#rsWhen", box);
   $("#rsCancel", box).onclick = m.close;
@@ -98,10 +131,20 @@ export function openRescheduleModal(
         return;
       }
       try {
-        await api(`/api/sends/${sendId}/reschedule`, {
+        // The listing moves with the time, only once the move is accepted (SPEC §6); the
+        // address, which the reschedule doesn't take, follows on its own route.
+        await api(`/api/sends/${send.id}/reschedule`, {
           method: "POST",
-          json: { fire_at: new Date(t).toISOString() },
+          json: { fire_at: new Date(t).toISOString(), email_only: working.emailOnly },
         });
+        const change = settingsChange(stored, working);
+        if (change && (change.slug !== undefined || change.slug_auto !== undefined)) {
+          const { email_only: _listing, ...address } = change;
+          await api<ListingResponse>(`/api/posts/${send.post_id}/listing`, {
+            method: "PUT",
+            json: address,
+          });
+        }
         m.close();
         toast("Rescheduled");
         onDone();
