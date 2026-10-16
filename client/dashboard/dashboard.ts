@@ -54,7 +54,7 @@ interface HealthAlert {
 // within a read of its condition and stays until the condition clears, and the dashboard
 // keeps no rule of its own: the bounce spike included, which the server reads off each
 // recently sent send. Only the loud kinds are lines here; a re-made send's note and a
-// provider outage short of the stuck threshold are shown where the send is. The one line
+// provider outage, which its retry explains, are shown where the send is. The one line
 // not about a send is the deployment's: no email provider connected (SPEC §9), an amber
 // standing state with no time, read from the deployment reflection, gone once one is set.
 // When that state is holding a send, the two are said as one red line instead of two.
@@ -125,7 +125,7 @@ function computeHealth(live: SendView[]): HealthAlert[] {
       text:
         stuck.length === 1
           ? html`<a href="#/sent/${firstStuck.id}">${firstStuck.subject}</a>: ${conditionOf(firstStuck, "stuck")?.message}`
-          : html`<a href="#/sent">${stuck.length} sends</a> have been sending longer than they should; they may be retrying.`,
+          : html`<a href="#/sent">${stuck.length} sends</a> have handed off no one for a while, with no retry or provider problem to explain it.`,
     });
   }
   // Bounce spike (SPEC §8): the server's reading of a recent send's confirmed bounces over
@@ -443,8 +443,9 @@ function dashActiveHtml(active: SendView[]): Html {
   if (!active.length) {
     return html``;
   }
+  // The health line above already says a send is in flight too long, so its card doesn't.
   return html`<section class="dash-section"><h2>Active send${active.length === 1 ? "" : "s"}</h2>${active.map(
-    activeRowHtml,
+    (s) => activeRowHtml(s, { stuckNote: false }),
   )}</section>`;
 }
 function wireDashActiveCards(root: HTMLElement): void {

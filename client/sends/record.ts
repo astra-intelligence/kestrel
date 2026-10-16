@@ -22,7 +22,7 @@ import { type Html, html, setHtml } from "../ui/html";
 import { type ListState, renderPager, th, wireSort } from "../ui/list_controls";
 import { busy, renderError, toast } from "../ui/widgets";
 import { openResolveModal } from "./dialogs";
-import { can, clampPct, conditionOf, fmtDuration, has } from "./progress";
+import { can, clampPct, conditionOf, fmtDuration, has, nextRetry } from "./progress";
 
 const message = describeError;
 
@@ -94,14 +94,6 @@ const PHASE_BLURB: Partial<Record<SendPhase, string>> = {
   "needs-attention": "Some deliveries are stuck and need a decision.",
   settling: "Dispatch complete, waiting on delivery receipts.",
 };
-/** When a halted send's next retry is due, relative to now (SPEC §12). */
-function nextRetry(retryAt: number | null): string {
-  if (retryAt === null) {
-    return "it is retried on its own";
-  }
-  const wait = retryAt - Date.now();
-  return wait > 0 ? `next retry in ${fmtDuration(wait)}` : "next retry due now";
-}
 /** The phase's one-line gloss, said for the cause when the phase has more than one. */
 function phaseBlurb(prog: SendView): string {
   const halt = prog.provider.halt;
@@ -113,6 +105,10 @@ function phaseBlurb(prog: SendView): string {
   }
   if (prog.phase === "backing-off" && halt?.reason === "unavailable") {
     return `The provider is unavailable; ${nextRetry(halt.retry_at)}.`;
+  }
+  // In flight too long: the alert above says why, so the gloss must not say it is handing off.
+  if (has(prog, "stuck")) {
+    return "Nothing is being handed off to the provider right now.";
   }
   // A send too large for one tick waits for the next with nothing in flight. The server
   // reads that as progressing, since nothing failed; the line says why the bar is still.
@@ -189,7 +185,7 @@ function watchBodyHtml(prog: SendView): Html {
   const acceptedTotal = c.accepted + c.delivered + c.bounced + c.complained;
   const rate = prog.dispatch.rate_per_min;
   // The server gives a time to finish only while the send is handing off, never while it
-  // is paused (backing off, refused, or wedged). The rate goes with it: it is what a tick
+  // is paused (backing off, refused, or wedged) or in flight too long. The rate goes with it: it is what a tick
   // has carried so far, so beside a pause it would promise progress nothing is making.
   const eta = prog.dispatch.eta_ms;
   const dispatchSub =

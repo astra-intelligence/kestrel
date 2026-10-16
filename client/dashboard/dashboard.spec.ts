@@ -244,7 +244,7 @@ describe("dashboard", () => {
     expect(lines).toEqual([
       "1 scheduled send passed the fire time without going out.",
       "Kinglets has 2 ambiguous deliveries awaiting a decision; resolve them on its page.",
-      "Swifts: Still sending 31 minutes after it started; it may be retrying.",
+      "Swifts: Nothing has gone out for 31 minutes, with no retry or provider problem to explain it.",
     ]);
     // The wedged line leads to where Resolve is: the send's own page.
     expect($("a", health).getAttribute("href")).toBe("#/sent/w1");
@@ -253,9 +253,8 @@ describe("dashboard", () => {
         .map((c) => c.dataset.watch)
         .sort(),
     ).toEqual(["ok1", "st1"]);
-    expect($("[data-watch='st1'] .active-stuck").textContent).toMatch(
-      /31 minutes after it started/,
-    );
+    // The health line says it is in flight too long, so its card doesn't say it again.
+    expect(document.querySelector("[data-watch='st1'] .active-stuck")).toBeNull();
     // The missed send's own card says how late it is, in the danger tone.
     expect(countdown("p9").textContent).toBe("Missed its fire time · 6 min late");
     expect(countdown("p9").classList.contains("countdown-missed")).toBe(true);
