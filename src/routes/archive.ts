@@ -9,7 +9,7 @@
  * that never ships in an email, and the template's email-only regions are left out.
  */
 
-import { getByArchiveSlug, getByUnlistedToken, type PostRow } from "../db/posts";
+import { getBySlug, getByUnlistedToken, type PostRow } from "../db/posts";
 import { listPublishedPosts, publishedSendForPost, type SendRow } from "../db/sends";
 import type { Config } from "../env";
 import { archiveAnswers } from "../lib/archive_address";
@@ -154,7 +154,10 @@ async function postPage(c: RequestContext, post: PostRow, send: SendRow): Promis
     headers: {
       ...POST_PAGE_SECURITY_HEADERS,
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "public, max-age=3600",
+      // Checked with the app on every view, since the listing can change at any time: a page
+      // taken out of the archive must stop answering at once, and an unlisted link must start
+      // forwarding once its post is added (SPEC §5).
+      "cache-control": "no-cache",
       ...(post.email_only ? { "x-robots-tag": "noindex" } : {}),
     },
   });
@@ -163,21 +166,13 @@ async function postPage(c: RequestContext, post: PostRow, send: SendRow): Promis
 /**
  * A post's archive address. It answers only for a published post whose address it is and
  * while the post is listed (`archiveAnswers`); an email-only post's address answers "Nothing
- * here yet" though it stays reserved, unless its email carries this address, as one sent
+ * here yet" though it stays the post's, unless its email carries this address, as one sent
  * before unlisted links does.
  */
 export async function archivePage(c: RequestContext): Promise<Response> {
-  const post = await getByArchiveSlug(c.env.DB, param(c, "slug"));
+  const post = await getBySlug(c.env.DB, param(c, "slug"));
   const send = post ? await publishedSendForPost(c.env.DB, post.id) : null;
-  if (
-    !post ||
-    !send ||
-    !archiveAnswers({
-      reserved: post.slug_reserved,
-      emailOnly: post.email_only,
-      webLink: send.web_link,
-    })
-  ) {
+  if (!post || !send || !archiveAnswers({ emailOnly: post.email_only, webLink: send.web_link })) {
     // One page for every address with no published post, a draft, a scheduled post, an
     // email-only one, or none at all, so it never reveals that a post is on its way or was
     // taken down.
@@ -202,7 +197,7 @@ export async function unlistedPage(c: RequestContext): Promise<Response> {
   // is the post's own archive address, never anything the request names, so the link can't be
   // used as an open redirect. Not cached, so a listing change takes effect at once, and not
   // indexed, as the unlisted link itself never is.
-  if (post.slug_reserved && !post.email_only) {
+  if (!post.email_only) {
     return new Response(null, {
       status: 302,
       headers: {

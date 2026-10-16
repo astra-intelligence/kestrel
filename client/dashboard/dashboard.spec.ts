@@ -26,7 +26,6 @@ const post = (over: Partial<PostListItem> = {}): PostListItem => ({
   id: "p1",
   slug: "owls",
   slug_auto: true,
-  slug_reserved: false,
   unlisted_token: "t-p1",
   subject: "<b>Owls</b> & co",
   status: "draft",

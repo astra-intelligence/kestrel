@@ -63,6 +63,7 @@ const VIEW_KEYS = [
   "status",
   "subject",
   "tested_at",
+  "web_link",
 ].sort();
 const expectView = (v: SendView | undefined) =>
   expect(Object.keys(v ?? {}).sort()).toEqual(VIEW_KEYS);
@@ -122,7 +123,6 @@ describe("one SendView on every route", () => {
       ).bind(now, now, now, send.id),
       env.DB.prepare("UPDATE posts SET status = 'sent' WHERE id = ?").bind(send.post_id),
     ]);
-    await posts.reserveSlug(env.DB, send.post_id); // as the send's start would have
     const after = (
       (await readJson(
         await SELF.fetch(`${base}/api/sends/${send.id}`, { headers: AUTH }),

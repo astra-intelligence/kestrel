@@ -20,13 +20,7 @@ import {
   providerNotConnected,
 } from "../deployment";
 import { every, mount } from "../lifecycle";
-import {
-  mountSettingsForm,
-  type Publishing,
-  publishingOf,
-  settingsChange,
-  shortUrl,
-} from "../posts/publishing";
+import { mountSettingsForm, type Publishing, publishingOf, shortUrl } from "../posts/publishing";
 import { followSend, readSendsNow } from "../send_state";
 import { copyFace, copyWith } from "../ui/copy";
 import { $, $$ } from "../ui/dom";
@@ -596,8 +590,12 @@ function renderFrozenRecord(
           json: body,
         });
         dialog.close();
-        // The send's next report brings its links; the listing shows now.
-        const archive = res.post.email_only ? null : postArchiveUrl(res.post.slug);
+        // The send's next report brings its links; the listing shows now. An older send's
+        // email links its archive address, which keeps answering whatever the listing.
+        const archive =
+          !res.post.email_only || view.web_link === "archive"
+            ? postArchiveUrl(res.post.slug)
+            : null;
         view = { ...view, email_only: res.post.email_only, links: { ...view.links, archive } };
         paintPost();
         toast(
@@ -612,11 +610,18 @@ function renderFrozenRecord(
     });
   const confirmRemove = () => {
     const address = view.links.archive;
+    // A send frozen before unlisted links has every email link the archive address, so that
+    // address keeps answering: the dialog says only what changes (SPEC §5).
+    const older = view.web_link === "archive";
     const m = modal(
       html`<h3 id="eoHead">Remove this post from your archive?</h3>
-        <p class="hint">It comes off your home page and your public archive, and its archive address stops working, including links people have shared. The link in the email keeps working for anyone who has it.</p>
+        ${
+          older
+            ? html`<p class="hint">It comes off your home page and your public archive. Its emails link to its archive address, so that address keeps working for anyone who has them, and isn’t listed or indexed.</p>`
+            : html`<p class="hint">It comes off your home page and your public archive, and its archive address stops working, including links people have shared. The link in the email keeps working for anyone who has it.</p>
         ${address ? html`<div class="url-gone"><s>${shortUrl(address)}</s></div>` : null}
-        <p class="pub-note">The address stays reserved for this post. Add it back and the same address, and the links people shared, work again.</p>
+        <p class="pub-note">The address stays this post’s. Add it back and the same address, and the links people shared, work again.</p>`
+        }
         <div class="actions"><button type="button" id="eoCancel">Cancel</button><button type="button" class="primary" id="eoGo">Remove from archive</button></div>`,
       signal,
     );
@@ -626,9 +631,8 @@ function renderFrozenRecord(
     go.onclick = () => setListing(go, { email_only: true }, m);
     go.focus();
   };
-  // Listing a post puts it in front of anyone visiting the home page. A post listed before
-  // gets back its reserved address; one never listed gets its address set here, as the
-  // editor's Publishing options would, since it becomes permanent the moment it is listed.
+  // Listing a post puts it in front of anyone visiting the home page. Its address is the one it
+  // had when it was sent, which is fixed from then (SPEC §4), so the dialog shows it.
   const confirmAddToArchive = async () => {
     let read: PostResponse;
     try {
@@ -640,9 +644,8 @@ function renderFrozenRecord(
       return;
     }
     // The same settings form as the editor's, without its Include in archive box, since adding
-    // the post is the choice: a post never in the archive sets its address here, and one in it
-    // before gets back the address reserved for it.
-    const saved = publishingOf(read.post, read.archive_slug);
+    // the post is the choice, and with its address shown read-only.
+    const saved = publishingOf(read.post, read.slug_taken);
     const working: Publishing = { ...saved, emailOnly: false };
     const m = modal(
       html`<h3 id="addArchHead">Add this post to your archive?</h3>
@@ -655,10 +658,10 @@ function renderFrozenRecord(
     $("#addArchCancel", m.el).onclick = m.close;
     mountSettingsForm($("#addForm", m.el), working, "add", {
       include: false,
-      reservedNote: "Reserved from when it was in your archive, so links people shared work again.",
+      fixedNote: "Its address since it was sent: links people shared work again.",
     });
     const go = $<HTMLButtonElement>("#addArchGo", m.el);
-    go.onclick = () => setListing(go, settingsChange(saved, working) ?? { email_only: false }, m);
+    go.onclick = () => setListing(go, { email_only: false }, m);
     go.focus();
   };
   paintPost();
@@ -830,9 +833,13 @@ function renderFrozenRecord(
   );
 }
 
-/** Where a sent post's page is: its archive address while listed, else its unlisted link. */
+/** Where a sent post's page is: its archive address while listed, else the link its email
+ *  carries, which for a send frozen before unlisted links is the archive address too. */
 function webUrl(send: SendView): string | null {
-  return send.email_only ? send.links.unlisted : (send.links.archive ?? send.links.unlisted);
+  if (send.email_only && send.web_link === "unlisted") {
+    return send.links.unlisted;
+  }
+  return send.links.archive ?? send.links.unlisted;
 }
 
 /**
@@ -844,7 +851,7 @@ function postPartHtml(send: SendView): Html {
   const url = webUrl(send);
   const shown = url ? shortUrl(url) : null;
   if (send.email_only) {
-    return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code title="${shown}">${shown}</code>` : null}<span class="muted">Anyone with the link can open it. Nothing lists or indexes it.</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
+    return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code title="${shown}">${shown}</code>` : null}<span class="muted">${send.web_link === "archive" ? "Its emails link here. Anyone with the link can open it; nothing lists or indexes it." : "Anyone with the link can open it. Nothing lists or indexes it."}</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
   }
   return html`<div class="rec-web-what"><strong>In your archive</strong>${shown ? html`<code>${shown}</code>` : null}</div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View published post&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Remove from archive…</button></div>`;
 }

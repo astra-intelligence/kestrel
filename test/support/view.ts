@@ -27,7 +27,6 @@ export function viewOf(
       ...row,
       web_link: "unlisted",
       post_slug: null,
-      post_slug_reserved: 0,
       post_unlisted_token: null,
       post_email_only: 0,
     },

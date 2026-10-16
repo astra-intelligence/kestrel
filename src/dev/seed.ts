@@ -866,16 +866,11 @@ function renderInputFor(
   at: number,
   markdown: string,
 ): { post: PostRow; revision: RevisionRow } {
-  // A sent post listed in the archive has had its address public since its send started
-  // (SPEC §4); every other post's address can still change.
-  const reserved = demoPost.status === "sent" && !demoPost.emailOnly;
   const post: PostRow = {
     id,
     slug: demoPost.slug,
-    // A demo slug that is just its subject's reads as following it, as a new post's would,
-    // until it is reserved.
-    slug_auto: !reserved && demoPost.slug === slugify(demoPost.subject),
-    slug_reserved: reserved,
+    // A demo slug that is just its subject's reads as following it, as a new post's would.
+    slug_auto: demoPost.slug === slugify(demoPost.subject),
     // Made here rather than by the database, since the render below carries it.
     unlisted_token: newToken(16),
     subject: demoPost.subject,

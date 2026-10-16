@@ -1,4 +1,4 @@
-// The post editor: the subject and its Publishing options, the Markdown composer, autosave with its idle and
+// The post editor: the subject, the Markdown composer, Post settings, autosave with its idle and
 // hard-cap timers, the freshness poll, images, the schedule / send-now dialogs, and a
 // scheduled post's banner, which follows its send until the send page takes over.
 
@@ -67,6 +67,7 @@ import {
   type Publishing,
   publishingOf,
   settingsChange,
+  showSlugRefusal,
   willAppearClause,
 } from "./publishing";
 import { type Author, type Conflict, conflictFromError, RevisionTracker } from "./revisions";
@@ -192,7 +193,7 @@ export async function renderEditor(
   // archive, and its archive address. Neither is part of the email, so both change while the
   // post is scheduled too, through Post settings, and a dialog's edits reach them only on Save,
   // Schedule, or Send now.
-  let pub = publishingOf(post, data.archive_slug);
+  let pub = publishingOf(post, data.slug_taken);
 
   // The editor now only ever mounts a draft or a scheduled (frozen) post, so `locked`
   // means scheduled — signaled by the scheduled banner, not a status pill.
@@ -348,29 +349,35 @@ export async function renderEditor(
     if (dest) {
       setHtml(dest, destinationHtml(pub));
     }
-    onListing?.(pub.emailOnly);
   };
-  // Another part of the page that shows the listing (the scheduled banner) repaints with it.
-  let onListing: ((emailOnly: boolean) => void) | null = null;
-  /** Save a change to the post's publishing settings (the listing route), and show what the
-   *  server made of it. Throws the refusal, for the dialog that asked to say it. */
+  /** Save a change to the post's settings (the listing route), and show what the server made
+   *  of it. Throws the refusal, for the dialog that asked to say it. */
   const saveListing = async (body: ListingBody): Promise<void> => {
     const res = await api<ListingResponse>(`/api/posts/${id}/listing`, {
       method: "PUT",
       json: body,
     });
-    pub = publishingOf(res.post, res.archive_slug);
+    pub = publishingOf(res.post, res.slug_taken);
     paintPublishing();
     if (res.changed) {
       readSendsNow(); // the post's sends carry the listing: let every view see it
     }
+  };
+  /** Read the post's settings again, for a change made elsewhere; a failed read leaves what
+   *  the page shows, and the next report tries again. */
+  const rereadPublishing = async () => {
+    try {
+      const fresh = await api<PostResponse>(`/api/posts/${id}`, { signal });
+      pub = publishingOf(fresh.post, fresh.slug_taken);
+      paintPublishing();
+    } catch {}
   };
   $("#settingsBtn").onclick = () => {
     // A working copy: Cancel, Escape, or a click outside leaves the post as it was. On a draft
     // the subject in the field is the one the address would follow.
     const working: Publishing = { ...pub, subject: subjectEl.value };
     const m = modal(
-      html`<h3 id="psHead">Post settings</h3><p class="hint">Neither is part of the email, so both can change until it sends, and while it’s scheduled.</p><div id="psForm"></div><div class="actions"><button type="button" id="psCancel">Cancel</button><button type="button" class="primary" id="psSave">Save</button></div>`,
+      html`<h3 id="psHead">Post settings</h3><p class="hint">Neither is part of the email, so both stay open while the post is scheduled.</p><div id="psForm"></div><div class="actions"><button type="button" id="psCancel">Cancel</button><button type="button" class="primary" id="psSave">Save</button></div>`,
       signal,
     );
     const box = $(".modal", m.el);
@@ -395,7 +402,9 @@ export async function renderEditor(
             m.close();
             return;
           }
-          m.error(message(e));
+          if (!showSlugRefusal(box, "ps", e)) {
+            m.error(message(e));
+          }
         }
       });
     $<HTMLInputElement>("#psInclude", box).focus();
@@ -671,12 +680,12 @@ export async function renderEditor(
     const sent = JSON.stringify(fields);
     try {
       const body: PostEditBody = { ...fields, base_revision: revisions.base };
-      const { post: u, archive_slug } = await api<PostSavedResponse>(`/api/posts/${id}`, {
+      const { post: u, slug_taken } = await api<PostSavedResponse>(`/api/posts/${id}`, {
         method: "PUT",
         json: body,
       });
       // The server derives a following slug from the subject on each save (SPEC §4).
-      pub = publishingOf(u, archive_slug);
+      pub = publishingOf(u, slug_taken);
       paintPublishing();
       revisions.saved(u.current_revision); // our save is now the newest; poll against it
       dirty.markSaved(sent);
@@ -973,7 +982,6 @@ export async function renderEditor(
       ...scheduled,
       phase: "scheduled",
       conditions: [],
-      email_only: post.email_only,
     };
     const whenEl = $("#schedWhen");
     const controls = $("#schedControls");
@@ -1022,12 +1030,6 @@ export async function renderEditor(
     };
     paintBanner();
     every(1000, paintBanner, signal);
-    // The banner marks an email-only post (DESIGN §4), so a change in Publishing options
-    // shows in it at once, before the send's own next report.
-    onListing = (next) => {
-      current = { ...current, email_only: next };
-      paintBanner();
-    };
 
     // --- re-made since its last test (SPEC §8): the server's condition, in the banner ---
     // A template or identity change re-made the frozen email, so an earlier test no longer
@@ -1057,11 +1059,13 @@ export async function renderEditor(
         from,
         {
           update(send: SendView, change: StageChange | null) {
+            // A change to the post's settings gives its send a new `rev` with no change of stage,
+            // so such a report may carry a change made elsewhere (Claude, another tab): read the
+            // post again for the banner's row. A stage change hands off below instead.
+            const settingsMayHaveChanged = !change && "rev" in current && send.rev !== current.rev;
             current = send;
-            // A listing changed elsewhere (Claude, another tab) shows in the head and the line.
-            if (send.email_only !== pub.emailOnly) {
-              pub = { ...pub, emailOnly: send.email_only };
-              paintPublishing();
+            if (settingsMayHaveChanged) {
+              void rereadPublishing();
             }
             if (change?.to === "sending" || change?.to === "sent" || change?.to === "complete") {
               toast("Your send started, so this page switched to its live watch.");
@@ -1364,18 +1368,19 @@ export async function renderEditor(
       // While no provider is connected the server would refuse both views, so the dialog
       // drops the picker and the Send now row and leaves only the standing line (DESIGN §4).
       const notConnected = providerNotConnected();
-      // The dialog's own copy of the post's settings (SPEC §4, §5): it opens as stored, Change…
-      // edits it in place, and it reaches the post only when Schedule or Send now is pressed, so
-      // Cancel leaves the post as it was. A following address follows the subject in the field.
+      // The dialog's own copy of the post's settings (SPEC §4, §5): it opens as stored, the form
+      // under the time edits it, and it reaches the post only when Schedule or Send now is
+      // pressed, so Cancel leaves the post as it was. A following address shows the subject in
+      // the field as it now stands, unless another post holds that slug.
       const working: Publishing = { ...pub, subject: subjectEl.value };
-      if (working.slugAuto) {
+      if (working.slugAuto && !working.slugTaken) {
         working.slug = slugify(working.subject) || working.slug;
       }
       const scheduleHint = () =>
         `It sends at the time you pick, with a cancelable window until then.${notConnected ? "" : willAppearClause(working.emailOnly)}`;
       const scheduleView = () =>
         html`<h3 id="schHead">Schedule this post</h3><p class="hint" id="schHint">${scheduleHint()}</p>${notConnectedScheduleLine()}${dailyWritesLine()}${notConnected ? null : html`<label for="schWhen">Send at</label><input type="datetime-local" id="schWhen" min="${minStr}" value="${def}"><div class="dialog-settings" id="schForm"></div>`}<div class="actions"><button type="button" id="schCancel">Cancel</button><button type="button" class="primary" id="schGo">Schedule</button></div>${notConnected ? null : html`<div class="altrow"><span class="altrow-note">Or send as soon as possible.</span><button type="button" class="linkbtn" id="toSendNow">Send now →</button></div>`}`;
-      // The picked time survives a trip to Change… and back.
+      // The picked time survives a trip to Send now and back.
       let picked = def;
       const m = modal(scheduleView(), signal);
       const box = $(".modal", m.el);
@@ -1424,13 +1429,16 @@ export async function renderEditor(
             $(`#${hintId}`, box).textContent = hint();
           },
         });
-      /** The dialog's address change, saved before the post is scheduled (it is still a draft
-       *  then); its listing goes with the schedule itself. */
-      const saveAddress = async () => {
-        const change = settingsChange(pub, working);
-        if (change && (change.slug !== undefined || change.slug_auto !== undefined)) {
-          const { email_only: _listing, ...address } = change;
-          await saveListing(address);
+      // The dialog's settings go with the act itself, checked and applied together, so a
+      // refused schedule changes neither and a refused address schedules nothing.
+      const settingsBody = () => ({
+        email_only: working.emailOnly,
+        ...settingsChange(pub, working),
+      });
+      /** A refusal of the address goes under its field; any other says itself as it would. */
+      const sayRefusal = (e: unknown) => {
+        if (!showSlugRefusal(box, "sch", e)) {
+          m.error(message(e));
         }
       };
 
@@ -1455,10 +1463,9 @@ export async function renderEditor(
               refused();
               return;
             }
-            await saveAddress();
             await api<ScheduleResponse>(`/api/posts/${id}/schedule`, {
               method: "POST",
-              json: { fire_at: new Date(t).toISOString(), email_only: working.emailOnly },
+              json: { fire_at: new Date(t).toISOString(), ...settingsBody() },
             });
             m.close();
             // Stay on the post, re-rendered in its scheduled state: the window is the
@@ -1477,7 +1484,7 @@ export async function renderEditor(
               m.error(message(e), $<HTMLInputElement>("#schWhen", box));
               return;
             }
-            m.error(message(e));
+            sayRefusal(e);
           }
         });
 
@@ -1492,10 +1499,9 @@ export async function renderEditor(
             }
             // The toast names the time the server answered, not the lead: the fire time is
             // rounded up to the minute (SPEC §6), so it can be up to a minute past the lead.
-            await saveAddress();
             const { send } = await api<ScheduleResponse>(`/api/posts/${id}/send`, {
               method: "POST",
-              json: { email_only: working.emailOnly },
+              json: settingsBody(),
             });
             m.close();
             toast(withNoProviderNote(`Sends at ${fmt(send.fire_at)}, cancelable until then.`));
@@ -1506,7 +1512,7 @@ export async function renderEditor(
               foundGone(e);
               return;
             }
-            m.error(message(e));
+            sayRefusal(e);
           }
         });
 
@@ -1564,10 +1570,7 @@ export async function renderEditor(
 
 /** What the scheduled banner reads of its send. `actions` is absent only until the send's
  *  own read answers (the post's read does not carry them). */
-type BannerSend = Pick<
-  SendView,
-  "id" | "fire_at" | "phase" | "conditions" | "remade_at" | "email_only"
-> &
+type BannerSend = Pick<SendView, "id" | "fire_at" | "phase" | "conditions" | "remade_at"> &
   Partial<Pick<SendView, "actions">>;
 
 /**

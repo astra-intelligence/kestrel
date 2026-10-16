@@ -15,6 +15,7 @@ import { EMAIL_FRAME_SANDBOX, framedCopy, openLinksInNewTab } from "../ui/email_
 import { type Html, html, setHtml } from "../ui/html";
 import { renderError } from "../ui/widgets";
 import { savesSettled } from "./pending_save";
+import { shortUrl } from "./publishing";
 
 /** The editor route (the hash) of a post's web version. */
 export function webVersionHash(postId: string): string {
@@ -42,11 +43,6 @@ export interface WebBarState {
   url: string | null;
   /** Email only: it will have no archive address, so the bar names none (SPEC §5). */
   emailOnly?: boolean;
-}
-
-/** An address as the bar shows it: without its scheme, which says nothing to a reader. */
-function shortUrl(url: string): string {
-  return url.replace(/^https?:\/\//, "");
 }
 
 /** The bar's words: what the page is, as its tag, then where the post stands and where it
@@ -136,7 +132,7 @@ export async function renderWebVersion(
     if (signal.aborted) {
       return;
     }
-    const url = data ? postArchiveUrl(data.archive_slug) : null;
+    const url = data ? postArchiveUrl(data.post.slug) : null;
     // Once the send starts the post is public, and its web version is that page: go there,
     // by its unlisted link, which opens the page whatever the listing.
     const live = data ? postUnlistedUrl(data.post.unlisted_token) : null;

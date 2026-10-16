@@ -17,7 +17,14 @@
 import { tooSoonMessage } from "../../shared/sends";
 import { listImages } from "../db/images";
 import type { PostRow } from "../db/posts";
-import { getCurrentRevision, setEmailOnlyStmt, setPostStatusStmt } from "../db/posts";
+import {
+  getCurrentRevision,
+  isSlugCollision,
+  type PublishingInput,
+  publishingChanges,
+  setPostStatusStmt,
+  setPublishingStmt,
+} from "../db/posts";
 import {
   cancelStmt,
   type FrozenRender,
@@ -39,6 +46,7 @@ import { log } from "../lib/log";
 import { unwrap } from "../lib/unwrap";
 import { render } from "../render/render";
 import { type EmailBranding, resolveBranding } from "../render/template_engine";
+import { slugRefusal } from "../routes/post_settings";
 import { viewSend } from "./describe";
 
 /** The one render a freeze performs: the post's current content and images through
@@ -103,15 +111,16 @@ const FREEZE_RETRIES = 3;
 const ACTIVE_SEND_EXISTS =
   "This post already has a send scheduled or going out. Reschedule or cancel that send instead.";
 
-/** Create a scheduled Send from the post's current content and lock the post. `emailOnly`,
- *  when given, sets the post's listing in the same batch (SPEC §5): it is not part of the
- *  render, so it lands beside the lock rather than in the frozen copy. */
+/** Create a scheduled Send from the post's current content and lock the post. `postSettings`, when
+ *  given, sets the post's listing and slug in the same batch (SPEC §4, §5), already resolved
+ *  by the caller: they are not part of the render, so they land beside the lock rather than in
+ *  the frozen copy, and a refused freeze changes neither. */
 export async function freeze(
   env: AppEnv,
   config: Config,
   post: PostRow,
   fireAt: number,
-  emailOnly?: boolean,
+  postSettings: PublishingInput = {},
 ): Promise<SendRow> {
   const active = await getActiveSendForPost(env.DB, post.id);
   if (active) {
@@ -148,15 +157,14 @@ export async function freeze(
     const now = Date.now();
     const id = newId();
     const settingsVersion = version ?? 0;
-    // The listing lands only with the lock, under the same settings guard, and stamps the
-    // post's earlier sends, whose views carry it too (SPEC §8).
-    const listing =
-      emailOnly !== undefined && emailOnly !== post.email_only
-        ? [
-            setEmailOnlyStmt(env.DB, post.id, emailOnly, settingsVersionIs(settingsVersion)),
-            stampSendsOfPostStmt(env.DB, post.id),
-          ]
-        : [];
+    // The post's settings land only with the lock, under the same settings guard, and stamp
+    // the post's earlier sends, whose views carry them too (SPEC §8).
+    const listing = publishingChanges(post, postSettings)
+      ? [
+          setPublishingStmt(env.DB, post, postSettings, settingsVersionIs(settingsVersion)),
+          stampSendsOfPostStmt(env.DB, post.id),
+        ]
+      : [];
     let results: D1Result[];
     try {
       results = await env.DB.batch([
@@ -181,6 +189,10 @@ export async function freeze(
       // same post can pass it and reach here. The partial unique index (`idx_sends_one_active_per_post`)
       // is the real backstop — it fails the loser's insert, which we map to the same
       // friendly conflict so the DB, not check-then-act, enforces one active send (I4, I6).
+      // Another post took the slug between the caller's check and this batch.
+      if (isSlugCollision(err)) {
+        throw slugRefusal("slug_taken");
+      }
       if (isActiveSendConflict(err)) {
         const winner = await getActiveSendForPost(env.DB, post.id);
         throw winner

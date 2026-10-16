@@ -92,19 +92,6 @@ export function tombstoneSendsStmt(
     .bind(...binds);
 }
 
-/**
- * The SET clause that reserves the updated post's slug as its permanent archive address
- * (SPEC §4): the slug itself, or `-2`, `-3`, … when another post has reserved it, and never
- * following the subject again. One statement works out the number and writes it, so two
- * reservations can't both take one address. The reservation is made where a post's address
- * becomes public: a listed send's start (`acquireLease`) and a sent post added to the archive.
- */
-export const RESERVE_SLUG_SET = `slug_reserved = 1, slug_auto = 0, slug = (
-  WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n LIMIT 100000)
-  SELECT c FROM (SELECT CASE WHEN i = 1 THEN posts.slug ELSE posts.slug || '-' || i END AS c FROM n)
-   WHERE NOT EXISTS (SELECT 1 FROM posts q WHERE q.slug = c AND q.slug_reserved = 1)
-   LIMIT 1)`;
-
 /** Give every send of a post a new number, with nothing else changed: a change to the post
  *  that its sends' views carry (its listing, SPEC §5) is a change to those sends a client
  *  following them must see (SPEC §8). */
@@ -318,15 +305,14 @@ const SEND_LIST_COLS =
   "id, post_id, status, fire_at, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, remade_at, tested_at, halt_reason, halt_cause, halt_error, halted_at, halt_retries, halt_retry_at, c_pending, c_in_flight, c_accepted, c_delivered, c_bounced, c_complained, c_skipped, c_unsent, rev";
 
 // A view's columns: the list projection, which address its email carries, and what its post
-// says about its two addresses: the slug and whether it is reserved, for the archive link,
-// the unlisted token, and the listing (SPEC §5).
+// says about its two addresses (the slug for the archive link, and the unlisted token) and its
+// listing (SPEC §5).
 const postCol = (col: string, as: string) =>
   `(SELECT p.${col} FROM posts p WHERE p.id = sends.post_id) AS ${as}`;
 const VIEW_COLS = [
   SEND_LIST_COLS,
   "web_link",
   postCol("slug", "post_slug"),
-  postCol("slug_reserved", "post_slug_reserved"),
   postCol("unlisted_token", "post_unlisted_token"),
   postCol("email_only", "post_email_only"),
 ].join(", ");
@@ -337,7 +323,6 @@ const VIEW_COLS = [
 export type SendViewSource = SendSummary & {
   web_link: Send["web_link"];
   post_slug: string | null;
-  post_slug_reserved: number | null;
   post_unlisted_token: string | null;
   post_email_only: number | null;
 };
@@ -1060,36 +1045,21 @@ export async function acquireLease(
   leaseTtlMs: number,
 ): Promise<string | null> {
   const token = crypto.randomUUID();
-  const [res] = await db.batch([
-    db
-      .prepare(
-        `UPDATE sends
-           SET status = CASE WHEN status = 'scheduled' THEN 'sending' ELSE status END,
-               started_at = COALESCE(started_at, ?),
-               locked_until = ?,
-               lease_token = ?,
-               rev = ${NEXT_REV}
-         WHERE id = ?
-           AND (status = 'sending' OR (status = 'scheduled' AND fire_at <= ?))
-           AND (locked_until IS NULL OR locked_until < ?)`,
-      )
-      .bind(now, now + leaseTtlMs, token, sendId, now, now),
-    // The post is published from this moment (SPEC §5), so a listed post's archive address
-    // becomes public with it: reserved in the same batch, so no run can leave a started
-    // send's post without its address. Only the run that took the lease reserves, and a
-    // reserved slug is left alone, so every later run changes nothing. A send whose email
-    // carries the archive address (one frozen before unlisted links) reserves it whatever the
-    // listing; its post's slug was reserved when it was scheduled, so this only confirms it.
-    db
-      .prepare(
-        `UPDATE posts SET ${RESERVE_SLUG_SET}
-          WHERE id = (SELECT post_id FROM sends WHERE id = ?1 AND lease_token = ?2)
-            AND slug_reserved = 0
-            AND (email_only = 0 OR (SELECT web_link FROM sends WHERE id = ?1) = 'archive')`,
-      )
-      .bind(sendId, token),
-  ]);
-  return (res?.meta.changes ?? 0) > 0 ? token : null;
+  const res = await db
+    .prepare(
+      `UPDATE sends
+         SET status = CASE WHEN status = 'scheduled' THEN 'sending' ELSE status END,
+             started_at = COALESCE(started_at, ?),
+             locked_until = ?,
+             lease_token = ?,
+             rev = ${NEXT_REV}
+       WHERE id = ?
+         AND (status = 'sending' OR (status = 'scheduled' AND fire_at <= ?))
+         AND (locked_until IS NULL OR locked_until < ?)`,
+    )
+    .bind(now, now + leaseTtlMs, token, sendId, now, now)
+    .run();
+  return (res.meta.changes ?? 0) > 0 ? token : null;
 }
 
 /** The predicate confining a write to the run that holds the send's lease. */

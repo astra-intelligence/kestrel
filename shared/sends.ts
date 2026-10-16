@@ -255,6 +255,12 @@ export interface SendView {
    * a post reads the same, and a change to it is a change to each of them (a new `rev`).
    */
   email_only: boolean;
+  /**
+   * Which address the send's email carries as "view in browser" (SPEC §5): the post's unlisted
+   * link, or, for a send frozen before unlisted links, its archive address, which then answers
+   * whatever the listing, since every copy of that email links there.
+   */
+  web_link: "unlisted" | "archive";
   /** Where the send's last visible change sits in the change sequence: of two views of one send, the higher `rev` is the newer. */
   rev: number;
   /** The server's clock when the view was read: what the clock derives (phase, conditions, actions, `next_change_at`) is as of then. */

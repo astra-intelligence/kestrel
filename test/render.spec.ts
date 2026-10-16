@@ -42,7 +42,6 @@ function post(over: Partial<PostRow> = {}): PostRow {
     id: "p1",
     slug: "weekly-news",
     slug_auto: false,
-    slug_reserved: false,
     unlisted_token: "0123456789abcdef0123456789abcdef",
     subject: "This week in cats",
     status: "draft",

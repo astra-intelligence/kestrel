@@ -18,14 +18,7 @@ import { runSend } from "../src/send/loop";
 import { cancel, onTheMinute } from "../src/send/schedule";
 import { applyDeliveryEvents } from "../src/services/webhook_events";
 import { has } from "./support/conditions";
-import {
-  frozenSend,
-  resetDatabase,
-  seedConfirmed,
-  setRow,
-  startedRow,
-  tpl,
-} from "./support/fixtures";
+import { frozenSend, resetDatabase, seedConfirmed, setRow, tpl } from "./support/fixtures";
 import { AUTH, adminAuth, base, JSON_AUTH } from "./support/http";
 
 // GET /api/sends/feed is what the admin pages, and any other client, follow instead of each
@@ -580,7 +573,7 @@ describe("GET /api/sends/:id shape fixes", () => {
     ).json()) as SendResponse;
     expect(body.send.links.archive).toBeNull();
 
-    await startedRow(send.id, {
+    await setRow(send.id, {
       status: "sending",
       started_at: now,
       c_pending: 1,

@@ -188,16 +188,16 @@ describe("sent record", () => {
       path: "/api/posts/p1/listing",
       reply: () => ({
         post: { id: "p1", status: "sent", ...post },
-        archive_slug: post.slug,
+        slug_taken: null,
         changed: true,
       }),
     });
     /** The post's read, which Add to archive takes the address from. */
-    const postRoute = (post: Record<string, unknown>, archiveSlug = String(post.slug)) => ({
+    const postRoute = (post: Record<string, unknown>) => ({
       path: "/api/posts/p1",
       reply: () => ({
         post: { id: "p1", subject: "Owls at Dusk", status: "sent", ...post },
-        archive_slug: archiveSlug,
+        slug_taken: null,
         markdown: "",
         author: null,
         scheduled: null,
@@ -238,11 +238,7 @@ describe("sent record", () => {
 
     it("asks before removing a post from the archive, and says its archive address stops working", async () => {
       const server = sendServer([send()]);
-      fake = fakeApi([
-        ...server.routes,
-        noRows,
-        listingRoute({ email_only: true, slug: "owls", slug_reserved: true }),
-      ]);
+      fake = fakeApi([...server.routes, noRows, listingRoute({ email_only: true, slug: "owls" })]);
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
       $("#recListing").click();
@@ -268,17 +264,14 @@ describe("sent record", () => {
       expect(fake.unhandled).toHaveLength(0);
     });
 
-    it("sets the address of a post never in the archive when adding it, with the editor's form", async () => {
+    it("adds a post to the archive at the address it was sent with, shown read-only", async () => {
       const server = sendServer();
       server.put(send(), { email_only: true });
       fake = fakeApi([
         ...server.routes,
         noRows,
-        postRoute(
-          { slug: "owls", slug_auto: true, slug_reserved: false, email_only: true },
-          "owls-2",
-        ),
-        listingRoute({ email_only: false, slug: "dusk-owls", slug_reserved: true }),
+        postRoute({ slug: "owls", slug_auto: true, email_only: true }),
+        listingRoute({ email_only: false, slug: "owls" }),
       ]);
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
@@ -286,44 +279,35 @@ describe("sent record", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect($(".modal h3").textContent).toBe("Add this post to your archive?");
       expect(document.querySelector("#addInclude")).toBeNull(); // adding it is the choice
-      // Another post holds it, so it will be numbered.
-      expect($("#addAddress").textContent).toBe("birds.example/archive/owls-2");
-      const auto = $<HTMLInputElement>("#addAuto");
-      expect(auto.checked).toBe(true);
-      auto.checked = false;
-      auto.dispatchEvent(new Event("change"));
-      typeInto($<HTMLInputElement>("#addSlug"), "dusk-owls");
-      $("#addArchGo").click();
-      await vi.advanceTimersByTimeAsync(0);
-      const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
-      expect(put?.json()).toEqual({ email_only: false, slug: "dusk-owls" });
-      expect($("#toasts").textContent).toContain(
-        "Added to your archive at birds.example/archive/dusk-owls",
+      expect($<HTMLInputElement>("#addSlug").value).toBe("owls");
+      expect($<HTMLInputElement>("#addSlug").readOnly).toBe(true);
+      expect($("#addNote").textContent).toBe(
+        "Its address since it was sent: links people shared work again.",
       );
-      expect($(".rec-web-what").textContent).toBe("In your archivebirds.example/archive/dusk-owls");
-      expect(fake.unhandled).toHaveLength(0);
-    });
-
-    it("brings back the reserved address of a post in the archive before, read-only", async () => {
-      const server = sendServer();
-      server.put(send(), { email_only: true });
-      fake = fakeApi([
-        ...server.routes,
-        noRows,
-        postRoute({ slug: "owls", slug_auto: false, slug_reserved: true, email_only: true }),
-        listingRoute({ email_only: false, slug: "owls", slug_reserved: true }),
-      ]);
-      await mount((r, s) => renderSentRecord("x1", r, s));
-      await vi.advanceTimersByTimeAsync(0);
-      $("#recListing").click();
-      await vi.advanceTimersByTimeAsync(0);
-      expect($("#addAddress").textContent).toBe("birds.example/archive/owls");
-      expect(document.querySelector("#addAuto")).toBeNull();
-      expect($(".modal").textContent).toContain("Reserved from when it was in your archive");
       $("#addArchGo").click();
       await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
       expect(put?.json()).toEqual({ email_only: false });
+      expect($("#toasts").textContent).toContain(
+        "Added to your archive at birds.example/archive/owls",
+      );
+      expect($(".rec-web-what").textContent).toBe("In your archivebirds.example/archive/owls");
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("words a post sent before unlisted links by what its emails link to", async () => {
+      const server = sendServer();
+      server.put(send(), {
+        email_only: true,
+        web_link: "archive",
+        archive: "https://birds.example/archive/owls",
+      });
+      fake = fakeApi([...server.routes, noRows]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      // Its emails link the archive address, which keeps answering: that is its web version.
+      expect($(".rec-web-what code").textContent).toBe("birds.example/archive/owls");
+      expect($(".rec-web-what").textContent).toContain("Its emails link here.");
       expect(fake.unhandled).toHaveLength(0);
     });
 

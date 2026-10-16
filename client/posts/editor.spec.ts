@@ -32,8 +32,8 @@ import { renderEditor } from "./editor";
 
 type Draft = {
   post: Record<string, unknown>;
-  /** The address the slug would take now, numbered past one another post holds. */
-  archive_slug: string;
+  /** The subject's slug, when another post holds it and so the address didn't follow. */
+  slug_taken: string | null;
   markdown: string;
   author: string | null;
   scheduled?: { id: string; fire_at: number; remade_at: number | null } | null;
@@ -45,7 +45,6 @@ const draft = (over: Record<string, unknown> = {}): Draft => ({
     subject: "Owls",
     slug: "owls",
     slug_auto: true,
-    slug_reserved: false,
     unlisted_token: "t0k3n",
     status: "draft",
     email_only: false,
@@ -55,7 +54,7 @@ const draft = (over: Record<string, unknown> = {}): Draft => ({
   },
   markdown: "# Owls\n\nHoot.",
   author: "a@b.c",
-  archive_slug: (over.slug as string | undefined) ?? "owls",
+  slug_taken: null,
 });
 
 /**
@@ -79,34 +78,51 @@ function draftServer(initial = draft()) {
       const body = req.json() as Record<string, unknown>;
       n += 1;
       const post: Record<string, unknown> = { ...state.post, ...body, current_revision: `r${n}` };
-      // The server derives a following slug from the subject, or slugifies the one it is sent,
-      // and says it would be numbered past a slug another post holds (`taken`); it numbers
-      // nothing until the address is reserved (SPEC §4).
-      const want = post.slug_auto ? slugify(String(post.subject)) : slugify(String(post.slug));
-      post.slug = want || "post";
-      const archive_slug = server.taken.has(String(post.slug))
-        ? `${post.slug}-2`
-        : String(post.slug);
-      state = { ...state, post, archive_slug };
-      return { post: state.post, archive_slug };
+      return server.settle(post, body);
     },
-    /** A change to the post's publishing options (`PUT …/listing`): no revision, as the
-     *  server writes none for one. */
+    /** A change to the post's settings (`PUT …/listing`): no revision, as the server writes
+     *  none for one. */
     listing(req: FakeRequest) {
       const body = req.json() as Record<string, unknown>;
-      const post: Record<string, unknown> = { ...state.post, ...body };
-      if (body.slug !== undefined || body.slug_auto !== undefined) {
-        post.slug_auto = body.slug_auto === true; // a slug sent sets it by hand
-        const want = post.slug_auto ? slugify(String(post.subject)) : slugify(String(post.slug));
-        post.slug = want || "post";
-      }
-      const archive_slug = server.taken.has(String(post.slug))
-        ? `${post.slug}-2`
-        : String(post.slug);
-      state = { ...state, post, archive_slug };
-      return { post: state.post, archive_slug, changed: true };
+      const answer = server.settle({ ...state.post, ...body }, body);
+      return answer instanceof Response ? answer : { ...answer, changed: true };
     },
-    /** Slugs other posts hold, which an address would be numbered past. */
+    /** The server's slug rules (SPEC §4): a slug sent by hand is refused when malformed or
+     *  another post's; a following slug takes the subject's unless another post holds it,
+     *  and then keeps the slug it had and says which it couldn't take. */
+    settle(post: Record<string, unknown>, body: Record<string, unknown>) {
+      if (typeof body.slug === "string") {
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.slug)) {
+          return jsonResponse(
+            { error: "slug_invalid", message: "Use lowercase letters and numbers.", field: "slug" },
+            400,
+          );
+        }
+        if (server.taken.has(body.slug)) {
+          return jsonResponse(
+            {
+              error: "slug_taken",
+              message: "Another post already has this address.",
+              field: "slug",
+            },
+            409,
+          );
+        }
+        post.slug_auto = false;
+      }
+      let slug_taken: string | null = null;
+      if (post.slug_auto) {
+        const want = slugify(String(post.subject)) || "post";
+        if (server.taken.has(want)) {
+          slug_taken = want;
+        } else {
+          post.slug = want;
+        }
+      }
+      state = { ...state, post, slug_taken };
+      return { post: state.post, slug_taken };
+    },
+    /** Slugs other posts hold. */
     taken: new Set<string>(),
     /** Another writer saved: the server moves on to a new revision. */
     elsewhere(author: string): string {
@@ -880,8 +896,8 @@ describe("editor view", () => {
     body().focus();
     await vi.advanceTimersByTimeAsync(0);
     $("#settingsBtn").click();
-    expect($("#psAddress").textContent).toBe("/archive/welcome-to-the-compiler");
-    expect($<HTMLInputElement>("#psAuto").checked).toBe(true);
+    expect($<HTMLInputElement>("#psSlug").value).toBe("welcome-to-the-compiler");
+    expect($("#psNote").textContent).toBe("Follows the subject until you type your own.");
   });
 
   it("formats the selection from the toolbar and by shortcut, and marks the draft dirty", async () => {
@@ -1738,8 +1754,9 @@ describe("editor view", () => {
         "It sends at the time you pick, with a cancelable window until then. It will be sent as email and included in your archive.",
       );
       expect($<HTMLInputElement>("#schInclude").checked).toBe(true);
-      expect($("#schAddress").textContent).toBe("/archive/owls");
-      expect($<HTMLInputElement>("#schAuto").checked).toBe(true);
+      expect($("#schField").textContent).toBe("/archive/");
+      expect($<HTMLInputElement>("#schSlug").value).toBe("owls");
+      expect($("#schNote").textContent).toBe("Follows the subject until you type your own.");
       expect(fake.unhandled).toEqual([]);
     });
 
@@ -1749,7 +1766,7 @@ describe("editor view", () => {
       const include = $<HTMLInputElement>("#schInclude");
       include.checked = false;
       include.dispatchEvent(new Event("change"));
-      expect(document.querySelector("#schAddress")).toBeNull(); // no address while email only
+      expect(document.querySelector("#schSlug")).toBeNull(); // no address while email only
       expect($("#schHint").textContent).toMatch(/\. It will be sent as email only\.$/);
       expect(listings()).toHaveLength(0); // nothing saved yet
       expect($("#headEmailOnly").hidden).toBe(true);
@@ -1767,30 +1784,53 @@ describe("editor view", () => {
     it("leaves the post as it was when the dialog is canceled", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
-      const auto = $<HTMLInputElement>("#schAuto");
-      auto.checked = false;
-      auto.dispatchEvent(new Event("change"));
       typeInto($<HTMLInputElement>("#schSlug"), "dusk-owls");
-      expect($("#schAddress").textContent).toBe("/archive/dusk-owls");
+      expect($("#schNote").textContent).toBe(""); // set by hand now
       $("#schCancel").click();
       $("#scheduleBtn").click();
-      expect($("#schAddress").textContent).toBe("/archive/owls");
-      expect($<HTMLInputElement>("#schAuto").checked).toBe(true);
+      expect($<HTMLInputElement>("#schSlug").value).toBe("owls");
       expect(listings()).toHaveLength(0);
     });
 
-    it("saves a slug set by hand before scheduling", async () => {
+    it("sends a slug set by hand with the schedule itself", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
-      const auto = $<HTMLInputElement>("#schAuto");
-      auto.checked = false;
-      auto.dispatchEvent(new Event("change"));
       typeInto($<HTMLInputElement>("#schSlug"), "dusk-owls");
       $("#schGo").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect(listings().map((c) => c.json())).toEqual([{ slug: "dusk-owls" }]);
+      expect(listings()).toHaveLength(0);
       const scheduled = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/schedule");
-      expect(scheduled?.json()).toMatchObject({ email_only: false });
+      expect(scheduled?.json()).toMatchObject({ email_only: false, slug: "dusk-owls" });
+    });
+
+    it("says a refused address under its field, and keeps the dialog open", async () => {
+      const server = draftServer();
+      await open([
+        ...routes(server).filter((r) => r.path !== "/api/posts/p1/schedule"),
+        {
+          method: "POST",
+          path: "/api/posts/p1/schedule",
+          reply: () =>
+            jsonResponse(
+              {
+                error: "slug_taken",
+                message: "Another post already has this address. Choose another.",
+                field: "slug",
+              },
+              409,
+            ),
+        },
+      ]);
+      $("#scheduleBtn").click();
+      typeInto($<HTMLInputElement>("#schSlug"), "spring-update");
+      $("#schGo").click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector(".modal")).not.toBeNull();
+      expect($("#schNote").textContent).toBe(
+        "Another post already has this address. Choose another.",
+      );
+      expect($("#schField").classList.contains("is-invalid")).toBe(true);
+      expect(document.activeElement).toBe($("#schSlug"));
     });
 
     it("starts from the post's listing", async () => {
@@ -1818,10 +1858,10 @@ describe("editor view", () => {
       $("#settingsBtn").click();
       expect($(".modal h3").textContent).toBe("Post settings");
       expect($<HTMLInputElement>("#psInclude").checked).toBe(true);
-      expect($(".modal .pub-label").textContent).toBe("Future archive address");
-      expect($("#psAddress").textContent).toBe("/archive/owls");
-      expect($<HTMLInputElement>("#psAuto").checked).toBe(true);
-      expect(document.querySelector("#psSlug")).toBeNull(); // the slug shows only by hand
+      expect($(".modal .pub-label").textContent).toBe("Archive address");
+      // One URL field: the base fixed, the slug the one part to type.
+      expect($("#psField .url-base").textContent).toBe("/archive/");
+      expect($<HTMLInputElement>("#psSlug").value).toBe("owls");
       const include = $<HTMLInputElement>("#psInclude");
       include.checked = false;
       include.dispatchEvent(new Event("change"));
@@ -1847,28 +1887,49 @@ describe("editor view", () => {
       expect(puts()).toHaveLength(0); // no revision: the settings aren't part of the draft
     });
 
-    it("shows the number an address another post holds will take, and a slug typed by hand", async () => {
+    it("says when another post holds the subject's slug, and saves a slug typed by hand", async () => {
       const server = draftServer();
       server.taken.add("owls");
-      server.apply({ json: () => ({}) } as FakeRequest); // the server's answer now numbers it
+      server.apply({ json: () => ({}) } as FakeRequest); // the server's answer now says so
       await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
       $("#settingsBtn").click();
-      expect($("#psAddress").textContent).toBe("/archive/owls-2");
-      expect($("#psNote").textContent).toBe("Another post has owls, so this one gets a number.");
-      const auto = $<HTMLInputElement>("#psAuto");
-      auto.checked = false;
-      auto.dispatchEvent(new Event("change"));
-      const slug = $<HTMLInputElement>("#psSlug");
-      expect(slug.value).toBe("owls");
-      typeInto(slug, "Dusk Owls");
-      // Previewed as the server will make it; its number, if any, comes with the save.
-      expect($("#psAddress").textContent).toBe("/archive/dusk-owls");
-      expect($("#psNote").textContent).toBe("Checked against your other posts when it’s saved.");
+      expect($("#psNote").textContent).toBe(
+        "Another post has owls, so this one keeps the address above. Type another if you’d like.",
+      );
+      typeInto($<HTMLInputElement>("#psSlug"), "dusk-owls");
+      expect($("#psNote").textContent).toBe("");
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
-      expect(put?.json()).toEqual({ slug: "Dusk Owls" });
+      expect(put?.json()).toEqual({ slug: "dusk-owls" });
+      expect(document.querySelector(".modal")).toBeNull();
     });
+
+    it("keeps the dialog open with the server's words when it refuses the address", async () => {
+      const server = draftServer();
+      await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
+      $("#settingsBtn").click();
+      typeInto($<HTMLInputElement>("#psSlug"), "Not A Slug");
+      $("#psSave").click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector(".modal")).not.toBeNull();
+      expect($("#psNote").textContent).toBe("Use lowercase letters and numbers.");
+    });
+
+    it("hands an emptied address back to the subject", async () => {
+      const server = draftServer(draft({ slug: "custom", slug_auto: false, subject: "Barn owls" }));
+      await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
+      $("#settingsBtn").click();
+      const slug = $<HTMLInputElement>("#psSlug");
+      typeInto(slug, "");
+      slug.dispatchEvent(new Event("blur"));
+      expect($<HTMLInputElement>("#psSlug").value).toBe("barn-owls");
+      $("#psSave").click();
+      await vi.advanceTimersByTimeAsync(0);
+      const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
+      expect(put?.json()).toEqual({ slug_auto: true });
+    });
+
     it("names a scheduled post's destination in its banner, in place of the head's mark, and keeps settings open", async () => {
       const post = scheduledPost();
       await open([...post.routes, listingRoute(post.server)]);
@@ -1897,17 +1958,13 @@ describe("editor view", () => {
       expect(puts()).toHaveLength(0);
     });
 
-    it("shows a reserved address read-only, and never sends it", async () => {
-      const server = draftServer(draft({ slug_reserved: true, slug_auto: false }));
+    it("opens on a draft with the address it has, editable", async () => {
+      const server = draftServer(draft({ slug: "custom", slug_auto: false }));
       await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
       $("#settingsBtn").click();
-      expect($(".modal .pub-label").textContent).toBe("Archive address");
-      expect(document.querySelector("#psAuto")).toBeNull();
-      expect(document.querySelector("#psSlug")).toBeNull();
-      expect($(".modal").textContent).toContain("Permanent");
-      $("#psSave").click();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p1/listing")).toBe(false);
+      expect($<HTMLInputElement>("#psSlug").readOnly).toBe(false);
+      expect($<HTMLInputElement>("#psSlug").value).toBe("custom");
+      expect($("#psNote").textContent).toBe("");
     });
   });
 

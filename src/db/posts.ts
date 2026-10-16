@@ -5,7 +5,7 @@ import { EMPTY_SUBJECT_SLUG, slugify } from "../../shared/slug";
 import { newId } from "../lib/ids";
 import { type ListParams, type ListSpec, orderByClause } from "../lib/list";
 import { unwrap } from "../lib/unwrap";
-import { RESERVE_SLUG_SET, stampSendsOfPostStmt, tombstoneSendsStmt } from "./sends";
+import { stampSendsOfPostStmt, tombstoneSendsStmt } from "./sends";
 
 // The row shapes live in shared/ so the editor reads the same definitions; the names here
 // are the Worker's own.
@@ -28,12 +28,10 @@ export interface PostInput {
   markdown?: string;
 }
 
-// SQLite has no boolean: `slug_auto`, `slug_reserved`, and `email_only` are stored as 0 or 1,
-// and every read turns them back into the wire's booleans here, so nothing above this module
-// sees the integer.
-type Stored<T extends Post> = Omit<T, "slug_auto" | "slug_reserved" | "email_only"> & {
+// SQLite has no boolean: `slug_auto` and `email_only` are stored as 0 or 1, and every read
+// turns them back into the wire's booleans here, so nothing above this module sees the integer.
+type Stored<T extends Post> = Omit<T, "slug_auto" | "email_only"> & {
   slug_auto: number;
-  slug_reserved: number;
   email_only: number;
 };
 
@@ -41,7 +39,6 @@ function fromStored<T extends Post>(row: Stored<T>): T {
   return {
     ...row,
     slug_auto: row.slug_auto === 1,
-    slug_reserved: row.slug_reserved === 1,
     email_only: row.email_only === 1,
   } as T;
 }
@@ -65,94 +62,150 @@ export function setPostStatusStmt(
     .bind(to, now, postId, from, ...(guard?.binds ?? []));
 }
 
-/**
- * Set a post's listing (SPEC §5) as a statement, so a freeze can batch it with the lock it
- * lands beside (`guard`, as for `setPostStatusStmt`). Never touches `updated_at`: the listing
- * is not an edit, so the post keeps its place in the Drafts list.
- */
-export function setEmailOnlyStmt(
-  db: D1Database,
-  postId: string,
-  emailOnly: boolean,
-  guard?: { sql: string; binds: unknown[] },
-): D1PreparedStatement {
-  const extra = guard ? ` AND ${guard.sql}` : "";
-  return db
-    .prepare(`UPDATE posts SET email_only = ? WHERE id = ?${extra}`)
-    .bind(emailOnly ? 1 : 0, postId, ...(guard?.binds ?? []));
-}
-
-/** The slug a requested address becomes: slugified, or `post` when nothing usable remains. */
+/** The slug a post's subject gives it: slugified, or `post` when nothing usable remains. */
 function slugOf(text: string): string {
   return slugify(text) || EMPTY_SUBJECT_SLUG;
 }
 
-/** A change to a post's publishing options (SPEC §4, §5): any subset, as `ListingBody`. */
-export interface PublishingInput {
-  emailOnly?: boolean;
+/** The longest slug a post may have, as the subject's derivation caps it. */
+const SLUG_MAX = 80;
+
+/** Whether a slug set by hand is well formed (SPEC §4): lowercase letters and numbers, in
+ *  words joined by single hyphens, and no longer than a derived slug may be. */
+export function slugWellFormed(slug: string): boolean {
+  return slug.length <= SLUG_MAX && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+}
+
+/** A change to a post's slug: set by hand (`slug`), or following the subject (`slugAuto`). */
+export interface SlugChange {
   slug?: string;
   slugAuto?: boolean;
 }
 
+/** Why a slug change was refused: the slug set by hand isn't well formed, or another post holds
+ *  it. The caller turns it into the refusal the API names. */
+export type SlugRefusal = "slug_invalid" | "slug_taken";
+
+/** A save's slug refused, thrown so the save's caller answers it as the API names it. */
+export class SlugRefused extends Error {
+  constructor(readonly code: SlugRefusal) {
+    super(code);
+    this.name = "SlugRefused";
+  }
+}
+
+/** The slug a post will have after a change, or why it can't (SPEC §4). */
+export type SlugResult = { slug: string; auto: boolean } | { refused: SlugRefusal };
+
 /**
- * Change a post's publishing options, its listing and its archive address, in whatever state
- * it is: neither is part of the frozen email (I3). Answers whether anything changed, so a
- * repeat of the same choice writes nothing. Each of the post's sends carries both on its view,
- * so the same batch gives them a new `rev` and a client following sends sees the change
- * (SPEC §8). A reserved slug is permanent: a change to it is refused (`slug_permanent`) by the
- * caller, which checks `post.slug_reserved` first. A published post that ends up listed has its
- * slug reserved here, numbered if another post holds it (SPEC §4).
+ * Work out a post's slug after a change, against every other post (`postId`, absent for a new
+ * one). A slug set by hand must be well formed and no other post's, or it is refused. A slug
+ * that follows the subject takes the subject's slug when it is free; when another post holds
+ * it, an existing post keeps the slug it has (`slug_taken` says so) and a new one takes the
+ * first free number, since it has no slug to keep.
+ */
+export async function resolveSlug(
+  db: D1Database,
+  current: { postId?: string; slug?: string; slugAuto: boolean; subject: string },
+  change: SlugChange,
+): Promise<SlugResult> {
+  const auto = change.slugAuto ?? (change.slug === undefined && current.slugAuto);
+  if (!auto) {
+    const slug = change.slug ?? current.slug ?? slugOf(current.subject);
+    if (change.slug !== undefined) {
+      if (!slugWellFormed(slug)) {
+        return { refused: "slug_invalid" };
+      }
+      if (await slugTaken(db, slug, current.postId)) {
+        return { refused: "slug_taken" };
+      }
+    }
+    return { slug, auto: false };
+  }
+  const wanted = slugOf(current.subject);
+  if (!(await slugTaken(db, wanted, current.postId))) {
+    return { slug: wanted, auto: true };
+  }
+  return { slug: current.slug ?? (await uniqueSlug(db, wanted, current.postId)), auto: true };
+}
+
+/**
+ * When a post's slug follows its subject but another post holds the subject's slug, that slug
+ * (`SlugTaken`), so a client can say why the address didn't follow and ask for another. Null
+ * when the slug is set by hand, follows freely, or the subject gives no slug of its own.
+ */
+export async function slugTakenFor(db: D1Database, post: PostRow): Promise<string | null> {
+  const wanted = slugify(post.subject);
+  if (!post.slug_auto || !wanted || wanted === post.slug) {
+    return null;
+  }
+  return (await slugTaken(db, wanted, post.id)) ? wanted : null;
+}
+
+/** Whether a failed write was refused by the unique index on slugs: another post took the slug
+ *  between the check and the write. */
+export function isSlugCollision(err: unknown): boolean {
+  return /UNIQUE constraint failed:\s*posts\.slug/i.test(
+    err instanceof Error ? err.message : String(err),
+  );
+}
+
+/** A change to a post's settings (SPEC §4, §5): any subset, as `ListingBody`, its slug already
+ *  resolved (`resolveSlug`). */
+export interface PublishingInput {
+  emailOnly?: boolean;
+  slug?: { slug: string; auto: boolean };
+}
+
+/**
+ * The statement that sets a post's listing and slug, so a freeze can batch it with the lock it
+ * lands beside (`guard`, as for `setPostStatusStmt`). Never touches `updated_at`: the settings
+ * are not an edit, so the post keeps its place in the Drafts list.
+ */
+export function setPublishingStmt(
+  db: D1Database,
+  post: PostRow,
+  input: PublishingInput,
+  guard?: { sql: string; binds: unknown[] },
+): D1PreparedStatement {
+  const extra = guard ? ` AND ${guard.sql}` : "";
+  return db
+    .prepare(`UPDATE posts SET email_only = ?, slug = ?, slug_auto = ? WHERE id = ?${extra}`)
+    .bind(
+      (input.emailOnly ?? post.email_only) ? 1 : 0,
+      input.slug?.slug ?? post.slug,
+      (input.slug?.auto ?? post.slug_auto) ? 1 : 0,
+      post.id,
+      ...(guard?.binds ?? []),
+    );
+}
+
+/** Whether a settings change changes anything about the post. */
+export function publishingChanges(post: PostRow, input: PublishingInput): boolean {
+  return (
+    (input.emailOnly !== undefined && input.emailOnly !== post.email_only) ||
+    (input.slug !== undefined &&
+      (input.slug.slug !== post.slug || input.slug.auto !== post.slug_auto))
+  );
+}
+
+/**
+ * Change a post's settings, its listing and its archive address, in whatever state it is: none
+ * is part of the frozen email (I3). Answers whether anything changed, so a repeat of the same
+ * choice writes nothing. Each of the post's sends carries the settings on its view, so the same
+ * batch gives them a new `rev` and a client following sends sees the change (SPEC §8). The
+ * caller has resolved the slug and refused a change to a published post's.
  */
 export async function setPublishing(
   db: D1Database,
   post: PostRow,
   input: PublishingInput,
-  published: boolean,
 ): Promise<boolean> {
-  const emailOnly = input.emailOnly ?? post.email_only;
-  let slug = post.slug;
-  let auto = post.slug_auto;
-  if (!post.slug_reserved) {
-    auto = input.slugAuto ?? (input.slug === undefined && post.slug_auto);
-    if (auto) {
-      slug = slugOf(post.subject);
-    } else if (input.slug !== undefined) {
-      slug = slugOf(input.slug);
-    }
+  if (!publishingChanges(post, input)) {
+    return false;
   }
-  const changed = emailOnly !== post.email_only || slug !== post.slug || auto !== post.slug_auto;
-  if (changed) {
-    await db.batch([
-      db
-        .prepare("UPDATE posts SET email_only = ?, slug = ?, slug_auto = ? WHERE id = ?")
-        .bind(emailOnly ? 1 : 0, slug, auto ? 1 : 0, post.id),
-      stampSendsOfPostStmt(db, post.id),
-    ]);
-  }
-  // Listing a post whose send has started makes its address public: reserve it now.
-  if (published && !emailOnly && !post.slug_reserved) {
-    await reserveSlug(db, post.id);
-    return true;
-  }
-  return changed;
-}
-
-/**
- * Make a post's slug its permanent archive address (SPEC §4), numbered (`-2`, `-3`, …) when
- * another post already holds it (`RESERVE_SLUG_SET`). A no-op for a slug already reserved.
- */
-export async function reserveSlug(db: D1Database, postId: string): Promise<void> {
-  await db.batch([
-    db
-      .prepare(`UPDATE posts SET ${RESERVE_SLUG_SET} WHERE id = ? AND slug_reserved = 0`)
-      .bind(postId),
-    stampSendsOfPostStmt(db, postId),
-  ]);
-}
-
-/** The archive address a post would take if it became public now (`ArchiveSlug`). */
-export async function archiveSlugFor(db: D1Database, post: PostRow): Promise<string> {
-  return post.slug_reserved ? post.slug : uniqueSlug(db, post.slug, post.id);
+  await db.batch([setPublishingStmt(db, post, input), stampSendsOfPostStmt(db, post.id)]);
+  return true;
 }
 
 export async function getPost(db: D1Database, id: string): Promise<PostRow | null> {
@@ -163,11 +216,10 @@ export async function getPost(db: D1Database, id: string): Promise<PostRow | nul
   return row && fromStored(row);
 }
 
-/** The post whose reserved archive address is `slug`, if any: an unreserved slug is no
- *  address yet, and several drafts may want it (SPEC §4). */
-export async function getByArchiveSlug(db: D1Database, slug: string): Promise<PostRow | null> {
+/** The post whose archive address is `slug`, if any. */
+export async function getBySlug(db: D1Database, slug: string): Promise<PostRow | null> {
   const row = await db
-    .prepare("SELECT * FROM posts WHERE slug = ? AND slug_reserved = 1")
+    .prepare("SELECT * FROM posts WHERE slug = ?")
     .bind(slug)
     .first<Stored<PostRow>>();
   return row && fromStored(row);
@@ -266,12 +318,11 @@ export async function countPosts(db: D1Database, filter: PostFilter = {}): Promi
   return row?.n ?? 0;
 }
 
-// Only a reserved slug holds an address: drafts and scheduled posts may want the same one,
-// and the first to become public takes it (SPEC §4).
+// Every post holds its slug, drafts included (SPEC §4).
 async function slugTaken(db: D1Database, slug: string, exceptId?: string): Promise<boolean> {
   const sql = exceptId
-    ? "SELECT 1 FROM posts WHERE slug = ? AND slug_reserved = 1 AND id != ? LIMIT 1"
-    : "SELECT 1 FROM posts WHERE slug = ? AND slug_reserved = 1 LIMIT 1";
+    ? "SELECT 1 FROM posts WHERE slug = ? AND id != ? LIMIT 1"
+    : "SELECT 1 FROM posts WHERE slug = ? LIMIT 1";
   const bind = exceptId ? [slug, exceptId] : [slug];
   const row = await db
     .prepare(sql)
@@ -280,8 +331,9 @@ async function slugTaken(db: D1Database, slug: string, exceptId?: string): Promi
   return row !== null;
 }
 
-/** Return `base`, or `base-2`, `base-3`, … until no other post has reserved it. */
-export async function uniqueSlug(db: D1Database, base: string, exceptId?: string): Promise<string> {
+/** Return `base`, or `base-2`, `base-3`, … until no other post holds it. Only a new post that
+ *  follows its subject is numbered, since it has no slug of its own to keep. */
+async function uniqueSlug(db: D1Database, base: string, exceptId?: string): Promise<string> {
   const root = base || EMPTY_SUBJECT_SLUG;
   let candidate = root;
   let n = 1;
@@ -325,7 +377,11 @@ export function getRevisionByIndex(
     .first<RevisionRow>();
 }
 
-/** Create a draft post and its first revision (the create is the first save). */
+/**
+ * Create a draft post and its first revision (the create is the first save). A create follows
+ * the subject unless it names a slug; `slug_auto: false` alone takes the subject's slug once
+ * and keeps it. A slug it names that can't be set is thrown as `SlugRefused` (`resolveSlug`).
+ */
 export async function createPost(
   db: D1Database,
   input: PostInput,
@@ -336,11 +392,15 @@ export async function createPost(
   const revId = newId();
   const subject = input.subject ?? "";
   const markdown = input.markdown ?? "";
-  // A create follows the subject unless it names a slug; `slug_auto: false` alone takes the
-  // subject's slug once and keeps it from then on. Nothing is numbered yet: that waits until
-  // the address is reserved (SPEC §4).
-  const auto = input.slug_auto ?? input.slug === undefined;
-  const slug = slugOf(auto ? subject : (input.slug ?? subject));
+  const resolved = await resolveSlug(
+    db,
+    { slugAuto: input.slug === undefined, subject },
+    { slug: input.slug, slugAuto: input.slug_auto },
+  );
+  if ("refused" in resolved) {
+    throw new SlugRefused(resolved.refused);
+  }
+  const { slug, auto } = resolved;
   const metadata = JSON.stringify({ subject, slug });
 
   await db.batch([
@@ -367,9 +427,10 @@ export async function createPost(
 /**
  * Write a new revision and advance `current_revision`. Draft-only (the caller
  * checks status first; the WHERE guard is a backstop). A slug that follows the
- * subject is derived afresh on every save, so it tracks subject edits; a slug set by hand
- * changes only when a save names a new one. Sending a slug sets it by hand. A reserved slug
- * never changes (the caller refuses a save that would change it).
+ * subject is derived afresh on every save, so it tracks subject edits, unless another post
+ * holds the subject's slug; a slug set by hand changes only when a save names a new one, and
+ * is thrown as `SlugRefused` when malformed or another post's (`resolveSlug`). Sending a slug
+ * sets it by hand.
  */
 export async function updatePost(
   db: D1Database,
@@ -382,16 +443,15 @@ export async function updatePost(
   const revId = newId();
   const subject = input.subject ?? post.subject;
   const markdown = input.markdown ?? current?.markdown ?? "";
-  let auto = post.slug_auto;
-  let slug = post.slug;
-  if (!post.slug_reserved) {
-    auto = input.slug_auto ?? (input.slug === undefined && post.slug_auto);
-    if (auto) {
-      slug = slugOf(subject);
-    } else if (input.slug !== undefined) {
-      slug = slugOf(input.slug);
-    }
+  const resolved = await resolveSlug(
+    db,
+    { postId: post.id, slug: post.slug, slugAuto: post.slug_auto, subject },
+    { slug: input.slug, slugAuto: input.slug_auto },
+  );
+  if ("refused" in resolved) {
+    throw new SlugRefused(resolved.refused);
   }
+  const { slug, auto } = resolved;
   const metadata = JSON.stringify({ subject, slug });
 
   await db.batch([

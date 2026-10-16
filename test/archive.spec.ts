@@ -26,7 +26,7 @@ import {
 import { readerIdentity } from "../src/routes/reader";
 import { cancel, freeze } from "../src/send/schedule";
 import { sweep } from "../src/send/sweep";
-import { dueSend, resetDatabase, seedConfirmed, startedRow } from "./support/fixtures";
+import { dueSend, resetDatabase, seedConfirmed, setRow } from "./support/fixtures";
 import { AUTH, base, JSON_AUTH } from "./support/http";
 import { fetchWith } from "./support/worker_env";
 
@@ -351,7 +351,7 @@ describe("a post is published when its send starts (§5)", () => {
 
   it("serves a send still going out at its archive URL, in the index and on the landing page, dated by its start", async () => {
     const { post, sendId } = await frozenPost("Going Out");
-    await startedRow(sendId, { status: "sending", started_at: JAN_5 });
+    await setRow(sendId, { status: "sending", started_at: JAN_5 });
     const send = (await env.DB.prepare("SELECT rendered_html FROM sends WHERE id = ?")
       .bind(sendId)
       .first<{ rendered_html: string }>())!;
@@ -374,7 +374,7 @@ describe("a post is published when its send starts (§5)", () => {
 
   it("dates a finished send by when it started, not when it completed", async () => {
     const { post, sendId } = await frozenPost("Long Send");
-    await startedRow(sendId, { status: "sent", started_at: JAN_5, completed_at: JAN_7 });
+    await setRow(sendId, { status: "sent", started_at: JAN_5, completed_at: JAN_7 });
     const r = await reader();
     const body = await (await r.page(post.slug)).text();
     for (const html of [body, r.index, r.landing]) {

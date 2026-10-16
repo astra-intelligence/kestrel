@@ -1,7 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { reserveSlug } from "../src/db/posts";
 import { frozenSend, setRow } from "./support/fixtures";
 import { AUTH, adminAuth, base, JSON_AUTH, readJson } from "./support/http";
 
@@ -80,19 +79,23 @@ describe("posts + revisions", () => {
     expect(r1.markdown).toBe("v1");
   });
 
-  it("lets two drafts want one address, and numbers neither until one is reserved (SPEC §4)", async () => {
+  it("gives each post its own slug, drafts included, numbering only a new post that follows its subject (SPEC §4)", async () => {
     const a = await readJson(await createPost({ subject: "Dup Title" }));
     const b = await readJson(await createPost({ subject: "Dup Title" }));
-    expect([a.post.slug, b.post.slug]).toEqual(["dup-title", "dup-title"]);
-    expect([a.archive_slug, b.archive_slug]).toEqual(["dup-title", "dup-title"]);
+    expect([a.post.slug, b.post.slug]).toEqual(["dup-title", "dup-title-2"]);
+    // The second says why its address isn't the subject's.
+    expect([a.slug_taken, b.slug_taken]).toEqual([null, "dup-title"]);
+  });
 
-    await reserveSlug(env.DB, a.post.id);
-    const read = await readJson(
-      await SELF.fetch(`${base}/api/posts/${b.post.id}`, { headers: AUTH }),
-    );
-    // Still the address it asks for, but the one it would take is numbered.
-    expect(read.post.slug).toBe("dup-title");
-    expect(read.archive_slug).toBe("dup-title-2");
+  it("keeps a following slug's address when another post holds the subject's slug, and says so", async () => {
+    await createPost({ subject: "Spring update" });
+    const created = await readJson(await createPost({ subject: "Owls" }));
+    const saved = await save(created.post.id, {
+      subject: "Spring update",
+      base_revision: created.revision_id,
+    });
+    expect(saved.post).toMatchObject({ slug: "owls", slug_auto: true });
+    expect(saved.slug_taken).toBe("spring-update");
   });
 
   it("has a slug follow the subject until one is set by hand", async () => {
@@ -132,28 +135,28 @@ describe("posts + revisions", () => {
     expect(post.slug_auto).toBe(false);
   });
 
-  it("refuses a save that would move a reserved address, and allows naming the one it has (SPEC §4)", async () => {
-    const created = await readJson(await createPost({ subject: "Kept Address" }));
-    // A post scheduled before unlisted links, then canceled: a draft whose address is reserved.
-    await reserveSlug(env.DB, created.post.id);
-    const moved = await SELF.fetch(`${base}/api/posts/${created.post.id}`, {
-      method: "PUT",
-      headers: JSON_AUTH,
-      body: JSON.stringify({ slug: "elsewhere", base_revision: created.revision_id }),
-    });
-    expect(moved.status).toBe(409);
-    expect(await moved.json()).toMatchObject({ error: "slug_permanent", field: "slug" });
-
-    const same = await save(created.post.id, {
-      slug: "kept-address",
-      subject: "A New Subject",
-      base_revision: created.revision_id,
-    });
-    expect(same.post).toMatchObject({
-      slug: "kept-address",
-      slug_auto: false,
-      slug_reserved: true,
-    });
+  it("refuses a slug set by hand that is malformed or another post's, and saves nothing (SPEC §4)", async () => {
+    await createPost({ subject: "Taken" });
+    const created = await readJson(await createPost({ subject: "Mine", markdown: "v1" }));
+    const attempt = (slug: string) =>
+      SELF.fetch(`${base}/api/posts/${created.post.id}`, {
+        method: "PUT",
+        headers: JSON_AUTH,
+        body: JSON.stringify({ slug, markdown: "v2", base_revision: created.revision_id }),
+      });
+    for (const [slug, status, error] of [
+      ["Has Spaces", 400, "slug_invalid"],
+      ["trailing-", 400, "slug_invalid"],
+      ["taken", 409, "slug_taken"],
+    ] as const) {
+      const res = await attempt(slug);
+      expect(res.status, slug).toBe(status);
+      expect(await res.json(), slug).toMatchObject({ error, field: "slug" });
+    }
+    const read = await readJson(
+      await SELF.fetch(`${base}/api/posts/${created.post.id}`, { headers: AUTH }),
+    );
+    expect(read.post).toMatchObject({ slug: "mine", current_revision: created.revision_id });
   });
 
   it("lists each post's slug mode as true or false (SPEC §4)", async () => {

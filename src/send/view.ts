@@ -168,7 +168,6 @@ export function tickEstimate(
 export type SendViewRow = SendSummary & {
   web_link: "unlisted" | "archive";
   post_slug: string | null;
-  post_slug_reserved: number | null;
   post_unlisted_token: string | null;
   post_email_only: number | null;
 };
@@ -251,6 +250,7 @@ export function buildSendView(
     subject: send.subject,
     status: send.status,
     email_only: send.post_email_only === 1,
+    web_link: send.web_link,
     rev: send.rev,
     as_of: now,
     fire_at: send.fire_at,
@@ -284,16 +284,12 @@ export function buildSendView(
       deliveries: `/api/sends/${id}/deliveries`,
       deliveries_csv: `/api/sends/${id}/deliveries.csv`,
       post: `/api/posts/${send.post_id}`,
-      // Each address answers only once the send starts; the archive's only while it is the
-      // post's public address (`archiveAnswers`).
+      // Each address answers only once the send starts; the archive's only while the post is
+      // listed, or whatever the listing for an email that carries it (`archiveAnswers`).
       archive:
         published &&
         send.post_slug !== null &&
-        archiveAnswers({
-          reserved: send.post_slug_reserved === 1,
-          emailOnly: send.post_email_only === 1,
-          webLink: send.web_link,
-        })
+        archiveAnswers({ emailOnly: send.post_email_only === 1, webLink: send.web_link })
           ? archiveUrl(config, send.post_slug)
           : null,
       unlisted:

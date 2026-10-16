@@ -41,7 +41,7 @@ export function emailOnlyLabel(s: Pick<SendView, "email_only">): Html | null {
   return s.email_only ? html` <span class="badge email-only">Email only</span>` : null;
 }
 
-/** What a scheduled card's or banner's line adds for an email-only post (DESIGN §4): only the
+/** What a scheduled card's line adds for an email-only post (DESIGN §4): only the
  *  exception is marked, since being listed is the default. */
 export function emailOnlyNote(s: Pick<SendView, "email_only">): Html | null {
   return s.email_only ? html` · <span class="sched-email-only">Email only</span>` : null;

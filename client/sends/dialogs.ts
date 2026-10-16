@@ -2,7 +2,7 @@
 // (the list, the watch) and rescheduling, the Schedule dialog for a scheduled post (the list's
 // scheduled card, the editor's banner).
 
-import type { ListingResponse, PostResponse } from "../../shared/posts";
+import type { PostResponse } from "../../shared/posts";
 import type { ResolveResponse, SendSummary, StuckResolution } from "../../shared/sends";
 import { ApiError, api, describeError } from "../api";
 import { earliestFireAt, isTooSoon, notConnectedRescheduleLine, tooSoonText } from "../deployment";
@@ -11,6 +11,7 @@ import {
   type Publishing,
   publishingOf,
   settingsChange,
+  showSlugRefusal,
   willAppearClause,
 } from "../posts/publishing";
 import { readSendsNow } from "../send_state";
@@ -83,7 +84,7 @@ export async function openRescheduleModal(
   if (!saved) {
     try {
       const read = await api<PostResponse>(`/api/posts/${send.post_id}`, { signal });
-      saved = publishingOf(read.post, read.archive_slug);
+      saved = publishingOf(read.post, read.slug_taken);
     } catch (e) {
       if (!signal.aborted) {
         toast(message(e));
@@ -131,20 +132,16 @@ export async function openRescheduleModal(
         return;
       }
       try {
-        // The listing moves with the time, only once the move is accepted (SPEC §6); the
-        // address, which the reschedule doesn't take, follows on its own route.
+        // The settings go with the move, checked before it and applied once it is accepted
+        // (SPEC §6), so a refused move changes nothing.
         await api(`/api/sends/${send.id}/reschedule`, {
           method: "POST",
-          json: { fire_at: new Date(t).toISOString(), email_only: working.emailOnly },
+          json: {
+            fire_at: new Date(t).toISOString(),
+            email_only: working.emailOnly,
+            ...settingsChange(stored, working),
+          },
         });
-        const change = settingsChange(stored, working);
-        if (change && (change.slug !== undefined || change.slug_auto !== undefined)) {
-          const { email_only: _listing, ...address } = change;
-          await api<ListingResponse>(`/api/posts/${send.post_id}/listing`, {
-            method: "PUT",
-            json: address,
-          });
-        }
         m.close();
         toast("Rescheduled");
         onDone();
@@ -162,7 +159,9 @@ export async function openRescheduleModal(
           m.error(message(e), when);
           return;
         }
-        m.error(message(e));
+        if (!showSlugRefusal(box, "rs", e)) {
+          m.error(message(e));
+        }
       }
     });
   when.focus();

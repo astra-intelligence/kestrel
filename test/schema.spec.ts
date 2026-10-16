@@ -365,23 +365,14 @@ describe("schema (0001_init)", () => {
 });
 
 describe("schema (0008_unlisted_links)", () => {
-  const insert = (id: string, slug: string, reserved: number) =>
-    env.DB.prepare(
-      "INSERT INTO posts (id, slug, slug_reserved, created_at, updated_at) VALUES (?, ?, ?, 0, 0)",
-    )
-      .bind(id, slug, reserved)
+  const insert = (id: string, slug: string) =>
+    env.DB.prepare("INSERT INTO posts (id, slug, created_at, updated_at) VALUES (?, ?, 0, 0)")
+      .bind(id, slug)
       .run();
 
-  it("lets any number of unreserved posts want one slug, and only one reserve it (SPEC §4)", async () => {
-    await insert("a", "spring", 0);
-    await insert("b", "spring", 0);
-    await insert("c", "spring", 1);
-    await expect(insert("d", "spring", 1)).rejects.toThrow(/UNIQUE constraint failed/);
-  });
-
   it("gives every post its own 128-bit unlisted token, however it is inserted (SPEC §5)", async () => {
-    await insert("a", "one", 0);
-    await insert("b", "two", 0);
+    await insert("a", "one");
+    await insert("b", "two");
     const { results } = await env.DB.prepare("SELECT unlisted_token FROM posts ORDER BY id").all<{
       unlisted_token: string;
     }>();
@@ -389,5 +380,10 @@ describe("schema (0008_unlisted_links)", () => {
     expect(a).toMatch(/^[0-9a-f]{32}$/);
     expect(b).toMatch(/^[0-9a-f]{32}$/);
     expect(a).not.toBe(b);
+  });
+
+  it("keeps every post's slug its own, drafts included (SPEC §4)", async () => {
+    await insert("a", "spring");
+    await expect(insert("b", "spring")).rejects.toThrow(/UNIQUE constraint failed/);
   });
 });

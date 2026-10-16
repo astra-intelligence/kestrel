@@ -153,9 +153,8 @@ describe("the public pages and an email-only post (SPEC §5)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-robots-tag")).toBe("noindex");
     expect(await res.text()).toContain("Quiet Gulls");
-    // Never listed, so its slug was never public: no address answers, and none is reserved.
+    // Never listed, so its archive address never answers.
     expect((await SELF.fetch(`${base}/archive/${quiet.slug}`)).status).toBe(404);
-    expect((await post(quiet.id)).slug_reserved).toBe(false);
   });
 
   it("mail it exactly as a listed post", async () => {

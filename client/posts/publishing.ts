@@ -1,12 +1,12 @@
-// A post's publishing settings as every surface words and edits them (SPEC §4, §5): whether it
-// is included in the archive, and its archive address. The editor's Post settings dialog and
-// the Schedule and Send now dialogs edit a working copy through the same form, which reaches
-// the post only when the publisher presses Save, Schedule, or Send now; the sent page's Add to
-// archive dialog shares the address field. One module, so the choice reads the same
-// everywhere (DESIGN §3).
+// A post's settings as every surface words and edits them (SPEC §4, §5): whether it is
+// included in the archive, and its archive address. Post settings, Schedule, Send now,
+// Reschedule, and Add to archive edit a working copy through the same form, which reaches the
+// post only when the publisher presses that dialog's act, and show a refused address under its
+// field. One module, so the choice reads the same everywhere (DESIGN §3).
 
 import type { ListingBody, Post } from "../../shared/posts";
 import { slugify } from "../../shared/slug";
+import { ApiError } from "../api";
 import { postArchiveUrl } from "../deployment";
 import { type Html, html, setHtml } from "../ui/html";
 import { icon } from "../ui/icons";
@@ -23,36 +23,34 @@ export function archiveBase(): string {
 }
 
 /**
- * A post's publishing settings, as stored or as a dialog's working copy. `archiveSlug` is the
- * server's answer for `checkedSlug`: the address that slug would take now, numbered past one
- * another post holds. A slug typed since has no answer yet, so it gets no warning.
+ * A post's settings, as stored or as a dialog's working copy. `fixed` once the post's send has
+ * started, when its address can no longer change. `slugTaken`, from the server: the slug the
+ * subject gives when another post holds it, so the address didn't follow the subject.
  */
 export interface Publishing {
   emailOnly: boolean;
   slug: string;
   slugAuto: boolean;
-  reserved: boolean;
   subject: string;
-  archiveSlug: string;
-  checkedSlug: string;
+  slugTaken: string | null;
+  fixed: boolean;
 }
 
 /** A post's settings as the server answered them. */
-export function publishingOf(post: Post, archiveSlug: string): Publishing {
+export function publishingOf(post: Post, slugTaken: string | null): Publishing {
   return {
     emailOnly: post.email_only,
     slug: post.slug,
     slugAuto: post.slug_auto,
-    reserved: post.slug_reserved,
     subject: post.subject,
-    archiveSlug,
-    checkedSlug: post.slug,
+    slugTaken,
+    fixed: post.status === "sent",
   };
 }
 
 /**
- * Where a scheduled post is going, in the future tense, for the line under its locked
- * subject: its archive address, or that it will be sent as email only.
+ * Where a scheduled post is going, in the future tense, for its banner's bottom row: its
+ * archive address, or that it will be sent as email only.
  */
 export function destinationHtml(p: Publishing): Html {
   return p.emailOnly
@@ -78,54 +76,42 @@ export function willAppearClause(emailOnly: boolean): string {
 const INCLUDE_HELP =
   "Listed on your home page and in your public archive. Unchecked, it’s sent as email only: anyone with the email can still open its web version.";
 
-/**
- * The address a working copy will have: the server's answer while the slug is the one it
- * checked (numbered past one another post holds), else the typed slug as the server will make
- * it, whose number, if any, comes when it is saved.
- */
-function effectiveSlug(p: Publishing): string {
-  if (p.slug === p.checkedSlug) {
-    return p.archiveSlug;
-  }
-  return slugify(p.slug) || p.checkedSlug;
-}
+/** What a fixed address says under it, unless a surface says otherwise. */
+const FIXED_NOTE = "Fixed once the post is sent, since people may have its link.";
 
-/** What the read-only address says under it: why it is numbered, that it is permanent, or that
- *  a slug typed since is checked when it is saved. */
-function addressNoteHtml(p: Publishing, reservedNote: string): Html | null {
-  if (p.reserved) {
-    return html`<p class="pub-note">${reservedNote}</p>`;
+/** What the address says under it: that it is fixed, that the subject's slug is another
+ *  post's, or that it follows the subject. */
+function addressNoteHtml(p: Publishing, fixedNote: string): Html | null {
+  if (p.fixed) {
+    return html`<p class="pub-note">${fixedNote}</p>`;
   }
-  if (p.slug !== p.checkedSlug) {
-    return html`<p class="pub-note">Checked against your other posts when it’s saved.</p>`;
+  if (p.slugAuto && p.slugTaken) {
+    return html`<p class="pub-taken">Another post has <code>${p.slugTaken}</code>, so this one keeps the address above. Type another if you’d like.</p>`;
   }
-  return p.archiveSlug !== p.slug
-    ? html`<p class="pub-taken">Another post has <code>${p.slug}</code>, so this one gets a number.</p>`
+  return p.slugAuto
+    ? html`<p class="pub-note">Follows the subject until you type your own.</p>`
     : null;
 }
 
-/** What a reserved address says under it, unless a surface says otherwise. */
-const RESERVED_NOTE = "Permanent: this address has been public, so it can’t change.";
-
 /** How a settings form is drawn: with or without the Include in archive box (Add to archive is
- *  itself that choice), and the words under a reserved address. */
+ *  itself that choice), the words under a fixed address, and what follows a change. */
 export interface SettingsFormOptions {
   include?: boolean;
-  reservedNote?: string;
+  fixedNote?: string;
   /** Called after each change to the working copy, for a line that says where it will go. */
   onChange?: () => void;
 }
 
 /**
  * The settings as a form over `p` (DESIGN §3): Include in archive and, while it is checked, the
- * address the post will have, read-only, with Auto-generate slug from subject; unchecking that
- * shows the Slug to type. `prefix` names the inputs (`<prefix>Include`, `<prefix>Auto`,
- * `<prefix>Slug`) and the address (`<prefix>Address`), so two forms never share an id.
+ * archive address as one URL field, its base fixed and greyed and only the slug editable after
+ * it. `prefix` names the inputs (`<prefix>Include`, `<prefix>Slug`) and the line under the field
+ * (`<prefix>Note`), so two forms never share an id.
  */
-export function settingsFormHtml(
+function settingsFormHtml(
   p: Publishing,
   prefix: string,
-  { include = true, reservedNote = RESERVED_NOTE }: SettingsFormOptions = {},
+  { include = true, fixedNote = FIXED_NOTE }: SettingsFormOptions,
 ): Html {
   const box = include
     ? html`<label class="listing-check"><input type="checkbox" id="${prefix}Include"${p.emailOnly ? null : html` checked`}><span><strong>Include in archive</strong><span class="listing-help">${INCLUDE_HELP}</span></span></label>`
@@ -133,27 +119,21 @@ export function settingsFormHtml(
   if (p.emailOnly) {
     return html`${box}`;
   }
-  const slugControls = p.reserved
-    ? null
-    : html`<label class="slug-auto-toggle"><input type="checkbox" id="${prefix}Auto"${p.slugAuto ? html` checked` : null}>Auto-generate slug from subject</label>${
-        p.slugAuto
-          ? null
-          : html`<label for="${prefix}Slug">Slug</label><input type="text" id="${prefix}Slug" class="slug-input" value="${p.slug}" spellcheck="false" autocomplete="off">`
-      }`;
-  return html`${box}<div class="pub-address"><span class="pub-label">${p.reserved ? "Archive address" : "Future archive address"}</span><div class="url-readonly" id="${prefix}Address">${archiveBase()}<strong>${effectiveSlug(p)}</strong></div><div id="${prefix}Note">${addressNoteHtml(p, reservedNote)}</div>${slugControls}</div>`;
+  return html`${box}<div class="pub-address"><label class="pub-label" for="${prefix}Slug">Archive address</label><label class="url-field${p.fixed ? " readonly" : ""}" id="${prefix}Field"><span class="url-base">${archiveBase()}</span><input type="text" id="${prefix}Slug" value="${p.slug}" spellcheck="false" autocomplete="off" autocapitalize="off"${p.fixed ? html` readonly` : null}></label><div id="${prefix}Note">${addressNoteHtml(p, fixedNote)}</div></div>`;
 }
 
 /**
  * Wire a form `settingsFormHtml` drew inside `root` to the working copy `p`. `repaint` redraws
- * the form, for a change that shows or hides a part of it; typing a slug only updates the
- * address it previews, so the field keeps its cursor.
+ * the form, for a change that shows or hides a part of it. Focusing the field selects the slug,
+ * the one part to type over; typing takes the address by hand, and leaving it empty hands it
+ * back to the subject.
  */
-export function wireSettingsForm(
+function wireSettingsForm(
   root: Element,
   p: Publishing,
   prefix: string,
   repaint: () => void,
-  { reservedNote = RESERVED_NOTE, onChange }: SettingsFormOptions = {},
+  { fixedNote = FIXED_NOTE, onChange }: SettingsFormOptions,
 ): void {
   const include = root.querySelector<HTMLInputElement>(`#${prefix}Include`);
   if (include) {
@@ -163,46 +143,41 @@ export function wireSettingsForm(
       onChange?.();
     };
   }
-  const auto = root.querySelector<HTMLInputElement>(`#${prefix}Auto`);
-  if (auto) {
-    auto.onchange = () => {
-      p.slugAuto = auto.checked;
-      if (auto.checked) {
-        p.slug = slugify(p.subject) || p.checkedSlug;
-      }
-      repaint();
-      if (!auto.checked) {
-        root.querySelector<HTMLInputElement>(`#${prefix}Slug`)?.focus();
-      }
-    };
-  }
   const slug = root.querySelector<HTMLInputElement>(`#${prefix}Slug`);
-  const address = root.querySelector<HTMLElement>(`#${prefix}Address`);
   const note = root.querySelector<HTMLElement>(`#${prefix}Note`);
-  if (slug && address && note) {
-    slug.oninput = () => {
-      p.slug = slug.value;
-      setHtml(address, html`${archiveBase()}<strong>${effectiveSlug(p)}</strong>`);
-      setHtml(note, addressNoteHtml(p, reservedNote) ?? html``);
-    };
+  if (!slug || !note || p.fixed) {
+    return;
   }
+  slug.onfocus = () => slug.select();
+  slug.oninput = () => {
+    p.slug = slug.value;
+    p.slugAuto = false;
+    root.querySelector(`#${prefix}Field`)?.classList.remove("is-invalid");
+    setHtml(note, addressNoteHtml(p, fixedNote) ?? html``);
+  };
+  slug.onblur = () => {
+    if (slug.value.trim() === "") {
+      p.slugAuto = true;
+      p.slug = slugify(p.subject) || p.slug;
+      repaint();
+    }
+  };
 }
 
 /**
- * What a working copy changes about the stored settings, as `PUT /api/posts/:id/listing` takes
- * it, or null when it changes nothing. A reserved address never changes, and an empty one hands
- * the address back to the subject.
+ * What a working copy changes about the stored settings, as `PUT /api/posts/:id/listing` (and
+ * Schedule, Send now, and Reschedule) take it, or null when it changes nothing. A fixed address
+ * never changes, and one handed back to the subject asks the server to derive it again.
  */
 export function settingsChange(saved: Publishing, working: Publishing): ListingBody | null {
   const body: ListingBody = {};
   if (working.emailOnly !== saved.emailOnly) {
     body.email_only = working.emailOnly;
   }
-  if (!saved.reserved && !working.emailOnly) {
-    const auto = working.slugAuto || working.slug.trim() === "";
-    if (auto && !saved.slugAuto) {
+  if (!saved.fixed && !working.emailOnly) {
+    if (working.slugAuto && !saved.slugAuto) {
       body.slug_auto = true;
-    } else if (!auto && (working.slug !== saved.slug || saved.slugAuto)) {
+    } else if (!working.slugAuto && working.slug !== saved.slug) {
       body.slug = working.slug;
     }
   }
@@ -224,4 +199,24 @@ export function mountSettingsForm(
     wireSettingsForm(el, p, prefix, paint, options);
   };
   paint();
+}
+
+/**
+ * Show a refused address (`slug_invalid`, `slug_taken`, `slug_permanent`) under the form's field
+ * in the server's words, and focus it. False for any other failure, which the dialog says as
+ * it says any error.
+ */
+export function showSlugRefusal(root: Element, prefix: string, e: unknown): boolean {
+  if (!(e instanceof ApiError) || (e.field !== "slug" && e.field !== "slug_auto")) {
+    return false;
+  }
+  const note = root.querySelector<HTMLElement>(`#${prefix}Note`);
+  const slug = root.querySelector<HTMLInputElement>(`#${prefix}Slug`);
+  if (!note || !slug) {
+    return false;
+  }
+  root.querySelector(`#${prefix}Field`)?.classList.add("is-invalid");
+  setHtml(note, html`<p class="pub-error" role="alert">${e.message}</p>`);
+  slug.focus();
+  return true;
 }

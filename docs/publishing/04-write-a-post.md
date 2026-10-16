@@ -39,7 +39,7 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Include in archive** is checked unless you uncheck it. Unchecked, the post goes to your list as usual but is sent as email only: it stays off your public archive and your home page, and gets no archive address. Use that for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. The editor marks such a post **Email only**.
 
-**Future archive address** shows where the post's page will be in your archive. Its slug, the last part, follows the subject: uncheck **Auto-generate slug from subject** to type your own. If another post already has the slug, the address shows the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
+**Archive address** is where the post's page will be in your archive. Only the last part, the slug, is yours to type; it follows the subject until you do. Each post's address is its own: if you type one another post has, or one with spaces or capitals, Kestrel says so and keeps the address as it was. If another post already has the address your subject would give, Kestrel keeps the one the post has and tells you, so you can choose another. The address is fixed once the post starts sending.
 
 The Schedule, Send now, and Reschedule dialogs show the same settings under the time, so you can still change them there. A change made in a dialog applies when you schedule, send, or reschedule, and canceling leaves the post as it was. Once a post is scheduled, its banner names where it's going.
 

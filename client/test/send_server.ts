@@ -32,6 +32,8 @@ export interface SendExtras {
   archive?: string | null;
   /** The post's listing (SPEC §5), when it is email only. */
   email_only?: boolean;
+  /** Which address the send's email carries, `archive` for a send frozen before unlisted links. */
+  web_link?: "unlisted" | "archive";
 }
 
 /**
@@ -57,6 +59,7 @@ export function sendView(row: SendSummary, over: Partial<SendView> = {}): SendVi
     subject: row.subject,
     status: row.status,
     email_only: false,
+    web_link: "unlisted",
     rev: row.rev,
     as_of: Date.now(),
     fire_at: row.fire_at,
@@ -272,6 +275,7 @@ export function sendServer(rows: SendSummary[] = []) {
       actions,
       next_change_at: nextChange(s, now),
       email_only: s.extras.email_only ?? false,
+      web_link: s.extras.web_link ?? "unlisted",
       dispatch: { done: 0, percent: 0, rate_per_min: null, eta_ms: s.extras.eta_ms ?? null },
       ...(s.extras.archive === undefined
         ? {}

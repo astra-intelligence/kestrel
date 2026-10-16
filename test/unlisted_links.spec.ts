@@ -1,6 +1,6 @@
 // A post's two addresses (SPEC §4, §5): the unlisted link every email carries, which never
-// changes, and the archive address, which answers only while the post is listed and is
-// reserved, numbered if taken, once it has been public.
+// changes, and the archive address, unique to the post from its first save, which answers only
+// while the post is listed and is fixed once its send starts.
 
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
@@ -144,18 +144,6 @@ describe("what the unlisted link opens follows the post (SPEC §5)", () => {
 });
 
 describe("the archive address (SPEC §4, §5)", () => {
-  it("is reserved when a listed send starts, and stops following the subject", async () => {
-    const id = await makeDraft("Spring Update");
-    const sendId = await schedule(id);
-    expect((await read(id)).post).toMatchObject({ slug_reserved: false, slug_auto: true });
-    await fire(sendId);
-    expect((await read(id)).post).toMatchObject({
-      slug: "spring-update",
-      slug_reserved: true,
-      slug_auto: false,
-    });
-  });
-
   it("can change while the post is scheduled, since no email carries it", async () => {
     const id = await makeDraft("Spring Update");
     const sendId = await schedule(id);
@@ -170,25 +158,59 @@ describe("the archive address (SPEC §4, §5)", () => {
     expect((await get("/archive/spring-update")).status).toBe(404);
   });
 
-  it("is numbered when it is reserved, not before, if another post holds it", async () => {
-    const first = await makeDraft("Spring Update");
-    const second = await makeDraft("Spring Update");
-    // Two drafts may want one address: neither is numbered yet.
-    expect((await read(second)).post.slug).toBe("spring-update");
-    await fire(await schedule(first));
-    // The second still asks for it, and says what it would take.
-    const waiting = await read(second);
-    expect(waiting.post.slug).toBe("spring-update");
-    expect(waiting.archive_slug).toBe("spring-update-2");
-    await fire(await schedule(second));
-    expect((await read(second)).post).toMatchObject({
-      slug: "spring-update-2",
-      slug_reserved: true,
-    });
-    expect((await get("/archive/spring-update-2")).status).toBe(200);
+  it("is refused, not renamed, when malformed or another post's, wherever it is set", async () => {
+    await makeDraft("Taken Name");
+    const id = await makeDraft("Mine");
+    const refusals = [
+      await setListing(id, { slug: "taken-name" }),
+      await call("POST", `/api/posts/${id}/schedule`, {
+        fire_at: new Date(Date.now() + DAY).toISOString(),
+        slug: "Not A Slug",
+      }),
+      await call("POST", `/api/posts/${id}/send`, { slug: "taken-name" }),
+    ];
+    expect(
+      await Promise.all(refusals.map(async (r) => [r.status, (await readJson(r)).error])),
+    ).toEqual([
+      [409, "slug_taken"],
+      [400, "slug_invalid"],
+      [409, "slug_taken"],
+    ]);
+    // Nothing was scheduled or renamed.
+    expect((await read(id)).post).toMatchObject({ slug: "mine", status: "draft" });
   });
 
-  it("is permanent once public: a change to it is refused, and naming it again is fine", async () => {
+  it("is set with Schedule, in the same act, and a refused schedule sets nothing", async () => {
+    const id = await makeDraft("Mine");
+    const tooSoon = await call("POST", `/api/posts/${id}/schedule`, {
+      fire_at: new Date(Date.now() + 1000).toISOString(),
+      slug: "my-letter",
+    });
+    expect(tooSoon.status).toBe(400);
+    expect((await read(id)).post.slug).toBe("mine");
+    const res = await call("POST", `/api/posts/${id}/schedule`, {
+      fire_at: new Date(Date.now() + DAY).toISOString(),
+      slug: "my-letter",
+      email_only: false,
+    });
+    expect(res.status).toBe(201);
+    expect((await read(id)).post).toMatchObject({ slug: "my-letter", status: "scheduled" });
+  });
+
+  it("is checked before a reschedule moves anything", async () => {
+    await makeDraft("Taken Name");
+    const id = await makeDraft("Mine");
+    const sendId = await schedule(id);
+    const before = (await readJson(await call("GET", `/api/sends/${sendId}`))).send.fire_at;
+    const res = await call("POST", `/api/sends/${sendId}/reschedule`, {
+      fire_at: new Date(Date.now() + 2 * DAY).toISOString(),
+      slug: "taken-name",
+    });
+    expect(res.status).toBe(409);
+    expect((await readJson(await call("GET", `/api/sends/${sendId}`))).send.fire_at).toBe(before);
+  });
+
+  it("is fixed once the send starts: a change to it is refused, and naming it again is fine", async () => {
     const { id } = await sendPost("Kept Address");
     for (const body of [{ slug: "moved" }, { slug_auto: true }]) {
       const res = await setListing(id, body);
@@ -200,18 +222,19 @@ describe("the archive address (SPEC §4, §5)", () => {
     expect((await readJson(same)).changed).toBe(false);
   });
 
-  it("is taken down by Make email only, stays reserved, and comes back with Add to archive", async () => {
+  it("is taken down by email only, stays the post's, and comes back when added to the archive again", async () => {
     const { id, post } = await sendPost("Owls");
     const off = await readJson(await setListing(id, { email_only: true }));
     expect(off.changed).toBe(true);
-    expect(off.post).toMatchObject({ email_only: true, slug: "owls", slug_reserved: true });
+    expect(off.post).toMatchObject({ email_only: true, slug: "owls" });
     // Shared links stop working; the email's link opens the page.
     expect((await get("/archive/owls")).status).toBe(404);
     expect((await get(`/email/${post.unlisted_token}`)).status).toBe(200);
 
     // Another post can't take the address meanwhile.
-    const { post: rival } = await sendPost("Owls");
-    expect(rival.slug).toBe("owls-2");
+    const rival = await makeDraft("Something else");
+    const taken = await setListing(rival, { slug: "owls" });
+    expect(taken.status).toBe(409);
 
     const on = await readJson(await setListing(id, { email_only: false }));
     expect(on.post).toMatchObject({ email_only: false, slug: "owls" });
@@ -221,19 +244,14 @@ describe("the archive address (SPEC §4, §5)", () => {
     );
   });
 
-  it("is set and reserved by Add to archive for a post never listed", async () => {
-    await sendPost("Taken Name");
-    const { id, post } = await sendPost("Quiet One", true);
-    expect(post.slug_reserved).toBe(false);
-    const res = await readJson(await setListing(id, { email_only: false, slug: "taken-name" }));
-    // The address another post holds is numbered, as at a send's start.
-    expect(res.post).toMatchObject({
-      slug: "taken-name-2",
-      slug_reserved: true,
-      email_only: false,
-    });
-    expect(res.archive_slug).toBe("taken-name-2");
-    expect((await get("/archive/taken-name-2")).status).toBe(200);
+  it("is re-checked on every view, so a listing change takes effect at once", async () => {
+    const { post } = await sendPost("Fresh");
+    const page = await get("/archive/fresh");
+    expect(page.headers.get("cache-control")).toBe("no-cache");
+    const quiet = await sendPost("Quiet", true);
+    const unlisted = await get(`/email/${quiet.post.unlisted_token}`);
+    expect(unlisted.headers.get("cache-control")).toBe("no-cache");
+    expect(post.slug).toBe("fresh");
   });
 
   it("answers whatever the listing for a post whose email carries it, as one sent before unlisted links does", async () => {
@@ -244,8 +262,10 @@ describe("the archive address (SPEC §4, §5)", () => {
     const res = await get("/archive/older-post");
     expect(res.status).toBe(200);
     expect(res.headers.get("x-robots-tag")).toBe("noindex");
-    const view = readJson(await call("GET", `/api/sends/${sendId}`));
-    expect((await view).send.links.archive).toBe(`${ORIGIN}/archive/older-post`);
+    const view = (await readJson(await call("GET", `/api/sends/${sendId}`))).send;
+    expect(view.links.archive).toBe(`${ORIGIN}/archive/older-post`);
+    // The view says which address its email carries, so a client words it to match.
+    expect(view.web_link).toBe("archive");
   });
 
   it("is reported on a send's view only while it answers, beside the unlisted link", async () => {

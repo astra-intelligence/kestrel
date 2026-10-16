@@ -9,22 +9,15 @@ export type PostStatus = "draft" | "scheduled" | "sent";
 export interface Post {
   id: string;
   /**
-   * The post's archive address, `<archive origin><base path>/<slug>` (SPEC §4). It can change
-   * until it is reserved; see `archive_slug` on the post's own reads for the address it would
-   * take now.
+   * The post's archive address, `<archive origin><base path>/<slug>` (SPEC §4): unique among
+   * all posts, drafts included, and fixed once the post's send starts.
    */
   slug: string;
   /**
-   * Whether the slug follows the subject: derived from it again on every draft save. False
-   * once a slug is set by hand, and once it is reserved.
+   * Whether the slug follows the subject: derived from it again on every draft save, unless
+   * another post holds that slug (`slug_taken`). False once a slug is set by hand.
    */
   slug_auto: boolean;
-  /**
-   * Whether the slug is the post's permanent archive address: true from when a listed send
-   * starts, or the post is added to the archive after its send (SPEC §4). A reserved slug
-   * never changes, and stays the post's when it is made email only.
-   */
-  slug_reserved: boolean;
   /**
    * The post's unlisted link is `<app origin>/email/<unlisted_token>` (SPEC §5): made with the
    * post, never changed, and carried as "view in browser" by every test and send.
@@ -71,17 +64,16 @@ export interface PostListResponse {
 }
 
 /**
- * The archive address a post would take if it became public now: its slug, or the slug
- * numbered (`spring-update-2`) when another post already holds that address. Equal to
- * `post.slug` once the slug is reserved. The server works it out, so a client warns from it
- * rather than guessing (SPEC §4).
+ * When the post's slug follows its subject but another post holds the subject's slug, that
+ * slug: the post keeps the address it had, and a client says so and asks for another. Null
+ * otherwise (SPEC §4).
  */
-export type ArchiveSlug = string;
+export type SlugTaken = string | null;
 
 /** GET /api/posts/:id: the post, its current text, and where its send stands. */
 export interface PostResponse {
   post: Post;
-  archive_slug: ArchiveSlug;
+  slug_taken: SlugTaken;
   markdown: string;
   /** Who wrote the current revision; the freshness poll names them. */
   author: string | null;
@@ -114,7 +106,7 @@ export interface PostEditBody {
 /** POST /api/posts and PUT /api/posts/:id: the post as saved, and the revision the save wrote. */
 export interface PostSavedResponse {
   post: Post;
-  archive_slug: ArchiveSlug;
+  slug_taken: SlugTaken;
   revision_id: string;
 }
 
@@ -155,13 +147,15 @@ export interface StaleRevisionError {
 }
 
 /**
- * What PUT /api/posts/:id/listing takes: the post's publishing options (SPEC §4, §5), any
- * subset of them. Neither is part of the frozen email, so both can change while the post is
- * scheduled or once it is sent; the slug only until it is reserved.
+ * What PUT /api/posts/:id/listing takes: the post's settings (SPEC §4, §5), any subset of them.
+ * None is part of the frozen email, so they can change while the post is scheduled, and the
+ * listing once it is sent too; the slug only until the post's send starts. Schedule, Send now,
+ * and a reschedule take the same three fields, applied with the act.
  */
 export interface ListingBody {
   email_only?: boolean;
-  /** An archive address set by hand, as for a save; turns `slug_auto` off. */
+  /** An archive address set by hand: lowercase letters, numbers, and single hyphens, and no
+   *  other post's. Turns `slug_auto` off. */
   slug?: string;
   /** Have the slug follow the subject again (true), or keep it as it stands (false). */
   slug_auto?: boolean;
@@ -170,7 +164,7 @@ export interface ListingBody {
 /** PUT /api/posts/:id/listing: the post as it now stands, and whether the act changed it. */
 export interface ListingResponse {
   post: Post;
-  archive_slug: ArchiveSlug;
+  slug_taken: SlugTaken;
   /** False when the post was already listed as asked: nothing was written. */
   changed: boolean;
 }

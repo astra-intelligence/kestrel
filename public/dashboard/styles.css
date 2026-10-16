@@ -3224,24 +3224,6 @@ textarea.is-invalid {
   visibility: visible;
   transform: translateY(0);
 }
-/* The "Auto-generate from subject" toggle, grouped just under the archive address. */
-.slug-auto-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 14px;
-  color: var(--muted);
-  cursor: pointer;
-  user-select: none;
-}
-.slug-auto-toggle input {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: var(--ring);
-  cursor: pointer;
-}
 /* --- Editor-state banner (DESIGN §5): a standing, in-flow line at the top of the
    editor, in two variants. `scheduled` marks a frozen, soft-locked post (SPEC §6);
    `conflict` warns the draft changed elsewhere (another tab, or Claude), and its two
@@ -3397,7 +3379,8 @@ textarea.is-invalid {
 .dialog-settings .listing-check {
   margin-top: 0;
 }
-/* The address the post will have, read-only, then how its slug is made. */
+/* The archive address as one URL field: the base greyed and fixed, then the slug, the one part
+   to type. The whole field is the label, so a click on the base lands in the slug too. */
 .pub-address {
   margin-top: 14px;
 }
@@ -3407,23 +3390,71 @@ textarea.is-invalid {
   font-size: 13px;
   color: var(--muted);
 }
-.url-readonly {
-  padding: 8px 10px;
-  background: var(--sunken);
+.url-field {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 6px;
+  background: var(--card);
   font-family: var(--mono);
   font-size: 13px;
+  cursor: text;
+}
+.url-field:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+.url-field.is-invalid {
+  border-color: var(--danger-fg);
+}
+.url-base {
+  display: flex;
+  align-items: center;
+  padding: 8px 2px 8px 10px;
+  white-space: nowrap;
   color: var(--muted);
-  overflow-wrap: anywhere;
 }
-.url-readonly strong {
-  font-weight: 600;
-  color: var(--fg);
-}
-.slug-input {
+.url-field input {
+  flex: 1;
+  min-width: 6em;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 10px 8px 2px;
   font-family: var(--mono);
   font-size: 13px;
+  font-weight: 600;
+}
+.url-field input:focus-visible {
+  outline: none;
+}
+.url-field.readonly {
+  cursor: default;
+  background: var(--sunken);
+}
+.url-field.readonly input {
+  color: var(--muted);
+  font-weight: 500;
+  background: transparent;
+}
+@media (max-width: 480px) {
+  .url-field {
+    flex-direction: column;
+  }
+  .url-base {
+    padding-bottom: 0;
+  }
+  .url-field input {
+    padding-left: 10px;
+  }
+}
+/* A refused address, in the server's words, under its field. */
+.pub-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--danger-fg);
 }
 /* The Post settings button carries a gear before its words. */
 #settingsBtn {

@@ -56,13 +56,12 @@ describe("sent view", () => {
         subject: "Waxwings",
         slug: "waxwings",
         slug_auto: true,
-        slug_reserved: false,
         unlisted_token: "t-p7",
         status: "scheduled",
         email_only: false,
         ...over,
       },
-      archive_slug: "waxwings",
+      slug_taken: null,
       markdown: "",
       author: null,
       scheduled: null,
@@ -259,7 +258,7 @@ describe("sent view", () => {
     expect($("#rsHint").textContent).toMatch(
       /It will be sent as email and included in your archive\.$/,
     );
-    expect($("#rsAddress").textContent).toBe("/archive/waxwings");
+    expect($<HTMLInputElement>("#rsSlug").value).toBe("waxwings");
     $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);
