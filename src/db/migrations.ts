@@ -19,6 +19,8 @@ export const SHIPPED_MIGRATIONS: readonly string[] = [
   "0006_deliveries_fewer_indexes.sql",
   "0007_sends_progress_at.sql",
   "0008_notifications_sandbox.sql",
+  "0009_post_email_only.sql",
+  "0010_unlisted_links.sql",
 ];
 
 /**

@@ -17,7 +17,14 @@
 import { tooSoonMessage } from "../../shared/sends";
 import { listImages } from "../db/images";
 import type { PostRow } from "../db/posts";
-import { getCurrentRevision, setPostStatusStmt } from "../db/posts";
+import {
+  getCurrentRevision,
+  isSlugCollision,
+  type PublishingInput,
+  publishingChanges,
+  setPostStatusStmt,
+  setPublishingStmt,
+} from "../db/posts";
 import {
   cancelStmt,
   type FrozenRender,
@@ -28,6 +35,7 @@ import {
   rescheduleStmt,
   type SendRow,
   settingsVersionIs,
+  stampSendsOfPostStmt,
 } from "../db/sends";
 import { readSettings } from "../db/settings";
 import { audienceCount } from "../db/subscribers";
@@ -35,6 +43,7 @@ import type { AppEnv, Config } from "../env";
 import { badRequest, notFound, refusal } from "../lib/errors";
 import { newId } from "../lib/ids";
 import { log } from "../lib/log";
+import { slugRefusal } from "../lib/slug_refusals";
 import { unwrap } from "../lib/unwrap";
 import { render } from "../render/render";
 import { type EmailBranding, resolveBranding } from "../render/template_engine";
@@ -100,14 +109,18 @@ const FREEZE_RETRIES = 3;
 
 /** The refusal for a post that already has its one active send (SPEC §6). */
 const ACTIVE_SEND_EXISTS =
-  "This post already has a send scheduled or going out. Reschedule or cancel that send instead.";
+  "This post already has a send scheduled or going out. Edit its schedule or cancel it instead.";
 
-/** Create a scheduled Send from the post's current content and lock the post. */
+/** Create a scheduled Send from the post's current content and lock the post. `postSettings`, when
+ *  given, sets the post's listing and slug in the same batch (SPEC §4, §5), already resolved
+ *  by the caller: they are not part of the render, so they land beside the lock rather than in
+ *  the frozen copy, and a refused freeze changes neither. */
 export async function freeze(
   env: AppEnv,
   config: Config,
   post: PostRow,
   fireAt: number,
+  postSettings: PublishingInput = {},
 ): Promise<SendRow> {
   const active = await getActiveSendForPost(env.DB, post.id);
   if (active) {
@@ -119,7 +132,7 @@ export async function freeze(
       "post_not_draft",
       post.status === "sent"
         ? "This post has already been sent, so it can’t be scheduled again."
-        : "This post is already scheduled. Reschedule or cancel its send instead.",
+        : "This post is already scheduled. Edit its schedule or cancel it instead.",
     );
   }
   // The subject is the one field the reader sees in their inbox (SPEC §6). One
@@ -144,6 +157,14 @@ export async function freeze(
     const now = Date.now();
     const id = newId();
     const settingsVersion = version ?? 0;
+    // The post's settings land only with the lock, under the same settings guard, and stamp
+    // the post's earlier sends, whose views carry them too (SPEC §8).
+    const listing = publishingChanges(post, postSettings)
+      ? [
+          setPublishingStmt(env.DB, post, postSettings, settingsVersionIs(settingsVersion)),
+          stampSendsOfPostStmt(env.DB, post.id),
+        ]
+      : [];
     let results: D1Result[];
     try {
       results = await env.DB.batch([
@@ -161,12 +182,17 @@ export async function freeze(
           now,
           settingsVersionIs(settingsVersion),
         ),
+        ...listing,
       ]);
     } catch (err) {
       // The pre-check above is UX, not the guarantee: a concurrent freeze() for the
       // same post can pass it and reach here. The partial unique index (`idx_sends_one_active_per_post`)
       // is the real backstop — it fails the loser's insert, which we map to the same
       // friendly conflict so the DB, not check-then-act, enforces one active send (I4, I6).
+      // Another post took the slug between the caller's check and this batch.
+      if (isSlugCollision(err)) {
+        throw slugRefusal("slug_taken");
+      }
       if (isActiveSendConflict(err)) {
         const winner = await getActiveSendForPost(env.DB, post.id);
         throw winner
@@ -187,7 +213,7 @@ export async function freeze(
 }
 
 /** The refusal for a post that already has its one active send, carrying that send. */
-async function activeSendExists(env: AppEnv, send: SendRow) {
+export async function activeSendExists(env: AppEnv, send: Pick<SendRow, "id">) {
   return refusal(409, "active_send_exists", ACTIVE_SEND_EXISTS, {
     send: await viewSend(env, send.id),
   });

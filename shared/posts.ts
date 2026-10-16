@@ -8,14 +8,51 @@ export type PostStatus = "draft" | "scheduled" | "sent";
 
 export interface Post {
   id: string;
+  /**
+   * The last part of the post's archive address, `archive_url` (SPEC §4): unique among all
+   * posts, drafts included, and fixed once the post's send starts.
+   */
   slug: string;
   /**
-   * Whether the slug follows the subject: derived from it again, and numbered afresh, on
-   * every draft save. False once a slug is set by hand.
+   * Whether the slug follows the subject: derived from it again on every draft save, unless
+   * another post holds that slug (`subject_slug_held`). False once a slug is set by hand.
    */
   slug_auto: boolean;
+  /**
+   * The post's unlisted link is `<app origin>/email/<unlisted_token>` (SPEC §5): made with the
+   * post, never changed, and carried as "view in browser" by every test and send.
+   */
+  unlisted_token: string;
+  /**
+   * The post's archive address, absolute, whether or not it answers yet (SPEC §4, §5): where a
+   * listed post is published once its send starts. A send's `links.archive` is the same address
+   * only while it answers.
+   */
+  archive_url: string;
+  /** The post's unlisted link, absolute: the "view in browser" every email of it carries (SPEC §5). */
+  unlisted_url: string;
+  /**
+   * When the post's send started, which is when it was published (SPEC §5); null before. Its
+   * unlisted link shows the post exactly when this is set. `status` can't say it: a post stays
+   * `scheduled` while its send is going out.
+   */
+  published_at: number | null;
+  /**
+   * Whether `archive_url` shows the post now (SPEC §5): once published, while it is listed, or
+   * whatever the listing for a post whose emails carry that address (sent before unlisted
+   * links). Where a reader can see it: `archive_url` when this is true, otherwise
+   * `unlisted_url` once `published_at` is set.
+   */
+  archive_live: boolean;
   subject: string;
   status: PostStatus;
+  /**
+   * The post's listing (SPEC §5): true when it is email only, mailed as usual but left out of
+   * the archive index and the landing page, its archive address answering nothing; false,
+   * the default, when it is listed in the archive. Not part of the frozen render, so it can
+   * change in any state, a sent post's included (`PUT /api/posts/:id/settings`).
+   */
+  email_only: boolean;
   /** The current revision's id; the editor carries it on every save (optimistic concurrency). */
   current_revision: string | null;
   created_at: number;
@@ -47,9 +84,18 @@ export interface PostListResponse {
   cursor: string;
 }
 
+/**
+ * `subject_slug_held` on a post's answers: when the post's slug follows its subject but another
+ * post holds the subject's slug, that slug. The post took the first free number after it, and a
+ * client says why. Not a refusal (that is the 409 `slug_taken` error). Null otherwise, and once
+ * the post is published, since its address is fixed (SPEC §4).
+ */
+export type SubjectSlugHeld = string | null;
+
 /** GET /api/posts/:id: the post, its current text, and where its send stands. */
 export interface PostResponse {
   post: Post;
+  subject_slug_held: SubjectSlugHeld;
   markdown: string;
   /** Who wrote the current revision; the freshness poll names them. */
   author: string | null;
@@ -82,6 +128,7 @@ export interface PostEditBody {
 /** POST /api/posts and PUT /api/posts/:id: the post as saved, and the revision the save wrote. */
 export interface PostSavedResponse {
   post: Post;
+  subject_slug_held: SubjectSlugHeld;
   revision_id: string;
 }
 
@@ -136,4 +183,27 @@ export interface StaleRevisionError {
   current_revision: string | null;
   updated_at: number;
   author: string | null;
+}
+
+/**
+ * What PUT /api/posts/:id/settings takes: the post's settings (SPEC §4, §5), any subset of them.
+ * None is part of the frozen email, so they can change while the post is scheduled, and the
+ * listing once it is sent too; the slug only until the post's send starts. Schedule and Send now
+ * take the same three fields, applied with the act; a reschedule takes none.
+ */
+export interface PostSettingsBody {
+  email_only?: boolean;
+  /** An archive address set by hand: lowercase letters, numbers, and single hyphens, and no
+   *  other post's. Turns `slug_auto` off. */
+  slug?: string;
+  /** Have the slug follow the subject again (true), or keep it as it stands (false). */
+  slug_auto?: boolean;
+}
+
+/** PUT /api/posts/:id/settings: the post as it now stands, and whether the act changed it. */
+export interface PostSettingsResponse {
+  post: Post;
+  subject_slug_held: SubjectSlugHeld;
+  /** False when the post already had every setting asked for: nothing was written. */
+  changed: boolean;
 }

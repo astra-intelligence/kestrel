@@ -13,6 +13,7 @@ import { STUCK_THRESHOLD_MS } from "../shared/sends";
 import * as posts from "../src/db/posts";
 import type { SendRow } from "../src/db/sends";
 import * as sends from "../src/db/sends";
+import { getConfig } from "../src/env";
 import { clearFakeOutbox } from "../src/providers/fake";
 import { tickEstimate } from "../src/send/view";
 import { has } from "./support/conditions";
@@ -49,6 +50,7 @@ const VIEW_KEYS = [
   "counts",
   "delivery",
   "dispatch",
+  "email_only",
   "fire_at",
   "id",
   "links",
@@ -63,6 +65,7 @@ const VIEW_KEYS = [
   "status",
   "subject",
   "tested_at",
+  "web_link",
 ].sort();
 const expectView = (v: SendView | undefined) =>
   expect(Object.keys(v ?? {}).sort()).toEqual(VIEW_KEYS);
@@ -128,8 +131,9 @@ describe("one SendView on every route", () => {
       )) as SendResponse
     ).send;
     expect(after.audience).toEqual({ count: 3, fixed: true, fixed_at: now });
-    const slug = (await posts.getPost(env.DB, send.post_id))?.slug;
-    expect(after.links.archive).toMatch(new RegExp(`/${slug}$`));
+    const post = (await posts.getPost(env.DB, send.post_id))!;
+    expect(after.links.archive).toMatch(new RegExp(`/${post.slug}$`));
+    expect(after.links.unlisted).toBe(`${getConfig(env).appOrigin}/email/${post.unlisted_token}`);
   });
 
   it("answers Resolve with the view beside what it did", async () => {
@@ -204,6 +208,7 @@ describe("the time to finish, in ticks", () => {
       rendered_html: "",
       rendered_text: "",
       subject: "s",
+      web_link: "unlisted",
       recipient_count: TOTAL,
       locked_until: null,
       scheduled_at: T - 10 * MIN,

@@ -34,8 +34,11 @@ export interface SeedPost {
   id: string;
   slug: string;
   slug_auto: boolean;
+  /** Its unlisted link's token; absent, the database makes one. */
+  unlisted_token?: string;
   subject: string;
   status: PostStatus;
+  email_only?: boolean;
   current_revision: string | null;
   created_at: number;
   updated_at: number;
@@ -170,14 +173,16 @@ export async function insertPost(
   await db.batch([
     db
       .prepare(
-        "INSERT INTO posts (id, slug, slug_auto, subject, status, current_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO posts (id, slug, slug_auto, unlisted_token, subject, status, email_only, current_revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .bind(
         post.id,
         post.slug,
         post.slug_auto ? 1 : 0,
+        post.unlisted_token ?? null,
         post.subject,
         post.status,
+        post.email_only ? 1 : 0,
         post.current_revision,
         post.created_at,
         post.updated_at,
@@ -219,8 +224,8 @@ export async function insertSend(db: D1Database, row: SeedSend): Promise<void> {
   await db
     .prepare(
       `INSERT INTO sends
-         (id, post_id, status, fire_at, rendered_html, rendered_text, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, rev)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ${NEXT_REV})`,
+         (id, post_id, status, fire_at, rendered_html, rendered_text, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, web_link, rev)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'unlisted', ${NEXT_REV})`,
     )
     .bind(
       row.id,

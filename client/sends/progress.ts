@@ -1,6 +1,7 @@
 // What a send's view says, shared by the list, the record, and the dashboard: a page's sends
 // as they stand, its conditions and actions, who needs the operator, the Delivered cell,
-// the in-progress card, the scheduled cards' countdowns, and the small number formats.
+// the in-progress card, the scheduled cards' countdowns, the Email only marks, and the small
+// number formats.
 
 import type {
   ConditionKind,
@@ -13,6 +14,7 @@ import { at, every } from "../lifecycle";
 import { $$ } from "../ui/dom";
 import { lateStr, untilStr } from "../ui/format";
 import { type Html, html } from "../ui/html";
+import { icon } from "../ui/icons";
 
 /** A percentage clamped to 0–100 and rounded. */
 export const clampPct = (n: number | null | undefined): number =>
@@ -34,6 +36,22 @@ export function fmtDuration(ms: number | null | undefined): string {
   return `${Math.round(m / 60)} hr`;
 }
 
+/** A post's title in a list of sends or drafts (DESIGN §3), with a muted envelope and "Email
+ *  only" after it for an email-only post: only the exception is marked, so a listed post's
+ *  title stands alone. Words rather than a pill, so it never reads as a second status beside
+ *  the row's own; the title wraps within its room and the mark stays on its line. */
+export function titleWithLabel(title: Html, s: { email_only: boolean }): Html {
+  return s.email_only
+    ? html`<span class="title-with-label"><span class="title-text">${title}</span><span class="email-only-mark">${icon("mail")}Email only</span></span>`
+    : title;
+}
+
+/** What a scheduled card's line adds for an email-only post (DESIGN §4): only the
+ *  exception is marked, since being listed is the default. */
+export function emailOnlyNote(s: Pick<SendView, "email_only">): Html | null {
+  return s.email_only ? html` · <span class="sched-email-only">Email only</span>` : null;
+}
+
 /**
  * A scheduled card's countdown cell, from its `GET /api/sends` row: the fire time, whether the
  * server reads the send due, and whether it is past the missed tolerance. Empty until
@@ -48,7 +66,7 @@ export function countdownHtml(s: SendView): Html {
  * "Sends in …" before the fire time; "Preparing to send…" from the fire time (by the clock,
  * or sooner when the server already reads the send due) until the send starts and its card
  * leaves the queue; and, past the server's missed tolerance, how late it is, in the danger
- * tone. A card's window controls (`data-closes`, Cancel and Reschedule) hide at the fire
+ * tone. A card's window controls (`data-closes`, Cancel and Edit schedule) hide at the fire
  * time, when the review window closes (SPEC §6) and the server would refuse them, rather
  * than wait for the next read. A fire time inside the coming second gets a tick of its own
  * at that moment, so the switch lands when the countdown runs out, not up to a second

@@ -6,16 +6,26 @@ import type {
   PostListResponse,
   PostResponse,
   PostSavedResponse,
+  PostSettingsResponse,
   StaleRevisionError,
 } from "../../shared/posts";
 import * as images from "../db/images";
 import * as posts from "../db/posts";
-import { currentSendSeq, getActiveSendForPost, latestSentSendForPost } from "../db/sends";
+import {
+  currentSendSeq,
+  getActiveSendForPost,
+  latestSentSendForPost,
+  publicationsFor,
+} from "../db/sends";
+import { withAddresses } from "../lib/archive_address";
 import { fieldError, optBoolean, optString, optStringOrNull, readJsonObject } from "../lib/body";
 import { badRequest, json, notFound, refusal } from "../lib/errors";
 import { listPage, parseListParams } from "../lib/list";
+import { slugRefusal } from "../lib/slug_refusals";
+import { unwrap } from "../lib/unwrap";
 import type { RequestContext } from "../router";
 import { param } from "../router";
+import { applySettings, readSettingsBody, resolveSettings } from "./post_settings";
 
 function author(c: RequestContext): string | null {
   return c.principal?.email ?? c.principal?.kind ?? null;
@@ -69,6 +79,16 @@ function baseRevision(c: RequestContext, body: EditBody): string | null {
   return body.base_revision;
 }
 
+/** What a draft's answer carries as its publication: a draft has never been published, since a
+ *  published post never goes back to being one (SPEC §2). Saves answer only drafts. */
+const UNPUBLISHED = null;
+
+/** A post as the API answers it, any state: its addresses and where it stands for readers. */
+async function answered(c: RequestContext, post: posts.PostRow) {
+  const published = await publicationsFor(c.env.DB, [post.id]);
+  return withAddresses(c.config, post, published.get(post.id) ?? null);
+}
+
 /** Expose a post's current revision as an ETag so a client can send it back as `If-Match`. */
 function revisionHeaders(post: posts.PostRow): HeadersInit | undefined {
   return post.current_revision ? { ETag: `"${post.current_revision}"` } : undefined;
@@ -106,8 +126,14 @@ export async function createPost(c: RequestContext): Promise<Response> {
   // A create with an empty body, which needs no content type, is the "new blank draft"
   // case; one that sends a body is held to the same JSON and field rules as an edit.
   const { input } = await readBody(c, { optional: true });
-  const { post, revision } = await posts.createPost(c.env.DB, input, author(c));
-  const body: PostSavedResponse = { post, revision_id: revision.id };
+  const { post, revision } = await slugGuarded(input, () =>
+    posts.createPost(c.env.DB, input, author(c)),
+  );
+  const body: PostSavedResponse = {
+    post: withAddresses(c.config, post, UNPUBLISHED),
+    subject_slug_held: await posts.subjectSlugHeld(c.env.DB, post),
+    revision_id: revision.id,
+  };
   return json(body, 201, revisionHeaders(post));
 }
 
@@ -143,8 +169,12 @@ export async function listPosts(c: RequestContext): Promise<Response> {
     posts.countPosts(c.env.DB, filter),
     posts.listPosts(c.env.DB, filter, page),
   ]);
+  const published = await publicationsFor(
+    c.env.DB,
+    rows.map((row) => row.id),
+  );
   const body: PostListResponse = {
-    posts: rows,
+    posts: rows.map((row) => withAddresses(c.config, row, published.get(row.id) ?? null)),
     page: listPage(total, page),
     cursor: encodeSendCursor({ seq, at: now }),
   };
@@ -166,7 +196,8 @@ export async function getPost(c: RequestContext): Promise<Response> {
   // redirect to the sent record view (#/sent/:id).
   const sent = post.status === "sent" ? await latestSentSendForPost(c.env.DB, post.id) : null;
   const body: PostResponse = {
-    post,
+    post: await answered(c, post),
+    subject_slug_held: await posts.subjectSlugHeld(c.env.DB, post),
     markdown: revision?.markdown ?? "",
     author: revision?.author ?? null, // who wrote the current revision — the freshness poll names them
     // `remade_at`: when a template or identity change last re-made the frozen email
@@ -199,7 +230,7 @@ export async function updatePost(c: RequestContext): Promise<Response> {
       message:
         "A save must name the revision it was based on. Read the post, then save with its current_revision as base_revision or If-Match.",
       field: "base_revision",
-      post,
+      post: withAddresses(c.config, post, UNPUBLISHED),
     };
     return json(required, 428, revisionHeaders(post));
   }
@@ -214,8 +245,14 @@ export async function updatePost(c: RequestContext): Promise<Response> {
     };
     return json(stale, 409, revisionHeaders(post));
   }
-  const { post: updated, revision } = await posts.updatePost(c.env.DB, post, body.input, author(c));
-  const saved: PostSavedResponse = { post: updated, revision_id: revision.id };
+  const { post: updated, revision } = await slugGuarded(body.input, () =>
+    posts.updatePost(c.env.DB, post, body.input, author(c)),
+  );
+  const saved: PostSavedResponse = {
+    post: withAddresses(c.config, updated, UNPUBLISHED),
+    subject_slug_held: await posts.subjectSlugHeld(c.env.DB, updated),
+    revision_id: revision.id,
+  };
   return json(saved, 200, revisionHeaders(updated));
 }
 
@@ -266,4 +303,66 @@ export async function getRevision(c: RequestContext): Promise<Response> {
     markdown: rev.markdown,
     metadata: JSON.parse(rev.metadata),
   });
+}
+
+/** How many times a write whose slug the server chose runs before a collision is refused. */
+const SLUG_ATTEMPTS = 3;
+
+/**
+ * Run a write that sets a slug, answering a slug it refused as the API's refusal. Another post
+ * can take the slug between the write's check and the write itself (the unique index refuses
+ * it). A slug the request set by hand is then refused as taken; one the server chose (SPEC §4)
+ * is chosen again, since the request never named it: each run resolves the slug afresh, and
+ * a refused batch wrote nothing.
+ */
+async function slugGuarded<T>(input: posts.PostInput, write: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await write();
+    } catch (err) {
+      if (err instanceof posts.SlugRefused) {
+        throw slugRefusal(err.code);
+      }
+      if (posts.isSlugCollision(err)) {
+        if (input.slug === undefined && attempt < SLUG_ATTEMPTS) {
+          continue;
+        }
+        throw slugRefusal("slug_taken");
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * Change a post's settings (SPEC §4, §5): its listing, in the archive or email only, and its
+ * archive address. Any state, a sent post's included, since none is part of the frozen copy
+ * (I3); a repeat of what the post already has answers `changed: false`. A sent post's address
+ * is fixed, and a slug is refused when malformed or another post's (`resolveSettings`).
+ */
+export async function setSettings(c: RequestContext): Promise<Response> {
+  const fields = readSettingsBody(await readJsonObject(c));
+  if (
+    fields.emailOnly === undefined &&
+    fields.slug === undefined &&
+    fields.slugAuto === undefined
+  ) {
+    throw fieldError(
+      "email_only",
+      "Name what to change: email_only (true for email only, false to list the post in the archive), slug, or slug_auto",
+    );
+  }
+  const post = await posts.getPost(c.env.DB, param(c, "id"));
+  if (!post) {
+    throw notFound("post");
+  }
+  const input = await resolveSettings(c.env.DB, post, fields);
+  const changed = await applySettings(c.env.DB, post, fields, input);
+  const now = changed ? unwrap(await posts.getPost(c.env.DB, post.id), "post") : post;
+  const answer: PostSettingsResponse = {
+    post: await answered(c, now),
+    subject_slug_held: await posts.subjectSlugHeld(c.env.DB, now),
+    changed,
+  };
+  return json(answer);
 }

@@ -8,6 +8,7 @@ import { FakeProvider } from "../src/providers/fake";
 import type { Recipient, SendBatchResult } from "../src/providers/types";
 import { SENTTO_SENTINEL, UNSUB_SENTINEL } from "../src/render/template_engine";
 import { sweep } from "../src/send/sweep";
+import { setRow } from "./support/fixtures";
 import { AUTH, base, JSON_AUTH, PNG_1x1, readJson } from "./support/http";
 import { logged } from "./support/log";
 
@@ -170,9 +171,7 @@ describe("preview + test endpoints", () => {
 
     // A post whose send is in flight is still the frozen copy (the post stays
     // `scheduled` while its send is `sending`).
-    await env.DB.prepare("UPDATE sends SET status = 'sending', started_at = ? WHERE id = ?")
-      .bind(Date.now(), scheduled.send.id)
-      .run();
+    await setRow(scheduled.send.id, { status: "sending", started_at: Date.now() });
     const inFlight = await (
       await SELF.fetch(`${base}/api/posts/${id}/preview`, { headers: AUTH })
     ).text();
@@ -485,9 +484,7 @@ describe("web version (GET /api/posts/:id/web)", () => {
       }),
     );
     // The send has started and is still going out.
-    await env.DB.prepare("UPDATE sends SET status = 'sending', started_at = ? WHERE id = ?")
-      .bind(Date.now() - 1000, scheduled.send.id)
-      .run();
+    await setRow(scheduled.send.id, { status: "sending", started_at: Date.now() - 1000 });
     // Mark the frozen copy, so a page built from anything else (a fresh render) shows.
     await env.DB.prepare(
       "UPDATE sends SET rendered_html = replace(rendered_html, '>Hi</h1>', '>Frozen</h1>') WHERE id = ?",

@@ -363,3 +363,64 @@ describe("schema (0001_init)", () => {
     });
   });
 });
+
+describe("schema (0010_unlisted_links)", () => {
+  const insert = (id: string, slug: string) =>
+    env.DB.prepare("INSERT INTO posts (id, slug, created_at, updated_at) VALUES (?, ?, 0, 0)")
+      .bind(id, slug)
+      .run();
+
+  it("gives every post its own 128-bit unlisted token, however it is inserted (SPEC §5)", async () => {
+    await insert("a", "one");
+    await insert("b", "two");
+    const { results } = await env.DB.prepare("SELECT unlisted_token FROM posts ORDER BY id").all<{
+      unlisted_token: string;
+    }>();
+    const [a, b] = results.map((r) => r.unlisted_token);
+    expect(a).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){3}$/);
+    expect(b).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){3}$/);
+    expect(a).not.toBe(b);
+  });
+
+  it("records a send inserted without naming its link as carrying the archive address, as the previous release's Worker inserts one (SPEC §5)", async () => {
+    // The previous release's Worker keeps serving between this migration and the deploy, and
+    // after a rollback; every send it freezes links the archive address.
+    await insert("a", "one");
+    await env.DB.prepare(
+      "INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, scheduled_at) VALUES ('s1', 'a', 'scheduled', 0, '', '', '', 0)",
+    ).run();
+    const row = await env.DB.prepare("SELECT web_link FROM sends WHERE id = 's1'").first<{
+      web_link: string;
+    }>();
+    expect(row?.web_link).toBe("archive");
+  });
+
+  it("gives every post that existed before it a well-formed token of its own", async () => {
+    // As the posts stood before 0008: no token. The trigger fills one on insert, so take it
+    // away again, then run the migration's own backfill over them.
+    await insert("a", "one");
+    await insert("b", "two");
+    await env.DB.prepare("UPDATE posts SET unlisted_token = NULL").run();
+    const migration = FOLDER.find((m) => m.name === "0010_unlisted_links.sql");
+    const backfill = (migration?.queries ?? []).filter((q) =>
+      /^UPDATE posts SET unlisted_token/.test(q),
+    );
+    expect(backfill).toHaveLength(2);
+    for (const q of backfill) {
+      await env.DB.prepare(q).run();
+    }
+    const { results } = await env.DB.prepare("SELECT unlisted_token FROM posts").all<{
+      unlisted_token: string;
+    }>();
+    const tokens = results.map((r) => r.unlisted_token);
+    for (const t of tokens) {
+      expect(t).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){3}$/);
+    }
+    expect(new Set(tokens).size).toBe(2);
+  });
+
+  it("keeps every post's slug its own, drafts included (SPEC §4)", async () => {
+    await insert("a", "spring");
+    await expect(insert("b", "spring")).rejects.toThrow(/UNIQUE constraint failed/);
+  });
+});
