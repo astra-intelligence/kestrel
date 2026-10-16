@@ -28,6 +28,7 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 ### Changed
 
+- The operator's Claude context: on `remake_required`, Claude now tells the publisher which scheduled posts a template or identity change would re-make and when each fires, and confirms only on their word, then tests each re-made send. Re-making a frozen email is the publisher's deliberate act (SPEC §2), which the editor asks about and the API leaves to the client.
 - Each SES refusal gets its own advice, checked against AWS's docs, and says who makes the fix: a paused configuration set, a paused or suspended account, a custom MAIL FROM domain's MX record, a missing dedicated IP pool, an account not signed up for SES, and the sandbox are told apart, and a quota spent in the sandbox points to production access. The line now says "No one has been marked unsent because of this", which stays true on a send with readers unsent for their own reasons. Troubleshooting lists each refusal with its fix (SPEC §12).
 - A rate limit that refuses the first request of three retries in a row shows in amber, on the dashboard and the send's page, that `SES_MAX_SEND_RATE` is set above your SES account's rate, rather than reading as an outage with nothing to do (SPEC §12).
 - The operator's Claude context: the sandbox caution says a send holds in the sandbox, mailing only verified addresses, rather than marking the rest unsent.
