@@ -1,5 +1,5 @@
 // The subscriber dialogs: adding one (the list, the dashboard's quick actions), and
-// viewing, unsubscribing, blocking, unblocking, or erasing one (the list's row menu).
+// viewing, unsubscribing, blocking, unblocking, clearing, or erasing one (the list's row menu).
 
 import { isValidEmail, normalizeEmail } from "../../shared/email";
 import type { OptIn } from "../../shared/imports";
@@ -267,6 +267,50 @@ export function confirmUnblock(sub: Subscriber, onDone: () => void, signal: Abor
         });
         m.close();
         toast(`Unblocked ${sub.email}`);
+        onDone();
+      } catch (e) {
+        m.error(describeError(e));
+      }
+    });
+}
+
+/**
+ * Clear lifts a bounce or a complaint, which records someone else's verdict on the address
+ * (the provider's, or the previous service's), so it is the riskier way back to mailing it:
+ * the dialog says the address failed or reported spam (SPEC §7). A bounce is cleared once the
+ * publisher knows its cause is gone. A complaint was the person's own act, and providers
+ * tolerate far fewer of them, so only the person asking for the mail again clears one.
+ */
+export function confirmClear(
+  sub: Subscriber,
+  flag: "bounced" | "complaint",
+  onDone: () => void,
+  signal: AbortSignal,
+): void {
+  const what = flag === "bounced" ? "bounce" : "complaint";
+  const why =
+    flag === "bounced"
+      ? "an address where mail failed. Clear it only when you know the reason is gone, such as a reader who tells you their mailbox is fixed"
+      : "an address that reported your mail as spam. Clear it only when they’ve asked you to send them your posts again";
+  const mailed =
+    sub.status === "confirmed"
+      ? "They’re confirmed, so they’ll receive your posts again."
+      : "They’ll receive posts again only once they’re confirmed.";
+  const m = modal(
+    html`<h3>Clear this ${what}?</h3><p class="hint">Lets mail go again to <strong>${sub.email}</strong>, ${why}. ${mailed}</p><div class="actions"><button type="button" id="cCancel">Cancel</button><button type="button" class="danger" id="cGo">Clear</button></div>`,
+    signal,
+  );
+  const go = $<HTMLButtonElement>("#cGo", m.el);
+  $("#cCancel", m.el).onclick = m.close;
+  go.onclick = () =>
+    busy(go, "Clearing…", async () => {
+      m.clearError();
+      try {
+        await api<ClearSuppressionResponse>(`/api/suppressions/${encodeURIComponent(sub.email)}`, {
+          method: "DELETE",
+        });
+        m.close();
+        toast(`Cleared the ${what} on ${sub.email}`);
         onDone();
       } catch (e) {
         m.error(describeError(e));

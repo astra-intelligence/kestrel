@@ -10,9 +10,13 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+**Upgrading from 1.12.0.** Run `npm run check-context` in your instance's repository: this release changes the operator's Claude context, and a copy you've edited is merged by hand.
+
 ### Added
 
 - A scheduled post that no test has been sent for says so on the editor's scheduled banner until the first test lands, and the API carries it as an `untested` condition (`info`) on the send and in the feed, so Claude can tell whether the email was tested (SPEC §8).
+- **Clear** in a subscriber's ⋯ menu lifts a bounce or a complaint, after a dialog that says the address failed or reported spam, and to clear a bounce only when you know its cause is gone and a complaint only when the reader asks for your posts again, which before only the API could do (SPEC §7). It is never offered on an erasure's marker. The list's legend, under What you can do, and the API reference say when to use it, in the same words.
+- The operator's Claude context tells Claude to clear a complaint only when the publisher says the reader asked for their mail again, not merely that the problem is gone, since a complaint was the reader's own act.
 
 ## [1.12.0] - 2026-10-16
 
