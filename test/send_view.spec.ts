@@ -10,6 +10,7 @@ import type {
   SendView,
 } from "../shared/sends";
 import { STUCK_THRESHOLD_MS } from "../shared/sends";
+import { DEV_TOKEN_ID } from "../src/auth/dev_token";
 import * as posts from "../src/db/posts";
 import type { SendRow } from "../src/db/sends";
 import * as sends from "../src/db/sends";
@@ -18,7 +19,7 @@ import { clearFakeOutbox } from "../src/providers/fake";
 import { tickEstimate } from "../src/send/view";
 import { has } from "./support/conditions";
 import { frozenSend, resetDatabase } from "./support/fixtures";
-import { AUTH, base, JSON_AUTH, readJson } from "./support/http";
+import { AUTH, adminAuth, base, JSON_AUTH, readJson } from "./support/http";
 import { viewOf } from "./support/view";
 
 // One `SendView` on every route (SPEC §8): the list, the send, the feed, and every action's
@@ -155,6 +156,31 @@ describe("one SendView on every route", () => {
     )) as ResolveResponse;
     expectView(res.send);
     expect([res.resolved, res.completed, res.send.status]).toEqual([1, true, "sent"]);
+  });
+
+  it("names a service token by its Client ID in Resolve's audit note", async () => {
+    const send = await frozenSend(Date.now() - 1000);
+    await env.DB.prepare(
+      "INSERT INTO deliveries (send_id, email, status, attempts, updated_at) VALUES (?, 'a@example.com', 'dispatched', 0, ?)",
+    )
+      .bind(send.id, Date.now())
+      .run();
+    await env.DB.prepare(
+      "UPDATE sends SET status = 'sending', started_at = ?, audience_resolved_at = ? WHERE id = ?",
+    )
+      .bind(Date.now(), Date.now(), send.id)
+      .run();
+    await sends.recomputeSendCounters(env.DB, send.id);
+    const res = await SELF.fetch(`${base}/api/sends/${send.id}/resolve`, {
+      method: "POST",
+      headers: { ...(await adminAuth({})), "content-type": "application/json" },
+      body: JSON.stringify({ resolution: "unsent" }),
+    });
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare("SELECT error FROM deliveries WHERE send_id = ?")
+      .bind(send.id)
+      .first<{ error: string }>();
+    expect(row?.error).toContain(`(service ${DEV_TOKEN_ID})`);
   });
 
   it("gives no time to finish while the send backs off, and one between ticks", async () => {

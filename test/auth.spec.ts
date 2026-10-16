@@ -2,8 +2,8 @@ import { createExecutionContext, SELF } from "cloudflare:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRouter } from "../src/app";
-import { isHumanAllowed } from "../src/auth/access";
-import { mintDevToken, verifyDevToken } from "../src/auth/dev_token";
+import { isHumanAllowed, principalFromClaims } from "../src/auth/access";
+import { DEV_TOKEN_ID, mintDevToken, verifyDevToken } from "../src/auth/dev_token";
 import type { AppEnv } from "../src/env";
 import { getConfig } from "../src/env";
 import type { Principal, RequestContext } from "../src/router";
@@ -21,6 +21,57 @@ describe("Access admin allowlist", () => {
     const allow = ["you@example.com", "team@example.com"];
     expect(isHumanAllowed("YOU@example.com", allow)).toBe(true);
     expect(isHumanAllowed("intruder@example.com", allow)).toBe(false);
+  });
+});
+
+describe("Access claims to a principal", () => {
+  const CLIENT_ID = "e367c0ffee5eb4.access";
+  // Every line the mapping logs, parsed, from whichever console method its level used.
+  const logged = () => {
+    const spies = [vi.spyOn(console, "log"), vi.spyOn(console, "warn")];
+    return () => spies.flatMap((s) => s.mock.calls.map((call) => JSON.parse(String(call[0]))));
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("reads an email as a person, checked against the allowlist, and logs nothing", () => {
+    const lines = logged();
+    expect(principalFromClaims({ email: "you@example.com", sub: "u1" }, undefined)).toEqual({
+      kind: "human",
+      email: "you@example.com",
+      via: "access",
+    });
+    expect(principalFromClaims({ email: "intruder@example.com" }, ["you@example.com"])).toBeNull();
+    expect(lines()).toEqual([]);
+  });
+
+  it("reads a common_name as a service token named by its Client ID, logging claim names only", () => {
+    const lines = logged();
+    const payload = { common_name: CLIENT_ID, sub: "", iss: "https://team", aud: ["aud-tag"] };
+    expect(principalFromClaims(payload, ["you@example.com"])).toEqual({
+      kind: "service",
+      tokenId: CLIENT_ID,
+      via: "access",
+    });
+    expect(lines()).toEqual([
+      expect.objectContaining({
+        event: "auth.service",
+        level: "info",
+        claims: "aud,common_name,iss,sub",
+      }),
+    ]);
+    expect(JSON.stringify(lines())).not.toContain(CLIENT_ID);
+  });
+
+  it("still admits a token with neither as an anonymous service, and warns with its claim names", () => {
+    const lines = logged();
+    expect(principalFromClaims({ sub: "device-7", iss: "https://team" }, undefined)).toEqual({
+      kind: "service",
+      via: "access",
+    });
+    expect(lines()).toEqual([
+      expect.objectContaining({ event: "auth.unidentified", level: "warn", claims: "iss,sub" }),
+    ]);
+    expect(JSON.stringify(lines())).not.toContain("device-7");
   });
 });
 
@@ -88,7 +139,10 @@ describe("auth on the admin surface", () => {
       headers: await adminAuth({}),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ principal: { kind: "service" }, auth: { mode: "dev" } });
+    expect(await res.json()).toEqual({
+      principal: { kind: "service", tokenId: DEV_TOKEN_ID },
+      auth: { mode: "dev" },
+    });
   });
 
   it("keeps /health public (200, no token)", async () => {
@@ -254,7 +308,7 @@ describe("the auth mode follows how the request signed in", () => {
       }
       return realFetch(input, init);
     });
-    const assertion = async (claims: { email?: string }) => ({
+    const assertion = async (claims: { email?: string; common_name?: string }) => ({
       "Cf-Access-Jwt-Assertion": await new SignJWT(claims)
         .setProtectedHeader({ alg: "RS256", kid: "k1" })
         .setIssuer(`https://${team}`)
@@ -277,9 +331,17 @@ describe("the auth mode follows how the request signed in", () => {
     });
     const settings = await readJson(await fetchWith(vars, "/api/settings", { headers }));
     expect(settings.deployment.authMode).toBe("access");
-    // A service token signs in through Access too.
-    const service = await fetchWith(vars, "/api/whoami", { headers: await assertion({}) });
+    // A service token signs in through Access too, named by its Client ID.
+    const service = await fetchWith(vars, "/api/whoami", {
+      headers: await assertion({ common_name: "e367c0ffee5eb4.access" }),
+    });
     expect(await service.json()).toEqual({
+      principal: { kind: "service", tokenId: "e367c0ffee5eb4.access" },
+      auth: { mode: "access" },
+    });
+    // One with neither claim is still admitted for now, with no name to give.
+    const unidentified = await fetchWith(vars, "/api/whoami", { headers: await assertion({}) });
+    expect(await unidentified.json()).toEqual({
       principal: { kind: "service" },
       auth: { mode: "access" },
     });

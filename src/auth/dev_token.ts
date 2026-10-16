@@ -10,13 +10,18 @@
  * from every deployed environment.
  *
  * A token with an `email` claim is an interactive human (the editor); one without
- * is a service principal (Claude / automation), mirroring the Access split.
+ * is a service principal (Claude / automation), mirroring the Access split. A service
+ * token carries a fixed stand-in Client ID in `common_name`, where Access puts a real
+ * one, so local dev names its service token the way a deployment does.
  */
 import { jwtVerify, SignJWT } from "jose";
 import type { Principal } from "../router";
 
 const DEV_ISSUER = "kestrel-dev";
 const DEV_AUDIENCE = "kestrel-admin";
+
+/** The Client ID every local service token carries, shaped like an Access one. */
+export const DEV_TOKEN_ID = "kestrel-dev.access";
 
 const keyFor = (secret: string): Uint8Array => new TextEncoder().encode(secret);
 
@@ -26,7 +31,7 @@ export async function mintDevToken(
   claims: { email?: string } = {},
   ttl: string = "12h",
 ): Promise<string> {
-  return new SignJWT(claims.email ? { email: claims.email } : {})
+  return new SignJWT(claims.email ? { email: claims.email } : { common_name: DEV_TOKEN_ID })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuer(DEV_ISSUER)
     .setAudience(DEV_AUDIENCE)
@@ -43,7 +48,11 @@ export async function verifyDevToken(token: string, secret: string): Promise<Pri
       audience: DEV_AUDIENCE,
     });
     const email = typeof payload.email === "string" ? payload.email : undefined;
-    return email ? { kind: "human", email, via: "dev" } : { kind: "service", via: "dev" };
+    if (email) {
+      return { kind: "human", email, via: "dev" };
+    }
+    const tokenId = typeof payload.common_name === "string" ? payload.common_name : undefined;
+    return { kind: "service", via: "dev", ...(tokenId ? { tokenId } : {}) };
   } catch {
     return null;
   }
