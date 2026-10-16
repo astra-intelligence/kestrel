@@ -3493,27 +3493,104 @@ textarea.is-invalid {
 }
 .rec-web {
   display: grid;
-  gap: 12px;
 }
-.rec-web-what {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  font-size: 13.5px;
-}
-/* An address is one line, shortened at its end, since Copy link carries it whole. */
-.rec-web-what code {
-  font-family: var(--mono);
+.rec-link-label {
+  margin: 0 0 6px;
   font-size: 12.5px;
   color: var(--muted);
+}
+/* The link as one field: the address, then Copy and Open attached to it. */
+.rec-link {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--sunken);
+}
+/* An address is one line, shortened at its end, since Copy carries it whole. */
+.rec-link code {
+  flex: 1 1 auto;
+  align-self: center;
+  min-width: 0;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rec-web-btns {
+.rec-link button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 35px;
+  padding: 0 11px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.rec-link button:hover {
+  color: var(--fg);
+  background: var(--hover);
+}
+.rec-link button.rec-open {
+  color: var(--accent);
+  font-weight: 500;
+}
+.rec-link-note {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+}
+/* Where the post stands, in words beside the one change it allows (which asks first). */
+.rec-arch {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 14px -16px 0;
+  padding: 14px 16px 0;
+  border-top: 1px solid var(--line);
+}
+/* A post with no web link yet has only its standing to show, with no rule above it. */
+.rec-web > .rec-arch:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.rec-arch-what {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 14px;
+}
+.rec-arch-what strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.rec-arch-what svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--muted);
+}
+.rec-arch-what svg:not([fill="none"]) {
+  fill: currentColor;
+}
+.rec-arch-what span {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
 }
 /* The address Remove from archive takes down, struck through in its dialog. */
 .url-gone {

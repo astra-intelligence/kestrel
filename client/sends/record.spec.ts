@@ -142,7 +142,7 @@ describe("sent record", () => {
     );
     expect($$(".rec-people-table tbody tr")).toHaveLength(2);
     expect($(".rec-people-table tbody tr .rec-out").textContent).toBe("Hard bounce");
-    expect($("#recOpen").textContent).toBe("View published post\u00a0↗");
+    expect($("#recOpen").textContent).toBe("Open\u00a0↗");
     expect(
       fake.calls.find((c) => c.url.pathname.endsWith("/deliveries"))?.url.searchParams.get("view"),
     ).toBe("failures");
@@ -226,7 +226,13 @@ describe("sent record", () => {
       expect($$(".rec-part-title").map((h) => h.textContent)).toEqual(["The post", "Delivery"]);
       expect($(".rec-post").contains($("#recOpen"))).toBe(true);
       expect($(".rec-card").contains($(".rec-tiles"))).toBe(true);
-      expect($(".rec-web-what").textContent).toBe("In your archivebirds.example/p1");
+      // The link is one field, its address with Copy and Open; where the post stands is a row
+      // of its own beside the one change it allows.
+      expect($(".rec-link code").textContent).toBe("birds.example/p1");
+      expect($(".rec-link-note").textContent).toBe("The link in the email forwards here.");
+      expect($(".rec-arch-what").textContent?.trim()).toBe(
+        "In your archiveListed on your home page and in your public archive.",
+      );
       $("#recOpen").click();
       expect(open).toHaveBeenCalledWith("https://birds.example/p1", "_blank", "noopener");
       $("#recCopy").click();
@@ -255,10 +261,13 @@ describe("sent record", () => {
       expect(put?.json()).toEqual({ email_only: true });
       expect(document.querySelector(".modal")).toBeNull();
       // Now its unlisted link, which the email carries, and the way back.
-      expect($(".rec-web-what").textContent).toBe(
-        "Email onlyapp.birds.example/email/t-p1Anyone with the link can open it. Nothing lists or indexes it.",
+      expect($(".rec-link code").textContent).toBe("app.birds.example/email/t-p1");
+      expect($(".rec-link-note").textContent).toBe(
+        "Anyone with the link can open it. Nothing lists or indexes it.",
       );
-      expect($("#recOpen").textContent).toBe("View web version\u00a0↗");
+      expect($(".rec-arch-what").textContent?.trim()).toBe(
+        "Email onlyNot on your home page or in your public archive.",
+      );
       expect($("#recListing").textContent).toBe("Add to archive…");
       expect($("#toasts").textContent).toContain("Removed from your archive");
       expect(fake.unhandled).toHaveLength(0);
@@ -291,7 +300,8 @@ describe("sent record", () => {
       expect($("#toasts").textContent).toContain(
         "Added to your archive at birds.example/archive/owls",
       );
-      expect($(".rec-web-what").textContent).toBe("In your archivebirds.example/archive/owls");
+      expect($(".rec-link code").textContent).toBe("birds.example/archive/owls");
+      expect($(".rec-arch-what strong").textContent?.trim()).toBe("In your archive");
       expect(fake.unhandled).toHaveLength(0);
     });
 
@@ -306,8 +316,8 @@ describe("sent record", () => {
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
       // Its emails link the archive address, which keeps answering: that is its web version.
-      expect($(".rec-web-what code").textContent).toBe("birds.example/archive/owls");
-      expect($(".rec-web-what").textContent).toContain("Its emails link here.");
+      expect($(".rec-link code").textContent).toBe("birds.example/archive/owls");
+      expect($(".rec-link-note").textContent).toContain("Its emails link here.");
       expect(fake.unhandled).toHaveLength(0);
     });
 

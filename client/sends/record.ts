@@ -27,6 +27,7 @@ import { $, $$ } from "../ui/dom";
 import { saveFile } from "../ui/download";
 import { fmt } from "../ui/format";
 import { type Html, html, setHtml } from "../ui/html";
+import { icon } from "../ui/icons";
 import { type ListState, renderPager, th, wireSort } from "../ui/list_controls";
 import { busy, type Modal, modal, renderError, toast } from "../ui/widgets";
 import { openResolveModal } from "./dialogs";
@@ -843,17 +844,31 @@ function webUrl(send: SendView): string | null {
 }
 
 /**
- * The sent page's post part (DESIGN §3): what the post is on the web and what can still be
- * done with it. Listed, its archive address and the way to take it down; email only, the
- * unlisted link its email carries and the way to list it.
+ * The sent page's post part (DESIGN §3), in two pieces. The link: the address the post's page
+ * answers at, with Copy and Open attached, since together they are one thing. Then where the
+ * post stands, in words beside the one change it allows, which asks first: listed, its archive
+ * address and the way to take it down; email only, the unlisted link its email carries and the
+ * way to list it.
  */
 function postPartHtml(send: SendView): Html {
   const url = webUrl(send);
   const shown = url ? shortUrl(url) : null;
-  if (send.email_only) {
-    return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code title="${shown}">${shown}</code>` : null}<span class="muted">${send.web_link === "archive" ? "Its emails link here. Anyone with the link can open it; nothing lists or indexes it." : "Anyone with the link can open it. Nothing lists or indexes it."}</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
-  }
-  return html`<div class="rec-web-what"><strong>In your archive</strong>${shown ? html`<code>${shown}</code>` : null}</div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View published post&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Remove from archive…</button></div>`;
+  const legacy = send.web_link === "archive";
+  const linkNote = send.email_only
+    ? legacy
+      ? "Its emails link here. Anyone with the link can open it; nothing lists or indexes it."
+      : "Anyone with the link can open it. Nothing lists or indexes it."
+    : legacy
+      ? "Its emails link here."
+      : "The link in the email forwards here.";
+  const link =
+    url && shown
+      ? html`<p class="rec-link-label">Link</p><div class="rec-link"><code title="${shown}">${shown}</code><button type="button" class="copy-btn" id="recCopy" data-copy-word="Copy" aria-label="Copy link">${copyFace(false, "Copy")}</button><button type="button" class="rec-open" id="recOpen">Open&nbsp;↗</button></div><p class="rec-link-note muted">${linkNote}</p>`
+      : null;
+  const where = send.email_only
+    ? html`<div class="rec-arch-what"><strong>${icon("mail")}Email only</strong><span>Not on your home page or in your public archive.</span></div><button type="button" class="secondary" id="recListing">Add to archive…</button>`
+    : html`<div class="rec-arch-what"><strong>${icon("link")}In your archive</strong><span>Listed on your home page and in your public archive.</span></div><button type="button" class="secondary" id="recListing">Remove from archive…</button>`;
+  return html`${link}<div class="rec-arch">${where}</div>`;
 }
 
 /** A sent send's outcomes from its counters: the same buckets as the record's own read,
