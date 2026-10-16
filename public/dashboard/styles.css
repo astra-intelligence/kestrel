@@ -1822,6 +1822,14 @@ td a:hover {
 .list-table .c-delivered {
   width: 176px;
 }
+/* Every Sent row as tall as one with a delivery note under its count, so a row with none (a
+   one-recipient test) sits in the same rhythm as the rest. A row's height is its floor; once
+   the table stacks, each row is a block that takes its own height. */
+@media (min-width: 721px) {
+  .sent-table tbody tr {
+    height: 56px;
+  }
+}
 .list-table .c-act {
   width: 56px;
 }
