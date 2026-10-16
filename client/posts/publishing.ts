@@ -9,6 +9,7 @@ import type { ListingBody, Post } from "../../shared/posts";
 import { slugify } from "../../shared/slug";
 import { postArchiveUrl } from "../deployment";
 import { type Html, html, setHtml } from "../ui/html";
+import { icon } from "../ui/icons";
 
 /** An address as the app shows it: without its scheme, which says nothing to a publisher. */
 export function shortUrl(url: string): string {
@@ -57,6 +58,12 @@ export function destinationHtml(p: Publishing): Html {
   return p.emailOnly
     ? html`Will be sent as email only.`
     : html`Will be in your archive at <code>${archiveBase()}${p.slug}</code>`;
+}
+
+/** The icon beside a scheduled post's destination: a link to its archive page, or an envelope
+ *  for a post that goes only by email. */
+export function destinationIcon(p: Publishing): Html {
+  return icon(p.emailOnly ? "mail" : "link");
 }
 
 /** How the Schedule and Send now dialogs' first line ends, in the future tense: a full

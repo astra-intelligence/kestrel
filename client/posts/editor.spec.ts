@@ -1877,6 +1877,9 @@ describe("editor view", () => {
       // On a row of its own, apart from the controls that act on the time.
       expect($("#schedDest").closest(".banner-bottom")).not.toBeNull();
       expect($(".banner-top").contains($("#schedDest"))).toBe(false);
+      // The archive's link icon is one filled path; the envelope is drawn with a rect.
+      const envelope = () => document.querySelector("#schedDestIcon svg rect") !== null;
+      expect(envelope()).toBe(false);
       $("#settingsBtn").click();
       const include = $<HTMLInputElement>("#psInclude");
       include.checked = false;
@@ -1884,6 +1887,8 @@ describe("editor view", () => {
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
       expect($("#schedDest").textContent).toBe("Will be sent as email only.");
+      // An envelope for a post that goes only by email, in place of the archive's link.
+      expect(envelope()).toBe(true);
       // Said once: the banner's line, not a tag after the time, nor the head's mark.
       expect(document.querySelector("#schedWhen .sched-email-only")).toBeNull();
       expect($("#headEmailOnly").hidden).toBe(true);

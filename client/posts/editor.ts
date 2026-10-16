@@ -62,6 +62,7 @@ import { DirtyTracker } from "./dirty";
 import { trackSaves } from "./pending_save";
 import {
   destinationHtml,
+  destinationIcon,
   mountSettingsForm,
   type Publishing,
   publishingOf,
@@ -229,7 +230,7 @@ export async function renderEditor(
         <button type="button" class="ghost" id="settingsBtn">${icon("settings")}<span>Post settings</span></button>
       </div>
     </div>
-    ${locked && scheduled ? html`<div class="banner banner-scheduled banner-split"><div class="banner-top"><div class="sched-main"><span id="schedWhen"></span>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Reschedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div><div class="banner-bottom sched-dest">${icon("link")}<span id="schedDest">${destinationHtml(pub)}</span></div></div>` : null}
+    ${locked && scheduled ? html`<div class="banner banner-scheduled banner-split"><div class="banner-top"><div class="sched-main"><span id="schedWhen"></span>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Reschedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div><div class="banner-bottom sched-dest"><span class="sched-dest-icon" id="schedDestIcon">${destinationIcon(pub)}</span><span id="schedDest">${destinationHtml(pub)}</span></div></div>` : null}
     <div id="freshnessBanner" class="banner banner-conflict" role="alert" hidden></div>
     <div class="card">
       <label for="f-subject">Subject</label>
@@ -339,6 +340,10 @@ export async function renderEditor(
   const paintPublishing = () => {
     // A scheduled post's banner names where it is going, so the head's mark is a draft's.
     headEmailOnly.hidden = locked || !pub.emailOnly;
+    const destIcon = root.querySelector<HTMLElement>("#schedDestIcon");
+    if (destIcon) {
+      setHtml(destIcon, destinationIcon(pub));
+    }
     const dest = root.querySelector<HTMLElement>("#schedDest");
     if (dest) {
       setHtml(dest, destinationHtml(pub));

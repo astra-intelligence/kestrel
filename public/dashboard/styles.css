@@ -3348,6 +3348,15 @@ textarea.is-invalid {
   width: 14px;
   height: 14px;
 }
+.sched-dest-icon {
+  display: flex;
+  flex: none;
+}
+/* A filled icon takes the row's violet; a stroked one (fill="none") already draws in it. */
+.banner-bottom svg:not([fill="none"]),
+#settingsBtn svg {
+  fill: currentColor;
+}
 #schedDest {
   min-width: 0;
   overflow-wrap: anywhere;
