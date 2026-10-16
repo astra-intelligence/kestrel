@@ -1570,6 +1570,13 @@ td a:hover {
   vertical-align: 1px;
   white-space: nowrap;
 }
+/* On a scheduled card the label takes the card's own violet, outlined, so it reads as part of
+   the card rather than a grey patch from a table. */
+.sched-card .badge.email-only {
+  background: transparent;
+  color: var(--status-scheduled-fg);
+  border-color: var(--status-scheduled-line);
+}
 /* Subscriber consent states borrow a hue that matches the state's meaning: confirmed →
    the sent green, unsubscribed → the draft grey, suppressed → danger red (below). Pending
    awaits double-opt-in — a waiting/attention state — so it takes the amber `warn` scale,
