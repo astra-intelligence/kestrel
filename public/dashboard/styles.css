@@ -2633,14 +2633,25 @@ body.web-mode .content {
 }
 .composer-body.locked textarea.editor {
   caret-color: transparent;
+  cursor: default;
 }
-/* The subject and slug of a scheduled post are read-only too, and readonly (unlike disabled)
-   carries no native greying, so they take the same recessed surface as the body: otherwise
-   they read as editable, and the refusal pulses a line far below where the keystroke landed. */
-#f-subject[readonly],
-#f-slug[readonly] {
+/* Its text is muted, as the subject's is, so the body reads as locked at a glance. */
+.composer-body.locked .md-hl code {
+  opacity: 0.72;
+}
+/* The subject of a scheduled post is read-only too, and readonly (unlike disabled) carries no
+   native greying, so it is styled to look locked while keeping what disabled would take away:
+   it can still be focused, selected, and copied, and a keystroke still pulses the foot line.
+   The recessed surface, muted text, an arrow cursor, and a grey focus ring in place of the
+   blue one that says "type here" (DESIGN §3). */
+#f-subject[readonly] {
   background: var(--sunken);
   border-color: var(--line-soft);
+  color: var(--muted);
+  cursor: default;
+}
+#f-subject[readonly]:focus-visible {
+  outline-color: var(--muted);
 }
 .composer-body.dragover::after {
   content: "Drop images to upload";
@@ -3224,10 +3235,6 @@ textarea.is-invalid {
   margin: 0;
   accent-color: var(--ring);
   cursor: pointer;
-}
-/* Slug is muted while it follows the subject; normal once set by hand. */
-#f-slug.slug-auto {
-  color: var(--muted);
 }
 /* --- Editor-state banner (DESIGN §5): a standing, in-flow line at the top of the
    editor, in two variants. `scheduled` marks a frozen, soft-locked post (SPEC §6);
