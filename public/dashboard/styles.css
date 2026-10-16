@@ -3319,7 +3319,7 @@ textarea.is-invalid {
   color: var(--muted);
 }
 /* A scheduled post's banner in two rows (DESIGN §4): the time, its notes, and the controls that
-   act on it; then, under a hairline, where the post is going, on a softer ground. */
+   act on it; then, under a hairline, where the post is going, on a slightly deeper ground. */
 .banner-split {
   display: block;
   padding: 0;
@@ -3340,7 +3340,8 @@ textarea.is-invalid {
   gap: 8px;
   padding: 9px 16px;
   border-top: 1px solid var(--status-scheduled-line);
-  background: color-mix(in srgb, var(--status-scheduled-bg) 55%, var(--card));
+  /* A shade deeper than the banner, so the row reads as its footer rather than a strip of its own. */
+  background: color-mix(in srgb, var(--status-scheduled-fg) 8%, var(--status-scheduled-bg));
   font-size: 13px;
 }
 .banner-bottom svg {
