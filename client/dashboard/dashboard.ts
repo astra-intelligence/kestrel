@@ -268,9 +268,9 @@ export async function renderDashboard(view: HTMLElement, signal: AbortSignal): P
 
   const drafts = posts.filter((p) => p.status === "draft").slice(0, 5);
   const draftsHtml = drafts.length
-    ? html`<div class="table-wrap"><table><tbody>${drafts.map(
+    ? html`<div class="table-wrap"><table class="dash-drafts"><tbody>${drafts.map(
         (p) =>
-          html`<tr class="clickable" data-id="${p.id}"><td>${titleWithLabel(html`<a href="#/edit/${p.id}">${p.subject || html`<em>untitled</em>`}</a>`, p)}</td><td class="muted">edited ${fmt(p.updated_at)}</td></tr>`,
+          html`<tr class="clickable" data-id="${p.id}"><td>${titleWithLabel(html`<a href="#/edit/${p.id}">${p.subject || html`<em>untitled</em>`}</a>`, p)}</td><td class="muted edited">edited ${fmt(p.updated_at)}</td></tr>`,
       )}</tbody></table></div>`
     : html`<p class="muted">No drafts in progress.</p>`;
 

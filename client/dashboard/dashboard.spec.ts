@@ -653,10 +653,10 @@ describe("dashboard", () => {
     await mount(renderDashboard);
     await vi.advanceTimersByTimeAsync(0);
     const quiet = $("tr[data-send='x1']");
-    expect($(".badge.email-only", quiet).textContent).toBe("Email only");
+    expect($(".email-only-mark", quiet).textContent?.trim()).toBe("Email only");
     expect($(".ghost-link", quiet).textContent).toBe("Web version\u00a0↗");
     const listed = $("tr[data-send='x4']");
-    expect(listed.querySelector(".badge.email-only")).toBeNull();
+    expect(listed.querySelector(".email-only-mark")).toBeNull();
     expect($(".ghost-link", listed).textContent).toBe("Archive\u00a0↗");
     expect(fake.unhandled).toEqual([]);
   });
@@ -676,7 +676,7 @@ describe("dashboard", () => {
     await mount(renderDashboard);
     await vi.advanceTimersByTimeAsync(0);
     const label = (id: string) =>
-      document.querySelector(`tr[data-id='${id}'] .badge.email-only`)?.textContent ?? null;
+      document.querySelector(`tr[data-id='${id}'] .email-only-mark`)?.textContent?.trim() ?? null;
     expect(label("p2")).toBe("Email only");
     expect(label("p1")).toBeNull();
     expect(fake.unhandled).toEqual([]);

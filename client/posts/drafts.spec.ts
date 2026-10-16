@@ -59,8 +59,8 @@ describe("drafts view", () => {
     expect($("tr[data-id='p1'] a").textContent).toBe("<b>Owls</b> & co");
     expect(document.querySelector("tr[data-id='p1'] b")).toBeNull(); // markup in a subject stays text
     // Only the exception is marked: an email-only post carries the grey label, a listed one none.
-    expect($("tr[data-id='p1'] .badge.email-only").textContent).toBe("Email only");
-    expect(document.querySelector("tr[data-id='p2'] .badge.email-only")).toBeNull();
+    expect($("tr[data-id='p1'] .email-only-mark").textContent?.trim()).toBe("Email only");
+    expect(document.querySelector("tr[data-id='p2'] .email-only-mark")).toBeNull();
     expect(postReads()[0]?.url.searchParams.get("status")).toBe("draft,scheduled");
     expect(fake.unhandled).toEqual([]);
   });

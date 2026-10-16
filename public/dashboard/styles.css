@@ -1570,17 +1570,39 @@ td a:hover {
   vertical-align: 1px;
   white-space: nowrap;
 }
-/* A list's title with its Email only label (sends/progress.ts): the two wrap as one row of
-   items, so a label that drops a line starts at the title's edge rather than indented. */
+/* A list's title with its Email only mark (sends/progress.ts): the title wraps within its room
+   and the mark, an envelope and muted words, stays whole on the title's line, so it never drops
+   onto a line of its own. */
 .title-with-label {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
-.title-with-label .badge.email-only {
-  margin-left: 0;
-  vertical-align: baseline;
+.title-with-label .title-text {
+  min-width: 0;
+}
+/* Where a table's columns are fixed, a long title ends in an ellipsis, so the row stays one
+   line tall; the whole title is a click away in the post. */
+.list-table .title-with-label .title-text,
+.dash-drafts .title-with-label .title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.email-only-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.email-only-mark svg {
+  width: 13px;
+  height: 13px;
 }
 /* Subscriber consent states borrow a hue that matches the state's meaning: confirmed →
    the sent green, unsubscribed → the draft grey, suppressed → danger red (below). Pending
@@ -1837,6 +1859,15 @@ td a:hover {
 /* Every Sent row, on the Sent page and the dashboard, as tall as one with a delivery note under its count, so a row with none (a
    one-recipient test) sits in the same rhythm as the rest. A row's height is its floor; once
    the table stacks, each row is a block that takes its own height. */
+/* The dashboard's Drafts card is half the page wide: its date stays on one line, and the title
+   takes what room is left. */
+.dash-drafts {
+  table-layout: fixed;
+}
+.dash-drafts td.edited {
+  width: 11.5em;
+  white-space: nowrap;
+}
 @media (min-width: 721px) {
   .sent-table tbody tr,
   .dash-sent tbody tr {

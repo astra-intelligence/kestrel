@@ -219,7 +219,7 @@ describe("sent view", () => {
     expect(feedReads(fake)).toHaveLength(2);
   });
 
-  it("marks only an email-only post, with a grey label in Sent posts and a line on its scheduled card (DESIGN §3, §4)", async () => {
+  it("marks only an email-only post, with an envelope and muted words in Sent posts and a line on its scheduled card (DESIGN §3, §4)", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
     srv.put(send(), { email_only: true });
@@ -230,8 +230,10 @@ describe("sent view", () => {
     expect($(".sched-card .sched-email-only").textContent).toBe("Email only");
     const rows = $$(".sent-table tbody tr");
     const label = (id: string) =>
-      rows.find((r) => r.dataset.id === id)?.querySelector(".badge.email-only")?.textContent ??
-      null;
+      rows
+        .find((r) => r.dataset.id === id)
+        ?.querySelector(".email-only-mark")
+        ?.textContent?.trim() ?? null;
     expect(label("x1")).toBe("Email only");
     expect(label("x9")).toBeNull();
     expect(fake.unhandled).toEqual([]);

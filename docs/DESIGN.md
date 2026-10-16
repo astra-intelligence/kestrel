@@ -115,8 +115,8 @@ The landing page, ordered by urgency:
 3. **Finish setting up**, until the first post listed in the archive is published (below).
 4. **Active sends**: a card per send in flight, with a small dispatch bar and counts, linking to its watch.
 5. **Subscribers**: four count tiles (Confirmed, Pending, Unsubscribed, Suppressed), each a link into Subscribers filtered to that state.
-6. **Scheduled** and **Drafts**, side by side. A scheduled card shows its countdown and opens the editor; it carries no Cancel, since the schedule is managed in the editor and on the Sent page. A send whose look changed since its last test says so on its card (§4), and an email-only post says so in its line (§4). The Drafts card marks an email-only draft with the grey **Email only** label beside its title.
-7. **Sent**: the latest five sends that have started, with Delivered (§8) and **Archive ↗**, the post's page. An email-only post (SPEC §5) carries the grey **Email only** label beside its subject, and its link reads **Web version ↗** and opens its unlisted link, since it has no archive page.
+6. **Scheduled** and **Drafts**, side by side. A scheduled card shows its countdown and opens the editor; it carries no Cancel, since the schedule is managed in the editor and on the Sent page. A send whose look changed since its last test says so on its card (§4), and an email-only post says so in its line (§4). The Drafts card marks an email-only draft with the Email only mark after its title (§3, Sent posts), and keeps its date on one line.
+7. **Sent**: the latest five sends that have started, with Delivered (§8) and **Archive ↗**, the post's page. An email-only post (SPEC §5) carries the Email only mark after its subject, and its link reads **Web version ↗** and opens its unlisted link, since it has no archive page.
 8. **Quick actions**, **Publication** (the home page's address with Copy, and **View publication ↗**; the archive and every post are a click from there), and **API access**, which invites the publisher to connect Claude or says Claude is connected.
 
 **First run.** Until the first post, the body is a setup checklist, **Set up your publication**, instead of a wall of zero tiles: name the publication; connect a provider, or once one is connected, check the setup, opening the publisher's page on testing and on how Kestrel reports problems; bring an existing list; send the first post to the archive; share the subscribe link. Sending comes late because a first post ends the first-run page, and a step left below it would only be seen on the card. The Publishing docs' section of the same name follows these steps.
@@ -125,7 +125,7 @@ The landing page, ordered by urgency:
 
 ### Drafts
 
-The writing side: drafts and scheduled posts. A sent post is a record and lives under Sent. The list has search, a Draft or Scheduled filter, sortable columns, and paging. An email-only post carries the grey **Email only** label beside its title, as in Sent; a listed one carries nothing. A row opens the editor; a post whose send is in flight shows the `sending` badge and opens its watch instead. The row menu (⋯) offers Open (Watch send, for a post in flight), and Delete draft for a draft, which confirms in a dialog that says the revisions go too and it can't be undone.
+The writing side: drafts and scheduled posts. A sent post is a record and lives under Sent. The list has search, a Draft or Scheduled filter, sortable columns, and paging. An email-only post carries the Email only mark after its title, as in Sent; a listed one carries nothing. A row opens the editor; a post whose send is in flight shows the `sending` badge and opens its watch instead. The row menu (⋯) offers Open (Watch send, for a post in flight), and Delete draft for a draft, which confirms in a dialog that says the revisions go too and it can't be undone.
 
 ### Editor
 
@@ -184,7 +184,7 @@ The dispatch side, ordered by urgency:
 1. **Attention cards** (§4) for sends that need the operator, and a line when no provider is connected.
 2. **Scheduled**: the soonest send as a card with its countdown and **Edit schedule** and **Cancel**; any others fold behind "Show all N scheduled". This queue and the editor's banner are where a schedule is managed (§4).
 3. **In progress**: the active-send cards.
-4. **Sent posts**: search, a filter for sends with delivery failures, and sortable columns. Only the exception is marked: an email-only post carries the grey **Email only** label beside its subject, and a listed post carries nothing. The failure filter narrows without reordering: newest first is kept, and no severity ranking is implied, because a ranking would read as a judgment the record doesn't make.
+4. **Sent posts**: search, a filter for sends with delivery failures, and sortable columns. Only the exception is marked: an email-only post carries the **Email only** mark after its subject, an envelope and the words in muted text, and a listed post carries nothing. Words and no pill, so it never reads as a second status beside the row's own; the mark stays whole on its line, and where the columns are fixed (the Drafts and Sent pages, the dashboard's Drafts card) a long title ends in an ellipsis, so the row stays one line tall. The failure filter narrows without reordering: newest first is kept, and no severity ranking is implied, because a ranking would read as a judgment the record doesn't make.
 
 On the dev stand-in, which records sends but delivers nothing, a muted line under the title says so.
 
