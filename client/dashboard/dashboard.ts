@@ -23,11 +23,11 @@ import {
   countdownHtml,
   countdowns,
   deliveredCell,
-  emailOnlyLabel,
   emailOnlyNote,
   has,
   needsOperator,
   sendsNow,
+  titleWithLabel,
 } from "../sends/progress";
 import { appState } from "../state";
 import { addSubscriberModal } from "../subscribers/dialogs";
@@ -270,7 +270,7 @@ export async function renderDashboard(view: HTMLElement, signal: AbortSignal): P
   const draftsHtml = drafts.length
     ? html`<div class="table-wrap"><table><tbody>${drafts.map(
         (p) =>
-          html`<tr class="clickable" data-id="${p.id}"><td><a href="#/edit/${p.id}">${p.subject || html`<em>untitled</em>`}</a>${emailOnlyLabel(p)}</td><td class="muted">edited ${fmt(p.updated_at)}</td></tr>`,
+          html`<tr class="clickable" data-id="${p.id}"><td>${titleWithLabel(html`<a href="#/edit/${p.id}">${p.subject || html`<em>untitled</em>`}</a>`, p)}</td><td class="muted">edited ${fmt(p.updated_at)}</td></tr>`,
       )}</tbody></table></div>`
     : html`<p class="muted">No drafts in progress.</p>`;
 
@@ -408,7 +408,7 @@ function dashSentHtml(sends: SendView[]): Html {
       // The published post, which the send's view links once it has started: its archive
       // page, or an email-only post's page at its unlisted link, so the link says which.
       const url = s.email_only ? s.links.unlisted : s.links.archive;
-      return html`<tr class="clickable" data-send="${s.id}"><td><a href="#/sent/${s.id}">${s.subject}</a>${emailOnlyLabel(s)}</td><td>${badge(s.status)}</td><td class="num">${s.audience.count.toLocaleString()}</td><td class="num delivered">${deliveredCell(s.counts)}</td><td class="act">${
+      return html`<tr class="clickable" data-send="${s.id}"><td>${titleWithLabel(html`<a href="#/sent/${s.id}">${s.subject}</a>`, s)}</td><td>${badge(s.status)}</td><td class="num">${s.audience.count.toLocaleString()}</td><td class="num delivered">${deliveredCell(s.counts)}</td><td class="act">${
         url
           ? html`<a class="ghost-link" href="${url}" target="_blank" rel="noopener">${s.email_only ? html`Web version&nbsp;↗` : html`Archive&nbsp;↗`}</a>`
           : null

@@ -35,10 +35,14 @@ export function fmtDuration(ms: number | null | undefined): string {
   return `${Math.round(m / 60)} hr`;
 }
 
-/** The grey Email only label beside an email-only post's subject in a list of sends or
- *  drafts (DESIGN §3): only the exception is marked, so a listed post carries nothing. */
-export function emailOnlyLabel(s: { email_only: boolean }): Html | null {
-  return s.email_only ? html` <span class="badge email-only">Email only</span>` : null;
+/** A post's title in a list of sends or drafts (DESIGN §3), with the grey Email only label
+ *  beside it for an email-only post: only the exception is marked, so a listed post's title
+ *  stands alone. Title and label wrap as one, so a label that drops a line starts at the
+ *  title's edge. */
+export function titleWithLabel(title: Html, s: { email_only: boolean }): Html {
+  return s.email_only
+    ? html`<span class="title-with-label">${title}<span class="badge email-only">Email only</span></span>`
+    : title;
 }
 
 /** What a scheduled card's line adds for an email-only post (DESIGN §4): only the

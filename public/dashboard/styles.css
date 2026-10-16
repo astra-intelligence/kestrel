@@ -1570,6 +1570,18 @@ td a:hover {
   vertical-align: 1px;
   white-space: nowrap;
 }
+/* A list's title with its Email only label (sends/progress.ts): the two wrap as one row of
+   items, so a label that drops a line starts at the title's edge rather than indented. */
+.title-with-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+}
+.title-with-label .badge.email-only {
+  margin-left: 0;
+  vertical-align: baseline;
+}
 /* Subscriber consent states borrow a hue that matches the state's meaning: confirmed →
    the sent green, unsubscribed → the draft grey, suppressed → danger red (below). Pending
    awaits double-opt-in — a waiting/attention state — so it takes the amber `warn` scale,
@@ -3334,7 +3346,7 @@ textarea.is-invalid {
   gap: 12px;
   flex-wrap: wrap;
   padding: 12px 16px;
-  font-size: 15px;
+  font-size: 14px;
 }
 .banner-bottom {
   display: flex;

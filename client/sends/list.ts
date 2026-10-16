@@ -41,10 +41,10 @@ import {
   countdownHtml,
   countdowns,
   deliveredCell,
-  emailOnlyLabel,
   emailOnlyNote,
   needsOperator,
   sendsNow,
+  titleWithLabel,
 } from "./progress";
 
 const message = describeError;
@@ -388,7 +388,7 @@ export async function renderSent(root: HTMLElement, signal: AbortSignal): Promis
         listEl,
         html`<div class="table-wrap"><table class="list-table sent-table stacks"><colgroup><col><col class="c-date"><col class="c-num"><col class="c-delivered"></colgroup><thead><tr>${th("Subject", "subject", state)}${th("When", "fire", state)}${th("Recipients", "recipients", state, "num")}<th class="num">Delivered</th></tr></thead><tbody>${sends.map(
           (s) =>
-            html`<tr class="clickable" data-id="${s.id}"><td class="subject"><a href="#/sent/${s.id}">${s.subject}</a>${emailOnlyLabel(s)}</td><td class="muted">${fmt(s.completed_at ?? s.fire_at)}</td><td class="num recipients"><span class="n">${s.audience.count.toLocaleString()}</span></td><td class="num delivered">${deliveredCell(s.counts)}</td></tr>`,
+            html`<tr class="clickable" data-id="${s.id}"><td class="subject">${titleWithLabel(html`<a href="#/sent/${s.id}">${s.subject}</a>`, s)}</td><td class="muted">${fmt(s.completed_at ?? s.fire_at)}</td><td class="num recipients"><span class="n">${s.audience.count.toLocaleString()}</span></td><td class="num delivered">${deliveredCell(s.counts)}</td></tr>`,
         )}</tbody></table></div>`,
       );
       wireSort(listEl, state, loadList);
