@@ -1937,7 +1937,7 @@ describe("editor view", () => {
       const post = scheduledPost();
       await open([...post.routes, listingRoute(post.server)]);
       expect($<HTMLInputElement>("#f-subject").readOnly).toBe(true);
-      expect($("#schedDest").textContent).toBe("Will be at /archive/owls");
+      expect($("#schedDest").textContent).toBe("Sends by email and publishes at /archive/owls");
       expect($("#rescheduleSchedule").textContent).toBe("Edit schedule");
       // On a row of its own, apart from the controls that act on the time.
       expect($("#schedDest").closest(".banner-bottom")).not.toBeNull();
@@ -1951,7 +1951,7 @@ describe("editor view", () => {
       include.dispatchEvent(new Event("change"));
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#schedDest").textContent).toBe("Email only");
+      expect($("#schedDest").textContent).toBe("Sends by email only");
       // An envelope for a post that goes only by email, in place of the archive's link.
       expect(envelope()).toBe(true);
       // Said once: the banner's line, not a tag after the time, nor the head's mark.

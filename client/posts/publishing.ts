@@ -49,11 +49,13 @@ export function publishingOf(post: Post, slugTaken: string | null): Publishing {
 }
 
 /**
- * Where a scheduled post is going, in the future tense, for its banner's bottom row: its
- * archive address, or that it will be sent as email only.
+ * What a scheduled post's send will do, for its banner's bottom row: email it and publish it at
+ * its archive address, or email it only. In the top row's own tense ("Sends in 2 days").
  */
 export function destinationHtml(p: Publishing): Html {
-  return p.emailOnly ? html`Email only` : html`Will be at <code>${archiveBase()}${p.slug}</code>`;
+  return p.emailOnly
+    ? html`Sends by email only`
+    : html`Sends by email and publishes at <code>${archiveBase()}${p.slug}</code>`;
 }
 
 /** The icon beside a scheduled post's destination: a link to its archive page, or an envelope
