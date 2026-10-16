@@ -9,13 +9,12 @@
 
 import type { PostResponse } from "../../shared/posts";
 import { ApiError, api, apiText, describeError } from "../api";
-import { postArchiveUrl, postUnlistedUrl } from "../deployment";
+import { postUnlistedUrl } from "../deployment";
 import { mount, onAbort } from "../lifecycle";
 import { EMAIL_FRAME_SANDBOX, framedCopy, openLinksInNewTab } from "../ui/email_frame";
 import { type Html, html, setHtml } from "../ui/html";
 import { renderError } from "../ui/widgets";
 import { savesSettled } from "./pending_save";
-import { shortUrl } from "./publishing";
 
 /** The editor route (the hash) of a post's web version. */
 export function webVersionHash(postId: string): string {
@@ -36,30 +35,12 @@ export function webPostId(kind: string | undefined, id: string | undefined): str
   }
 }
 
-/** Where a post stands, for the bar: a draft or scheduled, and its public address (null
- *  while unknown, so the bar names none). */
-export interface WebBarState {
-  scheduled: boolean;
-  url: string | null;
-  /** Email only: it will have no archive address, so the bar names none (SPEC §5). */
-  emailOnly?: boolean;
-}
-
-/** The bar's words: what the page is, as its tag, then where the post stands and where it
- *  will be published (as text, since the address doesn't answer yet), with no date. Null
- *  state: the post couldn't be read, so the bar says only what the page is. */
-export function webBar(state: WebBarState | null): Html {
+/** The bar's words: what the page is, as its tag, then that it isn't live yet, so a faithful
+ *  copy is never mistaken for the public page. Unread (the post couldn't be read), only the
+ *  tag. */
+export function webBar(read: boolean): Html {
   const tag = html`<span class="web-bar-tag">Web version</span>`;
-  if (state === null) {
-    return tag;
-  }
-  const stage = state.scheduled ? "Scheduled" : "Draft";
-  const at = state.emailOnly
-    ? html` · will be sent as email only`
-    : state.url
-      ? html` · will be sent as email and included in your archive at ${shortUrl(state.url)}`
-      : null;
-  return html`${tag} <span class="web-bar-text">${stage}${at}</span>`;
+  return read ? html`${tag} <span class="web-bar-text">Not public yet</span>` : tag;
 }
 
 /** The same address, spelled one way, or null for one that is not a whole URL. */
@@ -132,7 +113,6 @@ export async function renderWebVersion(
     if (signal.aborted) {
       return;
     }
-    const url = data ? postArchiveUrl(data.post.slug) : null;
     // Once the send starts the post is public, and its web version is that page: go there,
     // by its unlisted link, which opens the page whatever the listing.
     const live = data ? postUnlistedUrl(data.post.unlisted_token) : null;
@@ -140,9 +120,7 @@ export async function renderWebVersion(
       leaveFor(live);
       return;
     }
-    const bar = webBar(
-      data ? { scheduled: data.scheduled != null, url, emailOnly: data.post.email_only } : null,
-    );
+    const bar = webBar(data !== null);
     setHtml(
       root,
       html`<div class="web-page">

@@ -90,27 +90,14 @@ describe("web version", () => {
     expect(webVersionHash("a/b c")).toBe("#/web/post/a%2Fb%20c");
   });
 
-  it("names the page as its tag, then where the post stands and where it will appear, as text", () => {
-    const url = "https://newsletter.example.com/archive/herons";
-    const short = "newsletter.example.com/archive/herons";
-    const draft = bar({ scheduled: false, url });
-    expect(draft.textContent).toBe(
-      `Web version Draft · will be sent as email and included in your archive at ${short}`,
-    );
-    // The address doesn't answer yet, so it is text, and the bar has no link at all.
-    expect(draft.querySelectorAll("a")).toHaveLength(0);
+  it("names the page as its tag, then says it isn't public yet, with no link", () => {
+    const read = bar(true);
+    expect(read.textContent).toBe("Web version Not public yet");
     // The tag is the dev pill's chip, apart from the sentence.
-    expect(draft.querySelector(".web-bar-tag")?.textContent).toBe("Web version");
-    expect(bar({ scheduled: true, url }).textContent).toBe(
-      `Web version Scheduled · will be sent as email and included in your archive at ${short}`,
-    );
-    // Email only: it will have no archive address, so the bar names none (SPEC §5).
-    expect(bar({ scheduled: false, url, emailOnly: true }).textContent).toBe(
-      "Web version Draft · will be sent as email only",
-    );
-    // Unknown address or post: the bar names no address, or no stage, rather than a wrong one.
-    expect(bar({ scheduled: false, url: null }).textContent).toBe("Web version Draft");
-    expect(bar(null).textContent).toBe("Web version");
+    expect(read.querySelector(".web-bar-tag")?.textContent).toBe("Web version");
+    expect(read.querySelectorAll("a")).toHaveLength(0);
+    // Unknown post: only what the page is.
+    expect(bar(false).textContent).toBe("Web version");
   });
 
   it("fills the window under its bar with a scheduled post's web version, sandboxed with no script or form", async () => {
@@ -128,9 +115,7 @@ describe("web version", () => {
     expect(sandbox).toContain("allow-popups-to-escape-sandbox");
     expect(sandbox).not.toContain("allow-scripts");
     expect(sandbox).not.toContain("allow-forms");
-    expect($(".web-bar").textContent).toBe(
-      "Web version Scheduled · will be sent as email and included in your archive at newsletter.example.com/archive/herons",
-    );
+    expect($(".web-bar").textContent).toBe("Web version Not public yet");
     // The window scrolls the page: the frame has no scrolling of its own.
     expect(frame.getAttribute("scrolling")).toBe("no");
     // The bar and the page, nothing else: no back link, edit link, or app chrome.

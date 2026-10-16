@@ -1752,11 +1752,11 @@ describe("editor view", () => {
     ];
     const listings = () => fake.calls.filter((c) => c.url.pathname === "/api/posts/p1/listing");
 
-    it("shows the post's settings under the time, saying in the future tense where it will go", async () => {
+    it("shows the post's settings under the time, which say where it will go", async () => {
       await open(routes(draftServer()));
       $("#scheduleBtn").click();
       expect($("#schHint").textContent).toBe(
-        "It sends at the time you pick, with a cancelable window until then. It will be sent as email and included in your archive.",
+        "It sends at the time you pick, with a cancelable window until then.",
       );
       expect($<HTMLInputElement>("#schInclude").checked).toBe(true);
       expect($("#schField").textContent).toBe("/archive/");
@@ -1772,13 +1772,11 @@ describe("editor view", () => {
       include.checked = false;
       include.dispatchEvent(new Event("change"));
       expect(document.querySelector("#schSlug")).toBeNull(); // no address while email only
-      expect($("#schHint").textContent).toMatch(/\. It will be sent as email only\.$/);
       expect(listings()).toHaveLength(0); // nothing saved yet
       expect($("#headEmailOnly").hidden).toBe(true);
       $("#toSendNow").click();
       await vi.advanceTimersByTimeAsync(0);
       expect($<HTMLInputElement>("#schInclude").checked).toBe(false);
-      expect($("#snClause").textContent).toBe(" It will be sent as email only.");
       $("#snGo").click();
       await vi.advanceTimersByTimeAsync(0);
       const sent = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/send");
@@ -1842,7 +1840,6 @@ describe("editor view", () => {
       await open(routes(draftServer(draft({ email_only: true }))));
       $("#scheduleBtn").click();
       expect($<HTMLInputElement>("#schInclude").checked).toBe(false);
-      expect($("#schHint").textContent).toMatch(/\. It will be sent as email only\.$/);
     });
   });
 
@@ -1940,9 +1937,7 @@ describe("editor view", () => {
       const post = scheduledPost();
       await open([...post.routes, listingRoute(post.server)]);
       expect($<HTMLInputElement>("#f-subject").readOnly).toBe(true);
-      expect($("#schedDest").textContent).toBe(
-        "Will be sent as email and included in your archive at /archive/owls",
-      );
+      expect($("#schedDest").textContent).toBe("In your archive at /archive/owls");
       // On a row of its own, apart from the controls that act on the time.
       expect($("#schedDest").closest(".banner-bottom")).not.toBeNull();
       expect($(".banner-top").contains($("#schedDest"))).toBe(false);
@@ -1955,7 +1950,7 @@ describe("editor view", () => {
       include.dispatchEvent(new Event("change"));
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#schedDest").textContent).toBe("Will be sent as email only.");
+      expect($("#schedDest").textContent).toBe("Email only");
       // An envelope for a post that goes only by email, in place of the archive's link.
       expect(envelope()).toBe(true);
       // Said once: the banner's line, not a tag after the time, nor the head's mark.
@@ -2075,14 +2070,14 @@ describe("editor view", () => {
     ]);
     $("#scheduleBtn").click();
     expect($(".modal .hint").textContent).toBe(
-      "It sends at the time you pick, with a cancelable window until then. It will be sent as email and included in your archive.",
+      "It sends at the time you pick, with a cancelable window until then.",
     );
     // One lead plus the minute the picker can't show: 10:00:30 + 2 min, to the minute.
     expect($<HTMLInputElement>("#schWhen").min).toBe("2026-09-23T10:02");
     $("#toSendNow").click();
     await vi.advanceTimersByTimeAsync(0);
     expect($(".modal .hint").textContent).toBe(
-      "Sends this draft, as it is now, to your subscribers in 1 to 2 minutes. It will be sent as email and included in your archive. The post locks until then, and you can cancel any time before it starts sending.",
+      "Sends this draft, as it is now, to your subscribers in 1 to 2 minutes. The post locks until then, and you can cancel any time before it starts sending.",
     );
     $("#snGo").click();
     await vi.advanceTimersByTimeAsync(0);

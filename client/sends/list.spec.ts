@@ -252,12 +252,12 @@ describe("sent view", () => {
     expect($(".modal h3").textContent).toBe("Reschedule this post");
     const include = $<HTMLInputElement>("#rsInclude");
     expect(include.checked).toBe(false);
-    expect($("#rsHint").textContent).toMatch(/It will be sent as email only\.$/);
+    // The box says where it will go, so the line above it doesn't repeat it.
+    expect($("#rsHint").textContent).toBe(
+      "It sends at the time you pick, with a cancelable window until then.",
+    );
     include.checked = true;
     include.dispatchEvent(new Event("change"));
-    expect($("#rsHint").textContent).toMatch(
-      /It will be sent as email and included in your archive\.$/,
-    );
     expect($<HTMLInputElement>("#rsSlug").value).toBe("waxwings");
     $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
     $("#rsGo").click();

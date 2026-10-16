@@ -12,7 +12,6 @@ import {
   publishingOf,
   settingsChange,
   showSlugRefusal,
-  willAppearClause,
 } from "../posts/publishing";
 import { readSendsNow } from "../send_state";
 import { $ } from "../ui/dom";
@@ -97,11 +96,10 @@ export async function openRescheduleModal(
   const working: Publishing = { ...stored };
   const minStr = toLocalInput(earliestFireAt());
   const cur = toLocalInput(new Date(send.fire_at));
-  const hint = () =>
-    `It sends at the time you pick, with a cancelable window until then.${willAppearClause(working.emailOnly)}`;
+
   const m = modal(
     html`<h3 id="rsHead">Reschedule this post</h3>
-      <p class="hint" id="rsHint">${hint()}</p>
+      <p class="hint" id="rsHint">It sends at the time you pick, with a cancelable window until then.</p>
       ${notConnectedRescheduleLine()}
       <label for="rsWhen">Send at</label><input type="datetime-local" id="rsWhen" min="${minStr}" value="${cur}">
       <div class="dialog-settings" id="rsForm"></div>
@@ -110,11 +108,7 @@ export async function openRescheduleModal(
   );
   const box = $(".modal", m.el);
   box.setAttribute("aria-labelledby", "rsHead");
-  mountSettingsForm($("#rsForm", box), working, "rs", {
-    onChange: () => {
-      $("#rsHint", box).textContent = hint();
-    },
-  });
+  mountSettingsForm($("#rsForm", box), working, "rs");
   const go = $<HTMLButtonElement>("#rsGo", box);
   const when = $<HTMLInputElement>("#rsWhen", box);
   $("#rsCancel", box).onclick = m.close;

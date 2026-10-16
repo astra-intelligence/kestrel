@@ -54,22 +54,14 @@ export function publishingOf(post: Post, slugTaken: string | null): Publishing {
  */
 export function destinationHtml(p: Publishing): Html {
   return p.emailOnly
-    ? html`Will be sent as email only.`
-    : html`Will be sent as email and included in your archive at <code>${archiveBase()}${p.slug}</code>`;
+    ? html`Email only`
+    : html`In your archive at <code>${archiveBase()}${p.slug}</code>`;
 }
 
 /** The icon beside a scheduled post's destination: a link to its archive page, or an envelope
  *  for a post that goes only by email. */
 export function destinationIcon(p: Publishing): Html {
   return icon(p.emailOnly ? "mail" : "link");
-}
-
-/** How the Schedule and Send now dialogs' first line ends, in the future tense: a full
- *  sentence of its own, so the default is stated rather than implied. */
-export function willAppearClause(emailOnly: boolean): string {
-  return emailOnly
-    ? " It will be sent as email only."
-    : " It will be sent as email and included in your archive.";
 }
 
 /** The helper under Include in archive, in every dialog that shows the box. */
