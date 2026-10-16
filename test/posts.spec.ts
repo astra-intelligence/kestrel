@@ -79,7 +79,7 @@ describe("posts + revisions", () => {
     expect(r1.markdown).toBe("v1");
   });
 
-  it("gives each post its own slug, drafts included, numbering only a new post that follows its subject (SPEC §4)", async () => {
+  it("gives each post its own slug, drafts included, numbering a following slug another post holds (SPEC §4)", async () => {
     const a = await readJson(await createPost({ subject: "Dup Title" }));
     const b = await readJson(await createPost({ subject: "Dup Title" }));
     expect([a.post.slug, b.post.slug]).toEqual(["dup-title", "dup-title-2"]);
@@ -87,15 +87,25 @@ describe("posts + revisions", () => {
     expect([a.slug_taken, b.slug_taken]).toEqual([null, "dup-title"]);
   });
 
-  it("keeps a following slug's address when another post holds the subject's slug, and says so", async () => {
+  it("numbers a following slug when another post holds the subject's slug, and keeps that number on later saves", async () => {
     await createPost({ subject: "Spring update" });
-    const created = await readJson(await createPost({ subject: "Owls" }));
+    const created = await readJson(await createPost({ subject: "" }));
+    expect(created.post.slug).toMatch(/^post(-\d+)?$/);
     const saved = await save(created.post.id, {
       subject: "Spring update",
       base_revision: created.revision_id,
     });
-    expect(saved.post).toMatchObject({ slug: "owls", slug_auto: true });
+    expect(saved.post).toMatchObject({ slug: "spring-update-2", slug_auto: true });
     expect(saved.slug_taken).toBe("spring-update");
+
+    // A third post takes -3 and leaves the second alone, and another save doesn't move the second.
+    const third = await readJson(await createPost({ subject: "Spring update" }));
+    expect(third.post.slug).toBe("spring-update-3");
+    const again = await save(created.post.id, {
+      markdown: "more",
+      base_revision: saved.post.current_revision,
+    });
+    expect(again.post.slug).toBe("spring-update-2");
   });
 
   it("has a slug follow the subject until one is set by hand", async () => {

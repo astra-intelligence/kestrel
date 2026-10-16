@@ -86,7 +86,7 @@ function addressNoteHtml(p: Publishing, fixedNote: string): Html | null {
     return html`<p class="pub-note">${fixedNote}</p>`;
   }
   if (p.slugAuto && p.slugTaken) {
-    return html`<p class="pub-taken">Another post has <code>${p.slugTaken}</code>, so this one keeps the address above. Type another if you’d like.</p>`;
+    return html`<p class="pub-taken">Another post has <code>${p.slugTaken}</code>, so this one takes a number. Type another if you’d like.</p>`;
   }
   return p.slugAuto
     ? html`<p class="pub-note">Follows the subject until you type your own.</p>`

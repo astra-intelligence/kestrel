@@ -65,7 +65,7 @@ export interface PostListResponse {
 
 /**
  * When the post's slug follows its subject but another post holds the subject's slug, that
- * slug: the post keeps the address it had, and a client says so and asks for another. Null
+ * slug: the post takes the first free number after it, and a client says why. Null
  * otherwise (SPEC §4).
  */
 export type SlugTaken = string | null;

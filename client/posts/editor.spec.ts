@@ -89,7 +89,7 @@ function draftServer(initial = draft()) {
     },
     /** The server's slug rules (SPEC §4): a slug sent by hand is refused when malformed or
      *  another post's; a following slug takes the subject's unless another post holds it,
-     *  and then keeps the slug it had and says which it couldn't take. */
+     *  and then takes the first free number after it and says which it couldn't take. */
     settle(post: Record<string, unknown>, body: Record<string, unknown>) {
       if (typeof body.slug === "string") {
         if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.slug)) {
@@ -115,6 +115,9 @@ function draftServer(initial = draft()) {
         const want = slugify(String(post.subject)) || "post";
         if (server.taken.has(want)) {
           slug_taken = want;
+          let n = 2;
+          while (server.taken.has(`${want}-${n}`)) n += 1;
+          post.slug = `${want}-${n}`;
         } else {
           post.slug = want;
         }
@@ -1893,8 +1896,9 @@ describe("editor view", () => {
       server.apply({ json: () => ({}) } as FakeRequest); // the server's answer now says so
       await open([{ path: "/api/posts/p1", reply: server.get }, listingRoute(server)]);
       $("#settingsBtn").click();
+      expect($<HTMLInputElement>("#psSlug").value).toBe("owls-2");
       expect($("#psNote").textContent).toBe(
-        "Another post has owls, so this one keeps the address above. Type another if you’d like.",
+        "Another post has owls, so this one takes a number. Type another if you’d like.",
       );
       typeInto($<HTMLInputElement>("#psSlug"), "dusk-owls");
       expect($("#psNote").textContent).toBe("");

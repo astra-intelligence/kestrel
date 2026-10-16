@@ -100,9 +100,9 @@ export type SlugResult = { slug: string; auto: boolean } | { refused: SlugRefusa
 /**
  * Work out a post's slug after a change, against every other post (`postId`, absent for a new
  * one). A slug set by hand must be well formed and no other post's, or it is refused. A slug
- * that follows the subject takes the subject's slug when it is free; when another post holds
- * it, an existing post keeps the slug it has (`slug_taken` says so) and a new one takes the
- * first free number, since it has no slug to keep.
+ * that follows the subject takes the subject's slug when it is free, and when another post
+ * holds it, the first free number after it (`spring-update-2`, `slug_taken` says why). A post
+ * already on a number of the subject's slug keeps it, so a save never moves it to another.
  */
 export async function resolveSlug(
   db: D1Database,
@@ -126,7 +126,15 @@ export async function resolveSlug(
   if (!(await slugTaken(db, wanted, current.postId))) {
     return { slug: wanted, auto: true };
   }
-  return { slug: current.slug ?? (await uniqueSlug(db, wanted, current.postId)), auto: true };
+  if (current.slug && isNumberOf(current.slug, wanted)) {
+    return { slug: current.slug, auto: true };
+  }
+  return { slug: await uniqueSlug(db, wanted, current.postId), auto: true };
+}
+
+/** Whether `slug` is `base` with a number after it, as `uniqueSlug` makes (`base-2`). */
+function isNumberOf(slug: string, base: string): boolean {
+  return slug.startsWith(`${base}-`) && /^[1-9][0-9]*$/.test(slug.slice(base.length + 1));
 }
 
 /**
