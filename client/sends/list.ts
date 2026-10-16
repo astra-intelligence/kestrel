@@ -332,7 +332,7 @@ export async function renderSent(root: HTMLElement, signal: AbortSignal): Promis
       for (const b of $$<HTMLButtonElement>("[data-reschedule]", schedEl)) {
         const s = sends.find((x) => x.id === b.dataset.reschedule);
         if (s) {
-          b.onclick = () => openRescheduleModal(s.id, s.fire_at, s.email_only, afterAct, signal);
+          b.onclick = () => openRescheduleModal(s.id, s.fire_at, afterAct, signal);
         }
       }
       for (const b of $$<HTMLButtonElement>("[data-cancel]", schedEl)) {

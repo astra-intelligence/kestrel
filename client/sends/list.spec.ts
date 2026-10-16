@@ -215,29 +215,21 @@ describe("sent view", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
-  it("reschedules with the Email only box showing the current choice, and sends the change", async () => {
+  it("reschedules only the time: where the post goes is in its Post settings", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
     fake = world(srv, [{ method: "POST", path: "/api/sends/sch/reschedule", reply: () => ({}) }]);
     await mount(renderSent);
     await vi.advanceTimersByTimeAsync(0);
     $("[data-reschedule='sch']").click();
-    const box = $<HTMLInputElement>("#rsEmailOnly");
-    expect(box.checked).toBe(true);
-    expect($("#rsListing").textContent).toBe(
-      "It will be sent as email only, not listed in your archive.",
-    );
-    box.checked = false;
-    box.dispatchEvent(new Event("change"));
-    expect($("#rsListing").textContent).toBe("It will be listed in your archive.");
+    expect(document.querySelector(".modal .listing-check")).toBeNull();
     $<HTMLInputElement>("#rsWhen").value = toLocalInput(new Date(NOW + 3 * 86_400_000));
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
-    expect(posted?.json()).toMatchObject({ email_only: false });
+    expect(posted?.json()).not.toHaveProperty("email_only");
     expect(fake.unhandled).toEqual([]);
   });
-
   it("reschedules a scheduled send from its card, refreshes the queue, and has the layer read at once", async () => {
     const srv = sendServer([scheduled(), send()]);
     fake = world(srv, [
@@ -263,10 +255,7 @@ describe("sent view", () => {
     $("#rsGo").click();
     await vi.advanceTimersByTimeAsync(0);
     const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
-    expect(posted?.json()).toEqual({
-      fire_at: new Date(toLocalInput(moved)).toISOString(),
-      email_only: false,
-    });
+    expect(posted?.json()).toEqual({ fire_at: new Date(toLocalInput(moved)).toISOString() });
     expect(document.querySelector(".modal")).toBeNull();
     expect($("#toasts").textContent).toMatch(/Rescheduled/);
     expect($(".sched-card .countdown").textContent).toBe("Sends in 3 days");

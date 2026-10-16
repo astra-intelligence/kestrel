@@ -3318,49 +3318,62 @@ textarea.is-invalid {
   line-height: 1.45;
   color: var(--muted);
 }
-/* Publishing options (DESIGN §3): one future-tense line under Subject saying where the post
-   will appear, and the panel it opens with the Email only box and the archive address. */
-.pub-line {
-  display: flex;
-  align-items: baseline;
-  gap: 4px 12px;
-  flex-wrap: wrap;
-  margin-top: 8px;
+/* Post settings (DESIGN §3). A scheduled post's line under its locked subject names where it
+   is going; the Schedule and Send now dialogs say the same in a box with Change…. */
+.pub-dest {
+  margin: 8px 0 0;
   font-size: 13.5px;
   color: var(--muted);
-}
-.pub-summary {
-  flex: 1 1 280px;
-  min-width: 0;
   overflow-wrap: anywhere;
 }
-.pub-summary code,
+.pub-dest code,
 .pub-taken code,
-.unlisted-line code {
+.where code {
   font-family: var(--mono);
   font-size: 12.5px;
   color: var(--fg);
 }
-.pub-toggle {
-  flex: none;
-}
-button.linkbtn.pub-toggle {
-  font-size: 13px;
-}
-.pub-cue {
-  margin: 4px 0 0;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.pub-panel {
-  margin-top: 8px;
-  padding: 12px 14px;
+.where {
+  display: flex;
+  align-items: baseline;
+  gap: 6px 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 10px 12px;
   background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: 8px;
+  font-size: 13.5px;
 }
-.pub-panel .listing-check {
-  margin-top: 0;
+.where-text {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.where-link {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.where-link svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+button.linkbtn.where-change {
+  flex: none;
+  font-size: 13px;
+}
+/* The Post settings button carries a gear before its words. */
+#settingsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#settingsBtn svg {
+  width: 16px;
+  height: 16px;
 }
 /* The archive address: the base read-only before the slug, which is the editable part. */
 .url-field {
@@ -3424,28 +3437,6 @@ button.linkbtn.pub-toggle {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--muted);
-}
-/* The unlisted link, as the Schedule dialog shows an email-only post's web version. */
-.unlisted-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px 10px;
-  background: var(--sunken);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.unlisted-line svg {
-  flex: none;
-  width: 14px;
-  height: 14px;
-}
-.unlisted-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 /* A sent post's page in two parts (DESIGN §3): the post, then its delivery. */
 .rec-head-page {

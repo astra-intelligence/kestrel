@@ -13,7 +13,7 @@ A few things to know as you write:
 - **A blank line starts a new paragraph.** In an email, a single line break doesn't.
 - **The opening lines** are the preview a mail client shows beside the subject.
 - **Images** go in by paste or drop, and Kestrel inserts a reference by file name, such as `![cover.jpg](cover.jpg)`. Replace the words in brackets with a short description. PNG, JPEG, WebP, or GIF, up to 5 MB each.
-- **Where it will appear** is the line under the subject: its archive address, such as `newsletter.example.com/archive/spring-update`, which follows the subject, or that it will be sent as email only. **Publishing options** changes either (below).
+- **Where it will go** is in **Post settings**, at the top right: whether it's in your archive, and its address, such as `newsletter.example.com/archive/spring-update`, which follows the subject (below).
 
 ## Test it
 
@@ -33,17 +33,19 @@ Changing your template, or a publication detail it shows, re-makes the email of 
 
 **Send now →**, under the time picker, is for a post you've already reviewed. It still waits out the window, scheduling the post for the minimum lead from now.
 
-### Publishing options
+### Post settings
 
-**Publishing options**, under the subject, holds two choices, and neither is part of the email, so both stay open while the post is scheduled and save as you change them.
+**Post settings**, at the top right of the editor, holds two choices. Neither is part of the email, so both stay open while the post is scheduled. Nothing changes until you select **Save**.
 
-**Email only** sends the post to your list as usual but leaves it out of your public archive and your home page, and gives it no archive address. Use it for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. The Schedule dialog and Send now show the same box, so you can still decide at send time.
+**Include in archive** is checked unless you uncheck it. Unchecked, the post goes to your list as usual but is sent as email only: it stays off your public archive and your home page, and gets no archive address. Use that for a post meant for the inbox: a correction to an earlier email, a short-lived notice, or a test. The editor marks such a post **Email only**.
 
-**Archive address** is where a listed post's page will be. It follows the subject until you type your own, and **Auto-generate from subject** hands it back. If another post already has the address, the editor says so and names the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
+**Archive address** is where the post's page will be in your archive. It follows the subject until you type your own, and **Auto-generate from subject** hands it back. If another post already has the address, Kestrel says so and names the number yours will get, such as `spring-update-2`. The address becomes permanent once it's public: when the post starts sending, or when you add a sent post to the archive.
 
-Every email links its web version through the post's own **unlisted link**, which never changes. It opens the archive page while the post is listed, and the page itself while it's email only. Anyone with the email can open it, but nothing lists it, and search engines are asked not to.
+The Schedule dialog and Send now say where the post will go, and **Change…** changes it there. A change made in the dialog applies when you schedule or send, and canceling leaves the post as it was. Once a post is scheduled, a line under its subject names where it's going.
 
-You can change the listing later. **Reschedule** shows the box too, and a sent post's page under **Sent** shows the post's address with **Make email only…** or **Add to archive…**. Both ask first. Making a post email only takes its archive address down, so links people shared stop working, but the address stays the post's: add it back to the archive and those links work again. Neither changes what was sent.
+Every email links its web version through the post's own **unlisted link**, which never changes. It opens the archive page while the post is in your archive, and the page itself while it's email only. Anyone with the email can open it, but nothing lists it, and search engines are asked not to.
+
+A sent post's page under **Sent** shows its address with **Remove from archive…** or **Add to archive…**. Both ask first. Removing a post takes its archive address down, so links people shared stop working, but the address stays the post's: add it back and those links work again. Neither changes what was sent.
 
 ### Changing your mind
 

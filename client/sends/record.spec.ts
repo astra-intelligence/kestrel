@@ -226,17 +226,17 @@ describe("sent record", () => {
       expect($$(".rec-part-title").map((h) => h.textContent)).toEqual(["The post", "Delivery"]);
       expect($(".rec-post").contains($("#recOpen"))).toBe(true);
       expect($(".rec-card").contains($(".rec-tiles"))).toBe(true);
-      expect($(".rec-web-what").textContent).toBe("Listed in your archivebirds.example/p1");
+      expect($(".rec-web-what").textContent).toBe("In your archivebirds.example/p1");
       $("#recOpen").click();
       expect(open).toHaveBeenCalledWith("https://birds.example/p1", "_blank", "noopener");
       $("#recCopy").click();
       await vi.advanceTimersByTimeAsync(0);
       expect(clipboard).toHaveBeenCalledWith("https://birds.example/p1");
-      expect($("#recListing").textContent).toBe("Make email only…");
+      expect($("#recListing").textContent).toBe("Remove from archive…");
       expect(fake.unhandled).toHaveLength(0);
     });
 
-    it("asks before making a post email only, and says its archive address stops working", async () => {
+    it("asks before removing a post from the archive, and says its archive address stops working", async () => {
       const server = sendServer([send()]);
       fake = fakeApi([
         ...server.routes,
@@ -246,7 +246,7 @@ describe("sent record", () => {
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
       $("#recListing").click();
-      expect($(".modal h3").textContent).toBe("Make this post email only?");
+      expect($(".modal h3").textContent).toBe("Remove this post from your archive?");
       expect($(".modal .hint").textContent).toContain("its archive address stops working");
       expect($(".modal .url-gone").textContent).toBe("birds.example/p1");
       $("#eoCancel").click();
@@ -264,11 +264,11 @@ describe("sent record", () => {
       );
       expect($("#recOpen").textContent).toBe("View web version\u00a0↗");
       expect($("#recListing").textContent).toBe("Add to archive…");
-      expect($("#toasts").textContent).toContain("Email only: no longer listed in your archive");
+      expect($("#toasts").textContent).toContain("Removed from your archive");
       expect(fake.unhandled).toHaveLength(0);
     });
 
-    it("sets the address of a post never listed when adding it to the archive", async () => {
+    it("sets the address of a post never in the archive when adding it", async () => {
       const server = sendServer();
       server.put(send(), { email_only: true });
       fake = fakeApi([
@@ -299,13 +299,11 @@ describe("sent record", () => {
       expect($("#toasts").textContent).toContain(
         "Added to your archive at birds.example/archive/dusk-owls",
       );
-      expect($(".rec-web-what").textContent).toBe(
-        "Listed in your archivebirds.example/archive/dusk-owls",
-      );
+      expect($(".rec-web-what").textContent).toBe("In your archivebirds.example/archive/dusk-owls");
       expect(fake.unhandled).toHaveLength(0);
     });
 
-    it("brings back the reserved address of a post listed before, read-only", async () => {
+    it("brings back the reserved address of a post in the archive before, read-only", async () => {
       const server = sendServer();
       server.put(send(), { email_only: true });
       fake = fakeApi([
@@ -320,7 +318,7 @@ describe("sent record", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect($<HTMLInputElement>(".modal .url-field input").readOnly).toBe(true);
       expect(document.querySelector("#addAuto")).toBeNull();
-      expect($(".modal").textContent).toContain("Reserved from when it was listed");
+      expect($(".modal").textContent).toContain("Reserved from when it was in your archive");
       $("#addArchGo").click();
       await vi.advanceTimersByTimeAsync(0);
       const put = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/listing");
@@ -333,7 +331,7 @@ describe("sent record", () => {
       fake = fakeApi([...server.routes, noRows]);
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#recListing").textContent).toBe("Make email only…");
+      expect($("#recListing").textContent).toBe("Remove from archive…");
       server.edit("x1", {}, { email_only: true }); // Claude made it email only
       await vi.advanceTimersByTimeAsync(3000);
       expect($("#recListing").textContent).toBe("Add to archive…");

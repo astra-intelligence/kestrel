@@ -59,13 +59,13 @@ This is a real send, to a list of one. It proves the whole path: subscribing, co
 
 1. Open the post, select **Schedule**, and then **Send now**. Every send waits at least five minutes before it goes out, so you can cancel a mistake.
 
-1. Check **Email only**. The post still goes to subscribers, but it isn't listed in the public archive or on the home page. That way the test proves the send without becoming the publication's first archived post, and the dashboard keeps its **Finish setting up** steps for the publisher.
+1. Select **Change…**, uncheck **Include in archive**, and select **Done**. The post still goes to subscribers, but it's sent as email only: it isn't in the public archive or on the home page. That way the test proves the send without becoming the publication's first archived post, and the dashboard keeps its **Finish setting up** steps for the publisher.
 
-1. Cancel the send, to see that canceling stops it. Then select **Send now** again, check that **Email only** is still checked, and let it go.
+1. Cancel the send, to see that canceling stops it. Then select **Schedule** and **Send now** again, check that it says the post will be sent as email only, and let it go.
 
 1. When the send finishes, the post arrives at your second address. A notification arrives at your first, with the subject `Sent:` and the post's title.
 
-If you verified this instance before Email only existed, the test post is listed in the archive. Open it under **Sent**, and select **Make email only**.
+If you verified this instance before Email only existed, the test post is in the archive. Open it under **Sent**, and select **Remove from archive…**.
 
 ## 5. Unsubscribe
 

@@ -577,7 +577,7 @@ function renderFrozenRecord(
       copy.onclick = () => void copyWith(copy, url);
     }
     if (change) {
-      change.onclick = () => (view.email_only ? confirmAddToArchive() : confirmEmailOnly());
+      change.onclick = () => (view.email_only ? confirmAddToArchive() : confirmRemove());
     }
   };
   /** Change the listing from a confirming dialog: it closes on success and shows a refusal in
@@ -597,7 +597,7 @@ function renderFrozenRecord(
         paintPost();
         toast(
           res.post.email_only
-            ? "Email only: no longer listed in your archive"
+            ? "Removed from your archive"
             : `Added to your archive at ${archive ? shortUrl(archive) : res.post.slug}`,
         );
         readSendsNow();
@@ -605,14 +605,14 @@ function renderFrozenRecord(
         dialog.error(message(e));
       }
     });
-  const confirmEmailOnly = () => {
+  const confirmRemove = () => {
     const address = view.links.archive;
     const m = modal(
-      html`<h3 id="eoHead">Make this post email only?</h3>
+      html`<h3 id="eoHead">Remove this post from your archive?</h3>
         <p class="hint">It comes off your home page and your public archive, and its archive address stops working, including links people have shared. The link in the email keeps working for anyone who has it.</p>
         ${address ? html`<div class="url-gone"><s>${shortUrl(address)}</s></div>` : null}
-        <p class="pub-note">The address stays reserved for this post. Add it to your archive again and the same address, and the links people shared, work again.</p>
-        <div class="actions"><button type="button" id="eoCancel">Cancel</button><button type="button" class="primary" id="eoGo">Make email only</button></div>`,
+        <p class="pub-note">The address stays reserved for this post. Add it back and the same address, and the links people shared, work again.</p>
+        <div class="actions"><button type="button" id="eoCancel">Cancel</button><button type="button" class="primary" id="eoGo">Remove from archive</button></div>`,
       signal,
     );
     $(".modal", m.el).setAttribute("aria-labelledby", "eoHead");
@@ -636,8 +636,8 @@ function renderFrozenRecord(
     }
     const { post, archive_slug } = read;
     const field = post.slug_reserved
-      ? html`${addressFieldHtml(post.slug, { readonly: true })}<p class="pub-note">Reserved from when it was listed, so links people shared work again.</p>`
-      : html`${addressFieldHtml(post.slug, { id: "addSlug" })}<label class="slug-auto-toggle"><input type="checkbox" id="addAuto"${post.slug_auto ? html` checked` : null}>Auto-generate from subject</label>${takenNoteHtml(post.slug, archive_slug)}<p class="pub-note">Permanent once it’s listed. The link in the email keeps working and now forwards here.</p>`;
+      ? html`${addressFieldHtml(post.slug, { readonly: true })}<p class="pub-note">Reserved from when it was in your archive, so links people shared work again.</p>`
+      : html`${addressFieldHtml(post.slug, { id: "addSlug" })}<label class="slug-auto-toggle"><input type="checkbox" id="addAuto"${post.slug_auto ? html` checked` : null}>Auto-generate from subject</label>${takenNoteHtml(post.slug, archive_slug)}<p class="pub-note">Permanent once it’s in your archive. The link in the email keeps working and now forwards here.</p>`;
     const m = modal(
       html`<h3 id="addArchHead">Add this post to your archive?</h3>
         <p class="hint">It will be listed on your home page and in your public archive, where anyone visiting can find it.</p>
@@ -859,7 +859,7 @@ function postPartHtml(send: SendView): Html {
   if (send.email_only) {
     return html`<div class="rec-web-what"><strong>Email only</strong>${shown ? html`<code>${shown}</code>` : null}<span class="muted">Anyone with the link can open it. Nothing lists or indexes it.</span></div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View web version&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Add to archive…</button></div>`;
   }
-  return html`<div class="rec-web-what"><strong>Listed in your archive</strong>${shown ? html`<code>${shown}</code>` : null}</div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View published post&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Make email only…</button></div>`;
+  return html`<div class="rec-web-what"><strong>In your archive</strong>${shown ? html`<code>${shown}</code>` : null}</div><div class="rec-web-btns">${url ? html`<button type="button" class="primary" id="recOpen">View published post&nbsp;↗</button><button type="button" class="ghost copy-btn" id="recCopy" data-copy-word="Copy link" aria-label="Copy link">${copyFace(false, "Copy link")}</button>` : null}<button type="button" class="ghost" id="recListing">Remove from archive…</button></div>`;
 }
 
 /** A sent send's outcomes from its counters: the same buckets as the record's own read,
