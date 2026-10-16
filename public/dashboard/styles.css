@@ -2708,6 +2708,11 @@ body.web-mode .content {
   }
 }
 
+/* The editor's subject, body, and actions sit on the page itself, with no card around them:
+   the fields and the composer carry their own borders, aligned with the head and the banner. */
+.editor-form > label:first-child {
+  margin-top: 6px;
+}
 .actions-bar {
   display: flex;
   align-items: center;
