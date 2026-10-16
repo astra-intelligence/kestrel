@@ -59,7 +59,7 @@ export async function renderDrafts(root: HTMLElement, signal: AbortSignal): Prom
     root,
     html`<div class="spread page-head"><h1>Drafts</h1><button class="primary" id="newPost">New post</button></div>
     ${listToolbar({ statuses: DRAFT_STATUSES, allValue: DRAFTS_SCOPE, searchPlaceholder: "Search subject…" })}
-    <div id="list" class="muted">Loading…</div>
+    <div id="list"><p class="muted">Loading…</p></div>
     <div id="postsPager"></div>`,
   );
   const newPost = $<HTMLButtonElement>("#newPost", root);

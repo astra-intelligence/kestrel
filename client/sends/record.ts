@@ -554,7 +554,7 @@ function renderFrozenRecord(
           </div>
         </div>
         <input class="rec-people-search" type="search" placeholder="Search email…" aria-label="Search recipients by email" autocomplete="off">
-        <div id="recRows" class="muted">Loading…</div>
+        <div id="recRows"><p class="muted">Loading…</p></div>
         <div id="recPager"></div>
       </div>
       <p class="rec-note muted">This is the record of what went out: the published post is the exact frozen copy readers received, and nothing here is editable.</p>

@@ -53,9 +53,7 @@ export function publishingOf(post: Post, slugTaken: string | null): Publishing {
  * archive address, or that it will be sent as email only.
  */
 export function destinationHtml(p: Publishing): Html {
-  return p.emailOnly
-    ? html`Email only`
-    : html`In your archive at <code>${archiveBase()}${p.slug}</code>`;
+  return p.emailOnly ? html`Email only` : html`Will be at <code>${archiveBase()}${p.slug}</code>`;
 }
 
 /** The icon beside a scheduled post's destination: a link to its archive page, or an envelope

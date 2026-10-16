@@ -83,11 +83,11 @@ export async function renderSent(root: HTMLElement, signal: AbortSignal): Promis
     ${noEmailProvider() ? html`<p class="muted">A local stand-in sends these: they are recorded here, but nothing is delivered.</p>` : null}
     ${notConnectedWarning("sent-not-connected", html`No email provider connected, so nothing can be sent yet. ${connectProviderLink()} to start sending.`)}
     <div id="stuck"></div>
-    <h2>Scheduled</h2><div id="scheduled" class="muted">Loading…</div>
+    <h2>Scheduled</h2><div id="scheduled"><p class="muted">Loading…</p></div>
     <div id="active"></div>
     <h2>Sent posts</h2>
     ${listToolbar({ searchPlaceholder: "Search subject…", failures: true })}
-    <div id="sendsList" class="muted">Loading…</div>
+    <div id="sendsList"><p class="muted">Loading…</p></div>
     <div id="sendsPager"></div>`,
   );
   const stuckEl = $("#stuck", root);

@@ -1575,7 +1575,9 @@ td a:hover {
    onto a line of its own. */
 .title-with-label {
   display: flex;
-  align-items: baseline;
+  /* Centered, not on a baseline: the mark's text is smaller and led by an icon, and only
+     their centers line up with the title's. */
+  align-items: center;
   gap: 8px;
   min-width: 0;
 }
