@@ -115,7 +115,7 @@ The landing page, ordered by urgency:
 3. **Finish setting up**, until the first post listed in the archive is published (below).
 4. **Active sends**: a card per send in flight, with a small dispatch bar and counts, linking to its watch.
 5. **Subscribers**: four count tiles (Confirmed, Pending, Unsubscribed, Suppressed), each a link into Subscribers filtered to that state.
-6. **Scheduled** and **Drafts**, side by side. A scheduled card shows its countdown and opens the editor; it carries no Cancel, since the schedule is managed in the editor and on the Sent page. A send whose look changed since its last test says so on its card (§4), and an email-only post says so in its line (§4).
+6. **Scheduled** and **Drafts**, side by side. A scheduled card shows its countdown and opens the editor; it carries no Cancel, since the schedule is managed in the editor and on the Sent page. A send whose look changed since its last test says so on its card (§4), and an email-only post says so in its line (§4). The Drafts card marks an email-only draft with the grey **Email only** label beside its title.
 7. **Sent**: the latest five sends that have started, with Delivered (§8) and **Archive ↗**, the post's page. An email-only post (SPEC §5) carries the grey **Email only** label beside its subject, and its link reads **Web version ↗** and opens its unlisted link, since it has no archive page.
 8. **Quick actions**, **Publication** (the home page's address with Copy, and **View publication ↗**; the archive and every post are a click from there), and **API access**, which invites the publisher to connect Claude or says Claude is connected.
 
@@ -125,7 +125,7 @@ The landing page, ordered by urgency:
 
 ### Drafts
 
-The writing side: drafts and scheduled posts. A sent post is a record and lives under Sent. The list has search, a Draft or Scheduled filter, sortable columns, and paging. A row opens the editor; a post whose send is in flight shows the `sending` badge and opens its watch instead. The row menu (⋯) offers Open (Watch send, for a post in flight), and Delete draft for a draft, which confirms in a dialog that says the revisions go too and it can't be undone.
+The writing side: drafts and scheduled posts. A sent post is a record and lives under Sent. The list has search, a Draft or Scheduled filter, sortable columns, and paging. An email-only post carries the grey **Email only** label beside its title, as in Sent; a listed one carries nothing. A row opens the editor; a post whose send is in flight shows the `sending` badge and opens its watch instead. The row menu (⋯) offers Open (Watch send, for a post in flight), and Delete draft for a draft, which confirms in a dialog that says the revisions go too and it can't be undone.
 
 ### Editor
 

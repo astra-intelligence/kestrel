@@ -35,9 +35,9 @@ export function fmtDuration(ms: number | null | undefined): string {
   return `${Math.round(m / 60)} hr`;
 }
 
-/** The grey Email only label beside an email-only post's subject in a list of sends (DESIGN
- *  §3): only the exception is marked, so a listed post carries nothing. */
-export function emailOnlyLabel(s: Pick<SendView, "email_only">): Html | null {
+/** The grey Email only label beside an email-only post's subject in a list of sends or
+ *  drafts (DESIGN §3): only the exception is marked, so a listed post carries nothing. */
+export function emailOnlyLabel(s: { email_only: boolean }): Html | null {
   return s.email_only ? html` <span class="badge email-only">Email only</span>` : null;
 }
 

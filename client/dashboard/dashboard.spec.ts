@@ -671,6 +671,17 @@ describe("dashboard", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
+  it("marks an email-only draft beside its title, and only that one (DESIGN §2)", async () => {
+    fake = world([post(), post({ id: "p2", subject: "Wrens", email_only: true })], sendServer());
+    await mount(renderDashboard);
+    await vi.advanceTimersByTimeAsync(0);
+    const label = (id: string) =>
+      document.querySelector(`tr[data-id='${id}'] .badge.email-only`)?.textContent ?? null;
+    expect(label("p2")).toBe("Email only");
+    expect(label("p1")).toBeNull();
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("opens the post from a draft row or a scheduled card, the record from a sent row, and the watch from the active card", async () => {
     fake = world([post()], sendServer([send(), scheduled(), sending({ c_accepted: 50 })]));
     await mount(renderDashboard);

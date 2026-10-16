@@ -270,7 +270,7 @@ export async function renderDashboard(view: HTMLElement, signal: AbortSignal): P
   const draftsHtml = drafts.length
     ? html`<div class="table-wrap"><table><tbody>${drafts.map(
         (p) =>
-          html`<tr class="clickable" data-id="${p.id}"><td><a href="#/edit/${p.id}">${p.subject || html`<em>untitled</em>`}</a></td><td class="muted">edited ${fmt(p.updated_at)}</td></tr>`,
+          html`<tr class="clickable" data-id="${p.id}"><td><a href="#/edit/${p.id}">${p.subject || html`<em>untitled</em>`}</a>${emailOnlyLabel(p)}</td><td class="muted">edited ${fmt(p.updated_at)}</td></tr>`,
       )}</tbody></table></div>`
     : html`<p class="muted">No drafts in progress.</p>`;
 
