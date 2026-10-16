@@ -667,7 +667,7 @@ describe("dashboard", () => {
     fake = world([post()], srv);
     await mount(renderDashboard);
     await vi.advanceTimersByTimeAsync(0);
-    expect($("#dashScheduled .sched-card .badge.email-only").textContent).toBe("Email only");
+    expect($("#dashScheduled .sched-card .sched-email-only").textContent).toBe("Email only");
     expect(fake.unhandled).toEqual([]);
   });
 

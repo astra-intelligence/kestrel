@@ -219,7 +219,7 @@ describe("sent view", () => {
     expect(feedReads(fake)).toHaveLength(2);
   });
 
-  it("marks only an email-only post, with the same grey label beside its subject in Sent posts and on its scheduled card (DESIGN §3, §4)", async () => {
+  it("marks only an email-only post, with a grey label in Sent posts and a line on its scheduled card (DESIGN §3, §4)", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
     srv.put(send(), { email_only: true });
@@ -227,9 +227,7 @@ describe("sent view", () => {
     fake = world(srv);
     await mount(renderSent);
     await vi.advanceTimersByTimeAsync(0);
-    expect($(".sched-card .badge.email-only").textContent).toBe("Email only");
-    // Beside the subject, not in the line under it.
-    expect($(".sched-card .muted").textContent).not.toContain("Email only");
+    expect($(".sched-card .sched-email-only").textContent).toBe("Email only");
     const rows = $$(".sent-table tbody tr");
     const label = (id: string) =>
       rows.find((r) => r.dataset.id === id)?.querySelector(".badge.email-only")?.textContent ??
@@ -269,6 +267,32 @@ describe("sent view", () => {
     expect(fake.calls.some((c) => c.url.pathname === "/api/posts/p7/listing")).toBe(false);
     expect(fake.unhandled).toEqual([]);
   });
+  it("keeps the time a send already has, however near, so a reschedule can change only its settings (SPEC §6)", async () => {
+    const soon = Math.ceil(NOW / 60_000) * 60_000; // under a minute away, inside any lead
+    const srv = sendServer();
+    srv.put(scheduled({ fire_at: soon }), { email_only: true });
+    fake = fakeApi([
+      { method: "POST", path: "/api/sends/sch/reschedule", reply: () => ({}) },
+      postRead({ email_only: true }),
+      ...srv.routes,
+    ]);
+    await mount(renderSent);
+    await vi.advanceTimersByTimeAsync(0);
+    $("[data-reschedule='sch']").click();
+    await vi.advanceTimersByTimeAsync(0);
+    const include = $<HTMLInputElement>("#rsInclude");
+    include.checked = true;
+    include.dispatchEvent(new Event("change"));
+    $("#rsGo").click();
+    await vi.advanceTimersByTimeAsync(0);
+    const posted = fake.calls.find((c) => c.url.pathname === "/api/sends/sch/reschedule");
+    expect(posted?.json()).toMatchObject({
+      fire_at: new Date(soon).toISOString(),
+      email_only: false,
+    });
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("reschedules a scheduled send from its card, refreshes the queue, and has the layer read at once", async () => {
     const srv = sendServer([scheduled(), send()]);
     fake = world(srv, [

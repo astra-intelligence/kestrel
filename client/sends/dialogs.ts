@@ -95,13 +95,13 @@ export async function openRescheduleModal(
   // The dialog's copy: Cancel leaves the post as it was.
   const working: Publishing = { ...stored };
   const minStr = toLocalInput(earliestFireAt());
-  const cur = toLocalInput(new Date(send.fire_at));
+  const cur = new Date(toLocalInput(new Date(send.fire_at)));
 
   const m = modal(
     html`<h3 id="rsHead">Reschedule this post</h3>
       <p class="hint" id="rsHint">It sends at the time you pick, with a cancelable window until then.</p>
       ${notConnectedRescheduleLine()}
-      <label for="rsWhen">Send at</label><input type="datetime-local" id="rsWhen" min="${minStr}" value="${cur}">
+      <label for="rsWhen">Send at</label><input type="datetime-local" id="rsWhen" min="${minStr}" value="${toLocalInput(cur)}">
       <div class="dialog-settings" id="rsForm"></div>
       <div class="actions"><button type="button" id="rsCancel">Cancel</button><button type="button" class="primary" id="rsGo">Reschedule</button></div>`,
     signal,
@@ -121,7 +121,10 @@ export async function openRescheduleModal(
         m.error("Pick a valid date & time", when);
         return;
       }
-      if (isTooSoon(t)) {
+      // The time it already has stays, however near: the server keeps it without a move, so a
+      // reschedule that changes only the settings works up to the fire time (SPEC §6).
+      const unchanged = t === cur.getTime();
+      if (!unchanged && isTooSoon(t)) {
         m.error(tooSoonText(), when);
         return;
       }

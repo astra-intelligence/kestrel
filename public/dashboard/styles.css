@@ -1570,13 +1570,6 @@ td a:hover {
   vertical-align: 1px;
   white-space: nowrap;
 }
-/* On a scheduled card the label takes the card's own violet, outlined, so it reads as part of
-   the card rather than a grey patch from a table. */
-.sched-card .badge.email-only {
-  background: transparent;
-  color: var(--status-scheduled-fg);
-  border-color: var(--status-scheduled-line);
-}
 /* Subscriber consent states borrow a hue that matches the state's meaning: confirmed →
    the sent green, unsubscribed → the draft grey, suppressed → danger red (below). Pending
    awaits double-opt-in — a waiting/attention state — so it takes the amber `warn` scale,
@@ -3005,8 +2998,7 @@ button.linkbtn:hover {
 /* One title weight/size across every scheduled notice (card subject + banner date),
    so the "title" is consistent from the Drafts list to the Sent queue to the editor. */
 .sched-subj {
-  /* Inline, so an email-only post's label sits beside it, as in a list's row. */
-  display: inline-block;
+  display: block;
   color: var(--fg);
   font-size: 15px;
   font-weight: 600;
