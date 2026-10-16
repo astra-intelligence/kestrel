@@ -152,7 +152,7 @@ Cancel and Save (Primary): nothing is saved until Save, and Cancel, Escape, or a
 
 **A scheduled post.** The lock is presented without hiding the content, and without locking what isn't part of the email:
 
-- The subject reads as locked: read-only rather than disabled, so it can still be selected and copied and a keystroke still pulses the foot line, but styled to look locked, with the recessed surface, muted text, an arrow cursor, and a grey focus ring in place of the blue one. The body's text is muted the same way. The banner names where the post is going. **Post settings** still opens and saves, since neither setting is part of the email.
+- The subject reads as locked: read-only rather than disabled, so it can still be selected and copied and a keystroke still pulses the foot line, but styled to look locked, with the recessed surface, muted text, an arrow cursor, and a grey focus ring in place of the blue one. The body's text is muted the same way, and focus rings the whole composer in the same grey. The banner names where the post is going. **Post settings** still opens and saves, since neither setting is part of the email.
 
 - It opens on **Preview**, since the preview is the copy that will send. The Edit tab is somewhere the publisher goes on purpose.
 - On Edit, the text stays legible, selectable, and copyable on a recessed surface, and the composer's foot says the way out: "Cancel the schedule to edit". It's a hint, not a control; Cancel lives on the banner.

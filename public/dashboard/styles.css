@@ -2427,6 +2427,12 @@ body.web-mode .content {
   border-color: var(--ring);
   box-shadow: 0 0 0 1px var(--ring);
 }
+/* A scheduled post's body is locked, so focus rings it in grey, as the locked subject's is,
+   rather than in the blue that says "type here" (DESIGN §3). */
+.composer.composer-locked:focus-within {
+  border-color: var(--muted);
+  box-shadow: 0 0 0 1px var(--muted);
+}
 .composer-head {
   display: flex;
   align-items: flex-end;

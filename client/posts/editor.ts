@@ -237,7 +237,7 @@ export async function renderEditor(
       <input id="f-subject" value="${post.subject}" placeholder="Untitled"${ro}>
 
       <label for="f-markdown">Body</label>
-      <div class="composer">
+      <div class="composer${locked ? " composer-locked" : ""}">
         <div class="composer-head">
           <div class="ctabs" role="tablist">
             <button type="button" class="ctab active" data-tab="edit" data-text="Edit" role="tab" aria-selected="true"><span class="ctab-label">${icon("editable")}Edit</span></button>
