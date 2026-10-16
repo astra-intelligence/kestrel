@@ -24,7 +24,7 @@ To move a running instance from one version to another, follow [Upgrade to a new
 - A sent post's page is split into **The post** and **Delivery** (the record, unchanged). The post shows its link as one field with **Copy** and **Open ↗**, and below it whether the post is in your archive or email only, with **Remove from archive…** or **Add to archive…**.
 - A sent post's recipient list opens on **All** rather than **Failures**, its switch now reading **All | Delivered | Failures**. The failures are still counted in the tiles above it, one switch away.
 - Verify it works sends its test post as **Email only**, and ends by erasing the SES simulator addresses and any test subscriber that won't be a reader.
-- The demo publication (`npm run seed`) opens with the operator's own test send, made as Verify it works makes one: email only, to one test address, before the list came in. It shows under **Sent** with the **Email only** label, and the archive leaves it out. Its scheduled post, **A quick note**, is email only too, so the scheduled banner shows that state.
+- The demo publication (`npm run seed`) opens with the operator's own test send, made as Verify it works makes one: email only, to one test address, before the list came in. It shows under **Sent** with the **Email only** label, and the archive leaves it out. Its scheduled post, **A quick note**, says how to send a post as email only.
 
 ## [1.11.0] - 2026-10-15
 

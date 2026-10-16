@@ -219,7 +219,7 @@ describe("sent view", () => {
     expect(feedReads(fake)).toHaveLength(2);
   });
 
-  it("marks only an email-only post, with a grey label in Sent posts and a line on its scheduled card (DESIGN §3, §4)", async () => {
+  it("marks only an email-only post, with the same grey label beside its subject in Sent posts and on its scheduled card (DESIGN §3, §4)", async () => {
     const srv = sendServer();
     srv.put(scheduled(), { email_only: true });
     srv.put(send(), { email_only: true });
@@ -227,7 +227,9 @@ describe("sent view", () => {
     fake = world(srv);
     await mount(renderSent);
     await vi.advanceTimersByTimeAsync(0);
-    expect($(".sched-card .sched-email-only").textContent).toBe("Email only");
+    expect($(".sched-card .badge.email-only").textContent).toBe("Email only");
+    // Beside the subject, not in the line under it.
+    expect($(".sched-card .muted").textContent).not.toContain("Email only");
     const rows = $$(".sent-table tbody tr");
     const label = (id: string) =>
       rows.find((r) => r.dataset.id === id)?.querySelector(".badge.email-only")?.textContent ??

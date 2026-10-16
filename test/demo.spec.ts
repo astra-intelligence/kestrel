@@ -38,11 +38,7 @@ describe("demo content", () => {
     expect(posts[0]?.bundle).toBe("0-test-email");
     expect(posts[0]?.emailOnly).toBe(true);
     expect(posts[0]?.sentTo).toEqual(["proof@fieldnotes.example"]);
-    // Besides it, only the scheduled quick note goes by email alone.
-    expect(posts.filter((p) => p.emailOnly).map((p) => p.bundle)).toEqual([
-      "0-test-email",
-      "5-a-quick-note",
-    ]);
+    expect(posts.filter((p) => p.emailOnly)).toHaveLength(1);
     expect(posts[1]?.bundle).toBe("1-the-hovering-hunter");
     expect(posts[1]?.images).toEqual(["kestrel.webp"]);
   });

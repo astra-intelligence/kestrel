@@ -1822,11 +1822,12 @@ td a:hover {
 .list-table .c-delivered {
   width: 176px;
 }
-/* Every Sent row as tall as one with a delivery note under its count, so a row with none (a
+/* Every Sent row, on the Sent page and the dashboard, as tall as one with a delivery note under its count, so a row with none (a
    one-recipient test) sits in the same rhythm as the rest. A row's height is its floor; once
    the table stacks, each row is a block that takes its own height. */
 @media (min-width: 721px) {
-  .sent-table tbody tr {
+  .sent-table tbody tr,
+  .dash-sent tbody tr {
     height: 56px;
   }
 }
@@ -2997,7 +2998,8 @@ button.linkbtn:hover {
 /* One title weight/size across every scheduled notice (card subject + banner date),
    so the "title" is consistent from the Drafts list to the Sent queue to the editor. */
 .sched-subj {
-  display: block;
+  /* Inline, so an email-only post's label sits beside it, as in a list's row. */
+  display: inline-block;
   color: var(--fg);
   font-size: 15px;
   font-weight: 600;

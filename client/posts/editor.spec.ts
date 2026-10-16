@@ -1954,7 +1954,7 @@ describe("editor view", () => {
       // An envelope for a post that goes only by email, in place of the archive's link.
       expect(envelope()).toBe(true);
       // Said once: the banner's line, not a tag after the time, nor the head's mark.
-      expect(document.querySelector("#schedWhen .sched-email-only")).toBeNull();
+      expect(document.querySelector("#schedWhen .email-only")).toBeNull();
       expect($("#headEmailOnly").hidden).toBe(true);
       expect(puts()).toHaveLength(0);
     });

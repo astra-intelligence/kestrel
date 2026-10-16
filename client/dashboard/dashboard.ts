@@ -24,7 +24,6 @@ import {
   countdowns,
   deliveredCell,
   emailOnlyLabel,
-  emailOnlyNote,
   has,
   needsOperator,
   sendsNow,
@@ -403,7 +402,7 @@ function dashSentHtml(sends: SendView[]): Html {
   if (!recent.length) {
     return html`<p class="muted">No sends yet.</p>`;
   }
-  return html`<div class="table-wrap"><table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Delivered</th><th></th></tr></thead><tbody>${recent.map(
+  return html`<div class="table-wrap"><table class="dash-sent"><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Delivered</th><th></th></tr></thead><tbody>${recent.map(
     (s) => {
       // The published post, which the send's view links once it has started: its archive
       // page, or an email-only post's page at its unlisted link, so the link says which.
@@ -451,7 +450,7 @@ function dashScheduledHtml(scheduled: SendView[]): Html {
   const held = heldWhenFiresHtml("card");
   return html`${scheduled.map(
     (s) =>
-      html`<div class="card spread clickable nextup sched-card" data-post="${s.post_id}"><div><a class="card-link sched-subj" href="#/edit/${s.post_id}">${s.subject}</a><div class="muted">${countdownHtml(s)} · ${fmt(s.fire_at)} · ${s.audience.count} recipients${emailOnlyNote(s)}</div>${held}${has(s, "remade") ? html`<div class="sched-remade-mark">Look changed since your last test</div>` : null}</div></div>`,
+      html`<div class="card spread clickable nextup sched-card" data-post="${s.post_id}"><div><a class="card-link sched-subj" href="#/edit/${s.post_id}">${s.subject}</a>${emailOnlyLabel(s)}<div class="muted">${countdownHtml(s)} · ${fmt(s.fire_at)} · ${s.audience.count} recipients</div>${held}${has(s, "remade") ? html`<div class="sched-remade-mark">Look changed since your last test</div>` : null}</div></div>`,
   )}`;
 }
 function wireDashScheduledCards(root: HTMLElement): void {

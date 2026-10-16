@@ -1,6 +1,6 @@
 // What a send's view says, shared by the list, the record, and the dashboard: a page's sends
 // as they stand, its conditions and actions, who needs the operator, the Delivered cell,
-// the in-progress card, the scheduled cards' countdowns, the Email only marks, and the small
+// the in-progress card, the scheduled cards' countdowns, the Email only label, and the small
 // number formats.
 
 import type {
@@ -35,16 +35,11 @@ export function fmtDuration(ms: number | null | undefined): string {
   return `${Math.round(m / 60)} hr`;
 }
 
-/** The grey Email only label beside an email-only post's subject in a list of sends (DESIGN
- *  §3): only the exception is marked, so a listed post carries nothing. */
+/** The grey Email only label beside an email-only post's subject wherever sends are listed,
+ *  a table row or a scheduled card (DESIGN §3): only the exception is marked, so a listed
+ *  post carries nothing. */
 export function emailOnlyLabel(s: Pick<SendView, "email_only">): Html | null {
   return s.email_only ? html` <span class="badge email-only">Email only</span>` : null;
-}
-
-/** What a scheduled card's line adds for an email-only post (DESIGN §4): only the
- *  exception is marked, since being listed is the default. */
-export function emailOnlyNote(s: Pick<SendView, "email_only">): Html | null {
-  return s.email_only ? html` · <span class="sched-email-only">Email only</span>` : null;
 }
 
 /**
