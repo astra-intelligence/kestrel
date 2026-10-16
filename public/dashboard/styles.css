@@ -2031,14 +2031,16 @@ body.web-mode .content {
   padding: 10px 44px;
   text-align: left;
 }
+/* The reader pages' Dev pill exactly (`.r-dev-tag` in src/lib/page.ts), so the two read as one. */
 .web-bar-tag {
   display: inline-block;
   margin-right: 10px;
-  font-size: 10px;
+  font-size: 9.5px;
+  line-height: 1.6;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   font-weight: 700;
-  padding: 1px 7px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: var(--accent-on);
   color: var(--accent);
