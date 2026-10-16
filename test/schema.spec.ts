@@ -424,3 +424,18 @@ describe("schema (0010_unlisted_links)", () => {
     await expect(insert("b", "spring")).rejects.toThrow(/UNIQUE constraint failed/);
   });
 });
+
+describe("schema (0011_sends_render_warnings)", () => {
+  it("reads a send frozen without its warnings, as the previous release's Worker freezes one, as having none (SPEC §5)", async () => {
+    await env.DB.prepare(
+      "INSERT INTO posts (id, slug, created_at, updated_at) VALUES ('a', 'one', 0, 0)",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, scheduled_at) VALUES ('s1', 'a', 'scheduled', 0, '', '', '', 0)",
+    ).run();
+    const row = await env.DB.prepare("SELECT render_warnings FROM sends WHERE id = 's1'").first<{
+      render_warnings: string;
+    }>();
+    expect(row?.render_warnings).toBe("[]");
+  });
+});

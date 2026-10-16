@@ -48,6 +48,7 @@ describe("the freeze reads the template it froze with", () => {
       rendered_html: "<p>x</p>",
       rendered_text: "x",
       subject: "Subj",
+      warnings: [],
     };
     const stale = await sends
       .insertScheduledSendStmt(env.DB, row, Date.now(), (version ?? 0) - 1)

@@ -203,6 +203,54 @@ describe("preview + test endpoints", () => {
     expect(archive).toContain(sentinel);
   });
 
+  it("a frozen copy keeps its render's warnings: schedule, send now, preview, and test all report them (SPEC §5)", async () => {
+    const missing = "The image “heron.jpg” isn’t on this post. Upload it, or check the file name.";
+    const draft = async (subject: string) =>
+      (
+        await readJson(
+          await SELF.fetch(`${base}/api/posts`, {
+            method: "POST",
+            headers: JSON_AUTH,
+            body: JSON.stringify({ subject, markdown: "# Hi\n\n![a heron](heron.jpg)" }),
+          }),
+        )
+      ).post.id as string;
+
+    const id = await draft(`Heron ${crypto.randomUUID()}`);
+    const scheduled = await SELF.fetch(`${base}/api/posts/${id}/schedule`, {
+      method: "POST",
+      headers: JSON_AUTH,
+      body: JSON.stringify({ fire_at: new Date(Date.now() + 600_000).toISOString() }),
+    });
+    expect(scheduled.status).toBe(201);
+    expect((await readJson(scheduled)).warnings).toEqual([missing]);
+    const action = await readJson(
+      await SELF.fetch(`${base}/api/posts/${id}/preview`, { method: "POST", headers: AUTH }),
+    );
+    expect([action.frozen, action.warnings]).toEqual([true, [missing]]);
+    const test = await readJson(
+      await SELF.fetch(`${base}/api/posts/${id}/test`, {
+        method: "POST",
+        headers: JSON_AUTH,
+        body: JSON.stringify({ to: `heron-${id}@example.com` }),
+      }),
+    );
+    expect([test.frozen, test.warnings]).toEqual([true, [missing]]);
+
+    // Send now answers them too, and so does its repeat.
+    const other = await draft(`Heron now ${crypto.randomUUID()}`);
+    const now = await SELF.fetch(`${base}/api/posts/${other}/send`, {
+      method: "POST",
+      headers: AUTH,
+    });
+    expect(now.status).toBe(201);
+    expect((await readJson(now)).warnings).toEqual([missing]);
+    const repeat = await readJson(
+      await SELF.fetch(`${base}/api/posts/${other}/send`, { method: "POST", headers: AUTH }),
+    );
+    expect([repeat.idempotent, repeat.warnings]).toEqual([true, [missing]]);
+  });
+
   it("a draft's test and preview are a live render (frozen: false)", async () => {
     const id = await draftWithImage("Live");
     const action = await readJson(

@@ -389,6 +389,44 @@ describe("a template or identity change re-makes the scheduled emails", () => {
     expect(send.rendered_html).toContain(marker);
   });
 
+  it("a re-made copy carries its own render's warnings, which preview and test report (SPEC §5, §6)", async () => {
+    const noViewLink =
+      "Add {{ .Email.ViewInBrowserURL }} so readers can open the post in a browser.";
+    const postId = await makeDraft("Warned");
+    const res = await SELF.fetch(`${base}/api/posts/${postId}/schedule`, {
+      method: "POST",
+      headers: JSON_AUTH,
+      body: JSON.stringify({ fire_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() }),
+    });
+    const scheduled = await readJson(res);
+    // The template every test starts on has no view-in-browser link, which the render says.
+    expect(scheduled.warnings).toEqual([noViewLink]);
+
+    const linked = tpl("v2").replace(
+      "</div>",
+      '<a href="{{ .Email.ViewInBrowserURL }}">Web</a></div>',
+    );
+    expect((await putSettings({ emailTemplate: linked, remake: [scheduled.send.id] })).status).toBe(
+      200,
+    );
+    const preview = await readJson(
+      await SELF.fetch(`${base}/api/posts/${postId}/preview`, { method: "POST", headers: AUTH }),
+    );
+    expect([preview.frozen, preview.warnings]).toEqual([true, []]);
+
+    expect(
+      (await putSettings({ emailTemplate: tpl("v3"), remake: [scheduled.send.id] })).status,
+    ).toBe(200);
+    const test = await readJson(
+      await SELF.fetch(`${base}/api/posts/${postId}/test`, {
+        method: "POST",
+        headers: JSON_AUTH,
+        body: JSON.stringify({ to: "warned@example.com" }),
+      }),
+    );
+    expect([test.frozen, test.warnings]).toEqual([true, [noViewLink]]);
+  });
+
   it("a re-made send fires with the re-made copy", async () => {
     await seedConfirmed("reader@example.com");
     const a = await schedule(await makeDraft("Post A"));

@@ -64,7 +64,12 @@ export async function renderPost(
   }
   const images = await listImages(env.DB, post.id);
   const rendered = await render({ post, revision, images }, config, branding);
-  return { rendered_html: rendered.html, rendered_text: rendered.text, subject: rendered.subject };
+  return {
+    rendered_html: rendered.html,
+    rendered_text: rendered.text,
+    subject: rendered.subject,
+    warnings: rendered.warnings,
+  };
 }
 
 /** The sweep's cadence: it runs once a minute, on the minute (SPEC §6, the timer). */

@@ -662,7 +662,7 @@ export function createRouter({
       summary:
         "Render the post to its email (returns the hosted URL, subject, warnings, and `frozen`).",
       description:
-        "Once the post is scheduled this is its frozen copy, exactly as it will fire, and once sent the record's; a draft renders live (SPEC §5).",
+        "Once the post is scheduled this is its frozen copy, exactly as it will fire, and once sent the record's; a draft renders live (SPEC §5). A frozen copy's `warnings` are the ones its render gave when it was frozen or last re-made.",
       handler: renderRoutes.preview,
     },
     {
@@ -695,7 +695,7 @@ export function createRouter({
       summary:
         "Send a test to one address through the same per-recipient path as a real send (I5).",
       description:
-        "Once the post is scheduled this sends its frozen copy, exactly as it will fire, and once sent the record's; a draft's test is a live render (SPEC §5). The response's `frozen` says which. A test of a scheduled send's frozen copy is recorded as its `tested_at`, which clears the send's `remade` condition. `sent` is true only when the provider took the test. When it didn't, `not_sent` says why: the provider's own words as `error` (never a credential), a `message` to show or relay as it stands, with the fix where it is known (the same advice as a send's `refused` condition, so a test refused for the account or the address isn't simply tried again), and `may_have_arrived`, true when the provider never answered: then the test may be in the inbox, and the answer is still a 200, never a server error. " +
+        "Once the post is scheduled this sends its frozen copy, exactly as it will fire, and once sent the record's; a draft's test is a live render (SPEC §5). The response's `frozen` says which, and its `warnings` are that copy's: a frozen copy's are the ones its render gave when it was frozen or last re-made. A test of a scheduled send's frozen copy is recorded as its `tested_at`, which clears the send's `remade` condition. `sent` is true only when the provider took the test. When it didn't, `not_sent` says why: the provider's own words as `error` (never a credential), a `message` to show or relay as it stands, with the fix where it is known (the same advice as a send's `refused` condition, so a test refused for the account or the address isn't simply tried again), and `may_have_arrived`, true when the provider never answered: then the test may be in the inbox, and the answer is still a 200, never a server error. " +
         notConnected,
       example: {
         request: { to: "you@example.com" },
@@ -750,10 +750,10 @@ export function createRouter({
       description:
         "Freezes the current draft, with the template and identity as they stand, onto a send row and soft-locks the post; cancelable until its fire time. A later template or identity change re-makes that frozen email after the publisher confirms it (SPEC §6); there is no per-send template to name, and a `template_revision` field is a 400. `fire_at` is epoch milliseconds or an ISO-8601 timestamp with a `Z` or `±hh:mm` offset; a timestamp without one is a 400, since the Worker cannot know which local time was meant. `fire_at` must be at least the minimum lead out, a 400 `fire_at_too_soon` otherwise (for the soonest send, use Send now, `POST /api/posts/:id/send`): " +
         lead +
-        ". The time is then rounded up to the next whole minute (one already on the minute stays), since the sweep fires sends on the minute; the lead is checked on the time as requested, so rounding only lengthens the window. `email_only` (optional) sets the post's listing as it is scheduled (SPEC §5): `true` mails it as usual but leaves it out of the archive index and the landing page, `false` lists it; absent, the post keeps the listing it has, which is in the archive unless it was set otherwise. `slug` and `slug_auto` (optional) set its archive address as `PUT /api/posts/:id/settings` does, checked before anything is frozen, so a 400 `slug_invalid` or 409 `slug_taken` schedules nothing, and a refused schedule changes neither. None is part of the frozen email. Answers with the new send's view (as `GET /api/sends/:id` describes it) and a `cursor` to follow it from. Refusals: 409 `active_send_exists` when the post already has its one active send (carried as `send`), 409 `post_not_draft`, 400 `subject_required` for an empty subject, 409 `settings_changed` when a template or identity save kept landing while it froze (try again), and 409 `provider_not_connected` while no email provider is connected (SPEC §9).",
+        ". The time is then rounded up to the next whole minute (one already on the minute stays), since the sweep fires sends on the minute; the lead is checked on the time as requested, so rounding only lengthens the window. `email_only` (optional) sets the post's listing as it is scheduled (SPEC §5): `true` mails it as usual but leaves it out of the archive index and the landing page, `false` lists it; absent, the post keeps the listing it has, which is in the archive unless it was set otherwise. `slug` and `slug_auto` (optional) set its archive address as `PUT /api/posts/:id/settings` does, checked before anything is frozen, so a 400 `slug_invalid` or 409 `slug_taken` schedules nothing, and a refused schedule changes neither. None is part of the frozen email. Answers with the new send's view (as `GET /api/sends/:id` describes it), a `cursor` to follow it from, and `warnings`, what the render found wrong with the frozen copy (an image the post never uploaded, say), which preview and test of the copy report too (SPEC §5). Refusals: 409 `active_send_exists` when the post already has its one active send (carried as `send`), 409 `post_not_draft`, 400 `subject_required` for an empty subject, 409 `settings_changed` when a template or identity save kept landing while it froze (try again), and 409 `provider_not_connected` while no email provider is connected (SPEC §9).",
       example: {
         request: { fire_at: "2026-01-16T09:00:00Z" },
-        response: { send: scheduledExample, cursor: "57.1768467610000" },
+        response: { send: scheduledExample, cursor: "57.1768467610000", warnings: [] },
       },
       handler: scheduleRoutes.schedule,
     },
@@ -768,10 +768,10 @@ export function createRouter({
       description:
         "The same freeze as scheduling, with the template and identity as they stand, and `fire_at` set to now plus the minimum lead, rounded up to the next whole minute as every fire time is: " +
         lead +
-        ". For nearly all of that window the send is inside the minimum lead, so a template or identity save that would re-make it is refused until it has fired. An optional JSON body may carry `email_only`, `slug`, and `slug_auto`, the post's settings, as for scheduling. A second call for a post already in its window answers with that send and `idempotent: true`, and changes nothing, its listing included; one that names settings the post doesn't have is a 409 `active_send_exists` carrying the send, so a caller that asked for email only never reads success for a post going out listed (change them with `PUT /api/posts/:id/settings`). The other refusals are as for scheduling.",
+        ". For nearly all of that window the send is inside the minimum lead, so a template or identity save that would re-make it is refused until it has fired. An optional JSON body may carry `email_only`, `slug`, and `slug_auto`, the post's settings, as for scheduling. A second call for a post already in its window answers with that send and `idempotent: true`, and changes nothing, its listing included; one that names settings the post doesn't have is a 409 `active_send_exists` carrying the send, so a caller that asked for email only never reads success for a post going out listed (change them with `PUT /api/posts/:id/settings`). Its answer carries `warnings` as scheduling's does, a repeat's included. The other refusals are as for scheduling.",
       example: {
         request: { email_only: true },
-        response: { send: scheduledExample, cursor: "57.1768467610000" },
+        response: { send: scheduledExample, cursor: "57.1768467610000", warnings: [] },
       },
       handler: scheduleRoutes.sendNow,
     },

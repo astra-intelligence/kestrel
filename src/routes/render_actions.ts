@@ -17,7 +17,12 @@ import type { TemplateTestResponse } from "../../shared/settings";
 import * as images from "../db/images";
 import type { PostRow, RevisionRow } from "../db/posts";
 import * as posts from "../db/posts";
-import { getActiveSendForPost, latestSentSendForPost, markTested } from "../db/sends";
+import {
+  getActiveSendForPost,
+  latestSentSendForPost,
+  markTested,
+  renderWarnings,
+} from "../db/sends";
 import { getSettings } from "../db/settings";
 import { fieldError, type JsonObject, optString, readJsonObject } from "../lib/body";
 import { badRequest, json, notFound } from "../lib/errors";
@@ -87,7 +92,9 @@ async function loadPostEmail(c: RequestContext): Promise<PostEmail> {
     return {
       input,
       email: { subject: send.subject, html: send.rendered_html, text: send.rendered_text },
-      warnings: [],
+      // What the render said when it froze this copy, kept with it: the copy is what goes
+      // out, so a test of it reports what it found (SPEC §5).
+      warnings: renderWarnings(send),
       frozen: { id: send.id },
       dateMs: send.started_at ?? send.fire_at,
     };

@@ -240,6 +240,8 @@ export interface Send {
    * then answers whatever the post's listing.
    */
   web_link: "unlisted" | "archive";
+  /** The render's warnings about the frozen copy (SPEC §5), as a JSON array of strings, kept by the freeze and every re-make; `[]` for a send frozen before they were kept. */
+  render_warnings: string;
   /** Why the provider refused this send's last batch as a whole (SPEC §12), or null once a batch is answered: `unavailable` retries on its own, `account` needs the operator. */
   halt_reason: HaltReason | null;
   /** What that refusal is about, for the advice shown with it. */
@@ -272,7 +274,10 @@ export interface Send {
 }
 
 /** A stored send without the large frozen bodies: what a view is built from. */
-export type SendSummary = Omit<Send, "rendered_html" | "rendered_text" | "web_link">;
+export type SendSummary = Omit<
+  Send,
+  "rendered_html" | "rendered_text" | "web_link" | "render_warnings"
+>;
 
 /**
  * How long a send may hand off no one, with nothing else to explain why, before it is
@@ -708,6 +713,8 @@ export interface SendActionResponse {
  */
 export interface ScheduleResponse {
   send: SendView;
+  /** What the render said about the frozen copy (SPEC §5), such as an image the post never uploaded; empty when it said nothing. */
+  warnings: string[];
   /** Where the answer stands among the changes to sends, to follow the send from. */
   cursor: string;
   idempotent?: boolean;

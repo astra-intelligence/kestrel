@@ -2,7 +2,7 @@
 
 import type { ScheduleResponse } from "../../shared/sends";
 import { getPost } from "../db/posts";
-import { getActiveSendForPost, type SendRow } from "../db/sends";
+import { getActiveSendForPost, renderWarnings, type SendRow } from "../db/sends";
 import { fieldError, readJsonObject } from "../lib/body";
 import { HttpError, json, notFound } from "../lib/errors";
 import { unwrap } from "../lib/unwrap";
@@ -85,8 +85,7 @@ export async function schedule(c: RequestContext): Promise<Response> {
   // A draft has no started send, so its address can still change.
   const settings = await resolveSettings(c.env.DB, post, fields);
   const send = await freeze(c.env, c.config, post, fireAt, settings);
-  const frozen: ScheduleResponse = unwrap(await viewWithCursor(c.env, send.id), "send");
-  return json(frozen, 201);
+  return json(await frozenAnswer(c, send), 201);
 }
 
 export async function sendNow(c: RequestContext): Promise<Response> {
@@ -104,7 +103,7 @@ export async function sendNow(c: RequestContext): Promise<Response> {
   // nothing, its settings included: they have their own route.
   const active = await getActiveSendForPost(c.env.DB, post.id);
   if (active) {
-    return repeatAnswer(c, active.id, fields);
+    return repeatAnswer(c, active, fields);
   }
 
   requireConnectedProvider(c.config);
@@ -123,13 +122,21 @@ export async function sendNow(c: RequestContext): Promise<Response> {
     if (err instanceof HttpError && err.code === "active_send_exists") {
       const winner = await getActiveSendForPost(c.env.DB, post.id);
       if (winner) {
-        return repeatAnswer(c, winner.id, fields);
+        return repeatAnswer(c, winner, fields);
       }
     }
     throw err;
   }
-  const frozen: ScheduleResponse = unwrap(await viewWithCursor(c.env, send.id), "send");
-  return json(frozen, 201);
+  return json(await frozenAnswer(c, send), 201);
+}
+
+/** A schedule's or send-now's answer: the send as it now stands, and what the render said
+ *  about the copy it froze (SPEC §5), so a caller learns of a missing image before it tests. */
+async function frozenAnswer(c: RequestContext, send: SendRow): Promise<ScheduleResponse> {
+  return {
+    ...unwrap(await viewWithCursor(c.env, send.id), "send"),
+    warnings: renderWarnings(send),
+  };
 }
 
 /**
@@ -140,7 +147,7 @@ export async function sendNow(c: RequestContext): Promise<Response> {
  */
 async function repeatAnswer(
   c: RequestContext,
-  sendId: string,
+  send: SendRow,
   fields: SettingsBody,
 ): Promise<Response> {
   // Read again: the send this repeats may have set them as it froze.
@@ -150,11 +157,8 @@ async function repeatAnswer(
     (fields.slug !== undefined && fields.slug !== post.slug) ||
     (fields.slugAuto !== undefined && fields.slugAuto !== post.slug_auto);
   if (differs) {
-    throw await activeSendExists(c.env, { id: sendId });
+    throw await activeSendExists(c.env, send);
   }
-  const repeat: ScheduleResponse = {
-    ...unwrap(await viewWithCursor(c.env, sendId), "send"),
-    idempotent: true,
-  };
+  const repeat: ScheduleResponse = { ...(await frozenAnswer(c, send)), idempotent: true };
   return json(repeat);
 }
