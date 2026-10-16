@@ -104,7 +104,7 @@ describe("web version", () => {
     );
     // Email only: it will have no archive address, so the bar names none (SPEC §5).
     expect(bar({ scheduled: false, url, emailOnly: true }).textContent).toBe(
-      "Web version Draft · will be sent as email only, not in your archive",
+      "Web version Draft · will be sent as email only",
     );
     // Unknown address or post: the bar names no address, or no stage, rather than a wrong one.
     expect(bar({ scheduled: false, url: null }).textContent).toBe("Web version Draft");

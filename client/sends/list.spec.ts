@@ -253,9 +253,7 @@ describe("sent view", () => {
     expect($(".modal h3").textContent).toBe("Reschedule this post");
     const include = $<HTMLInputElement>("#rsInclude");
     expect(include.checked).toBe(false);
-    expect($("#rsHint").textContent).toMatch(
-      /It will be sent as email only, not in your archive\.$/,
-    );
+    expect($("#rsHint").textContent).toMatch(/It will be sent as email only\.$/);
     include.checked = true;
     include.dispatchEvent(new Event("change"));
     expect($("#rsHint").textContent).toMatch(/It will be in your archive\.$/);

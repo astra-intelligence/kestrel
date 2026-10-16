@@ -3318,11 +3318,38 @@ textarea.is-invalid {
   line-height: 1.45;
   color: var(--muted);
 }
-/* Post settings (DESIGN §3). A scheduled post's banner names where it is going, in a line under
-   its time, in the banner's own violet. */
-.sched-dest {
-  margin-top: 4px;
+/* A scheduled post's banner in two rows (DESIGN §4): the time, its notes, and the controls that
+   act on it; then, under a hairline, where the post is going, on a softer ground. */
+.banner-split {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+.banner-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  font-size: 15px;
+}
+.banner-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--status-scheduled-line);
+  background: color-mix(in srgb, var(--status-scheduled-bg) 55%, var(--card));
   font-size: 13px;
+}
+.banner-bottom svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+#schedDest {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 .sched-dest code {

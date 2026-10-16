@@ -55,16 +55,14 @@ export function publishingOf(post: Post, archiveSlug: string): Publishing {
  */
 export function destinationHtml(p: Publishing): Html {
   return p.emailOnly
-    ? html`Will be sent as email only, not in your archive.`
+    ? html`Will be sent as email only.`
     : html`Will be in your archive at <code>${archiveBase()}${p.slug}</code>`;
 }
 
 /** How the Schedule and Send now dialogs' first line ends, in the future tense: a full
  *  sentence of its own, so the default is stated rather than implied. */
 export function willAppearClause(emailOnly: boolean): string {
-  return emailOnly
-    ? " It will be sent as email only, not in your archive."
-    : " It will be in your archive.";
+  return emailOnly ? " It will be sent as email only." : " It will be in your archive.";
 }
 
 /** The helper under Include in archive, in every dialog that shows the box. */

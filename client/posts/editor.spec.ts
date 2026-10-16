@@ -1750,17 +1750,13 @@ describe("editor view", () => {
       include.checked = false;
       include.dispatchEvent(new Event("change"));
       expect(document.querySelector("#schAddress")).toBeNull(); // no address while email only
-      expect($("#schHint").textContent).toMatch(
-        /\. It will be sent as email only, not in your archive\.$/,
-      );
+      expect($("#schHint").textContent).toMatch(/\. It will be sent as email only\.$/);
       expect(listings()).toHaveLength(0); // nothing saved yet
       expect($("#headEmailOnly").hidden).toBe(true);
       $("#toSendNow").click();
       await vi.advanceTimersByTimeAsync(0);
       expect($<HTMLInputElement>("#schInclude").checked).toBe(false);
-      expect($("#snClause").textContent).toBe(
-        " It will be sent as email only, not in your archive.",
-      );
+      expect($("#snClause").textContent).toBe(" It will be sent as email only.");
       $("#snGo").click();
       await vi.advanceTimersByTimeAsync(0);
       const sent = fake.calls.find((c) => c.url.pathname === "/api/posts/p1/send");
@@ -1801,9 +1797,7 @@ describe("editor view", () => {
       await open(routes(draftServer(draft({ email_only: true }))));
       $("#scheduleBtn").click();
       expect($<HTMLInputElement>("#schInclude").checked).toBe(false);
-      expect($("#schHint").textContent).toMatch(
-        /\. It will be sent as email only, not in your archive\.$/,
-      );
+      expect($("#schHint").textContent).toMatch(/\. It will be sent as email only\.$/);
     });
   });
 
@@ -1880,13 +1874,16 @@ describe("editor view", () => {
       await open([...post.routes, listingRoute(post.server)]);
       expect($<HTMLInputElement>("#f-subject").readOnly).toBe(true);
       expect($("#schedDest").textContent).toBe("Will be in your archive at /archive/owls");
+      // On a row of its own, apart from the controls that act on the time.
+      expect($("#schedDest").closest(".banner-bottom")).not.toBeNull();
+      expect($(".banner-top").contains($("#schedDest"))).toBe(false);
       $("#settingsBtn").click();
       const include = $<HTMLInputElement>("#psInclude");
       include.checked = false;
       include.dispatchEvent(new Event("change"));
       $("#psSave").click();
       await vi.advanceTimersByTimeAsync(0);
-      expect($("#schedDest").textContent).toBe("Will be sent as email only, not in your archive.");
+      expect($("#schedDest").textContent).toBe("Will be sent as email only.");
       // Said once: the banner's line, not a tag after the time, nor the head's mark.
       expect(document.querySelector("#schedWhen .sched-email-only")).toBeNull();
       expect($("#headEmailOnly").hidden).toBe(true);

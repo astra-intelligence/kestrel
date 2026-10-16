@@ -59,7 +59,7 @@ export function webBar(state: WebBarState | null): Html {
   }
   const stage = state.scheduled ? "Scheduled" : "Draft";
   const at = state.emailOnly
-    ? html` · will be sent as email only, not in your archive`
+    ? html` · will be sent as email only`
     : state.url
       ? html` · will be in your archive at ${shortUrl(state.url)}`
       : null;
