@@ -438,10 +438,12 @@ function deliveryOutcome(r: DeliveryRecord): Outcome {
 }
 
 // The three view tabs the record opens on, failures first (the rows that went wrong).
+// The list opens on everyone, so the record reads as the whole send; what went wrong is one
+// switch away and also counted in the tiles above.
 const DELIVERY_TABS: { v: DeliveryView; label: string }[] = [
-  { v: "failures", label: "Failures" },
-  { v: "delivered", label: "Delivered" },
   { v: "all", label: "All" },
+  { v: "delivered", label: "Delivered" },
+  { v: "failures", label: "Failures" },
 ];
 
 /** The per-recipient list's state: the list controls' plus which bucket it shows. */
@@ -667,13 +669,13 @@ function renderFrozenRecord(
   };
   paintPost();
 
-  // The per-recipient record, its own paged/filtered state. Default view is "failures" so
-  // the rows that went wrong lead; default sort mirrors the CSV (email asc). It reloads on
+  // The per-recipient record, its own paged/filtered state. Default view is "all", so the
+  // list reads as the whole send; default sort mirrors the CSV (email asc). It reloads on
   // interaction (a view/search/sort/page change, or re-clicking the view), and on each
   // settling refresh that moved the tiles, so the list follows the counts above it. The
   // two are separate reads, so between refreshes they can differ by what one tick brought.
   const dstate: DeliveryListState = {
-    view: "failures",
+    view: "all",
     search: "",
     sort: "email",
     dir: "asc",

@@ -121,13 +121,13 @@ describe("sent record", () => {
     expect($(".rec-people-table").textContent).not.toContain("erased:");
   });
 
-  it("renders the frozen record: tiles, the reconciliation line, and the failures list first", async () => {
+  it("renders the frozen record: tiles, the reconciliation line, and every recipient first", async () => {
     fake = fakeApi([
       ...sentSend().routes,
       {
         path: "/api/sends/x1/deliveries",
         reply: (req) => ({
-          deliveries: req.url.searchParams.get("view") === "failures" ? rows : [],
+          deliveries: req.url.searchParams.get("view") === "all" ? rows : [],
           view: req.url.searchParams.get("view"),
           page,
         }),
@@ -145,7 +145,8 @@ describe("sent record", () => {
     expect($("#recOpen").textContent).toBe("Open\u00a0↗");
     expect(
       fake.calls.find((c) => c.url.pathname.endsWith("/deliveries"))?.url.searchParams.get("view"),
-    ).toBe("failures");
+    ).toBe("all");
+    expect($(".rec-view-btn[aria-pressed='true']").textContent).toBe("All");
     expect($("#recPill").textContent).toBe("Complete");
     // Nothing moves: the record follows its send at the idle pace, reading the feed and
     // nothing else, never the send's whole record again.
@@ -576,6 +577,8 @@ describe("sent record", () => {
     const lists = () => fake.calls.filter((c) => c.url.pathname.endsWith("/deliveries"));
     await mount((r, s) => renderSentRecord("x1", r, s));
     await vi.advanceTimersByTimeAsync(0);
+    $(".rec-view-btn[data-view='failures']").click();
+    await vi.advanceTimersByTimeAsync(0);
     expect($("#recRows").textContent).toMatch(/No delivery failures/);
     expect($(".rec-n.warn").textContent).toBe("0");
 
@@ -642,16 +645,16 @@ describe("sent record", () => {
     const sent = sentSend(SETTLING);
     let held: ((v: unknown) => void) | null = null;
     const release = () => held?.(null);
-    let failureReads = 0;
+    let allReads = 0;
     fake = fakeApi([
       ...sent.routes,
       {
         path: "/api/sends/x1/deliveries",
         reply: (req) => {
           const view = req.url.searchParams.get("view");
-          const answer = { deliveries: view === "failures" ? rows : [], view, page };
-          // The mount's failures read answers at once; the poll's reload is held open.
-          return view === "failures" && ++failureReads === 2
+          const answer = { deliveries: view === "all" ? rows : [], view, page };
+          // The mount's read of everyone answers at once; the poll's reload is held open.
+          return view === "all" && ++allReads === 2
             ? new Promise((r) => (held = r)).then(() => answer)
             : answer;
         },
@@ -661,11 +664,11 @@ describe("sent record", () => {
     await vi.advanceTimersByTimeAsync(0);
     sent.receipt({ c_delivered: 6, c_accepted: 4 });
     await vi.advanceTimersByTimeAsync(3000); // the refresh's reload is now pending
-    expect(failureReads).toBe(2);
+    expect(allReads).toBe(2);
     $(".rec-view-btn[data-view='delivered']").click();
     await vi.advanceTimersByTimeAsync(0);
     expect($("#recRows").textContent).toMatch(/No delivery receipts confirmed yet/);
-    release(); // the stale failures answer lands last
+    release(); // the stale answer for everyone lands last
     await vi.advanceTimersByTimeAsync(0);
     expect($("#recRows").textContent).toMatch(/No delivery receipts confirmed yet/);
     expect(document.querySelector(".rec-people-table")).toBeNull();
