@@ -182,7 +182,7 @@ describe("reference room", () => {
     expect($$(".api-param", rows[2]).map((p) => p.textContent)).toEqual([":id"]);
     // The detail: summary, description, query, then the examples that exist.
     expect($(".api-desc", rows[0]).textContent).toBe("Offset-paged.");
-    expect($(".api-query td code", rows[0]).textContent).toBe("status");
+    expect($(".api-table td code", rows[0]).textContent).toBe("status");
     expect($(".api-summary", rows[1]).textContent).toBe("Create <a post>."); // text, not markup
     expect($(".api-route-title", rows[1]).textContent).toBe("Create <a post>");
     expect(document.querySelector(".api-summary a, .api-route-title a")).toBeNull();
@@ -314,11 +314,10 @@ describe("reference room", () => {
     await mount(renderReference);
     await settle();
     const [upload, del] = $$(".api-route");
-    expect($$(".api-accepts code", upload!).map((c) => c.textContent)).toEqual([
-      "multipart/form-data",
-      "image/png",
-    ]);
-    expect(del!.querySelector(".api-accepts")).toBeNull();
+    // The body's media types sit in its label, from the registration the router enforces.
+    expect(
+      $(".api-body", upload!).closest(".block")?.querySelector(".block-label")?.textContent,
+    ).toBe("Body · multipart/form-data, image/png");
     // Each body field with its type, the required one marked; the text stays text.
     expect($$(".api-body tr", upload!).map((tr) => tr.textContent)).toEqual([
       "file requiredfileThe image.",
@@ -327,8 +326,10 @@ describe("reference room", () => {
     expect(upload!.querySelector(".api-body name")).toBeNull();
     expect(del!.querySelector(".api-body")).toBeNull();
     // The route's own refusals: status and code, then when, with the fields the body carries.
+    // The route's own refusals: status and code with the fields the body carries under them,
+    // then when.
     expect($$(".api-errors tr", del!).map((tr) => tr.textContent)).toEqual([
-      "409 post_not_draftThe post is <scheduled>. With send, field.",
+      "409 post_not_draftwith send, fieldThe post is <scheduled>.",
     ]);
     expect(upload!.querySelector(".api-errors")).toBeNull();
   });
@@ -343,19 +344,37 @@ describe("reference room", () => {
       "Every code, by what to do next:",
     ]);
     expect(document.querySelector("#api-overview-errors .api-prose field")).toBeNull();
-    // The object is one collapsed line, first under the resource whose routes return it.
+    // The object is a collapsed row like a route's, first under the resource whose routes
+    // return it, marked Object where a route shows its verb.
     const object = $<HTMLDetailsElement>("#api-admin-sends > details.api-object");
     expect(object.id).toBe("api-objects-send");
     expect(object.open).toBe(false);
-    expect($(".api-object-sum", object).textContent?.replace(/\s+/g, " ").trim()).toBe(
-      "The send view1 field",
+    expect($(".api-method", object).textContent).toBe("Object");
+    expect($(".api-route-title", object).textContent).toBe("The send view");
+    expect($(".api-path", object).textContent).toBe("1 field");
+    // The refusal table, folded under Errors, each group led by its next move.
+    expect($<HTMLDetailsElement>("#api-overview-errors details.api-fold").open).toBe(false);
+    expect($("#api-overview-errors .api-fold > summary").textContent).toBe(
+      "Every refusal code 1 code, by what to do next",
     );
-    // The refusal table, each group led by its next move.
+    // A filter that matches a code opens the fold, so the code is in view; clearing it folds again.
+    const filter = $<HTMLInputElement>("#apiFilter");
+    filter.value = "window_closed";
+    filter.dispatchEvent(new Event("input"));
+    expect($<HTMLDetailsElement>("#api-overview-errors details.api-fold").open).toBe(true);
+    filter.value = "";
+    filter.dispatchEvent(new Event("input"));
+    expect($<HTMLDetailsElement>("#api-overview-errors details.api-fold").open).toBe(false);
     expect($$(".api-refusals tr").map((tr) => tr.textContent)).toEqual([
       "Nothing: the act no longer applies",
       "409 window_closedThe fire time has passed.",
     ]);
     expect($(".api-refusals tr.api-move th").getAttribute("colspan")).toBe("2");
+    // A code breaks only where its words join, and its meaning reads in ink like any table's.
+    expect($(".api-refusals td.api-name code").innerHTML).toBe(
+      '<span class="api-status">409</span> window_<wbr>closed',
+    );
+    expect($(".api-refusals td.api-name + td").classList.contains("muted")).toBe(false);
     // An object's fields, an enum's values under its line, and its example.
     expect($$("#api-objects-send .api-fields tr").map((tr) => tr.textContent)).toEqual([
       "statusstringIts state.scheduled Cancelable.",
@@ -398,7 +417,7 @@ describe("reference room", () => {
       "changedbooleanFalse when nothing changed.",
     ]);
     expect($$(".api-errors tr", route).map((tr) => tr.textContent)).toEqual([
-      "409 window_closedThe fire time has passed. With send.",
+      "409 window_closedwith sendThe fire time has passed.",
     ]);
     // The object's link is a real link to its address, and jumps there in place: opened, with
     // focus on its line, the address in the bar, and the room not rendered again.
@@ -551,7 +570,7 @@ describe("reference room", () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(withToken) }]);
     await mount(renderReference);
     await settle();
-    expect($(".api-route .api-query td").textContent).toBe("token required");
+    expect($(".api-route .api-table td").textContent).toBe("token required");
     expect($$("code", $$(".block").at(-1)!).at(-1)?.textContent).toBe(
       `curl "${location.origin}/confirm?token=:token"`,
     );
