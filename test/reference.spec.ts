@@ -12,8 +12,9 @@ import {
 import { createRouter } from "../src/app";
 import { requireAuth } from "../src/auth/middleware";
 import { type AppEnv, getConfig } from "../src/env";
-import { buildReference, referenceMarkdown } from "../src/reference";
-import { REFUSAL_STATUS } from "../src/reference/refusals";
+import { buildReference, buildReferenceResponse, referenceMarkdown } from "../src/reference";
+import { OBJECTS } from "../src/reference/objects";
+import { REFUSAL_STATUS, refusalGroups } from "../src/reference/refusals";
 import { type RouteDef, Router } from "../src/router";
 import { AUTH, base } from "./support/http";
 
@@ -44,14 +45,11 @@ describe("API reference is generated from the route registration", () => {
   });
 
   it("states a halted send's retry schedule as the sweep keeps it (SPEC §12)", () => {
-    const list = defs.find((d) => d.method === "GET" && d.path === "/api/sends")!;
-    expect(list.description).toContain(
-      "retried after 1, 2, 5, 15, and 30 minutes and then every 60 minutes",
-    );
-    expect(list.description).toContain(
-      "retried after 5, 15, and 30 minutes and then every 60 minutes",
-    );
-    expect(list.description).toContain("retry_at");
+    const halt = OBJECTS.send.fields.find((f) => f.name === "provider.halt")!;
+    const said = JSON.stringify(halt);
+    expect(said).toContain("retried after 1, 2, 5, 15, and 30 minutes and then every 60 minutes");
+    expect(said).toContain("retried after 5, 15, and 30 minutes and then every 60 minutes");
+    expect(said).toContain("retry_at");
   });
 
   it("every route under the re-make rule states it in its own description (the reference is what Claude reads)", () => {
@@ -81,21 +79,23 @@ describe("API reference is generated from the route registration", () => {
   it("tells a client what each subscriber status, suppression, and act means, in the editor legend's words (SPEC §7)", () => {
     const byKey = new Map(defs.map((d) => [`${d.method} ${d.path}`, d]));
     const describe = (key: string) => byKey.get(key)?.description ?? "";
-    for (const key of ["GET /api/subscribers", "GET /api/suppressions"]) {
-      expect(describe(key)).toContain(SUPPRESSED_MEANING);
+    // Each object says it once: the subscriber's statuses and suppression, the suppression's reasons.
+    const said = (key: "subscriber" | "suppression") => JSON.stringify(OBJECTS[key]);
+    for (const key of ["subscriber", "suppression"] as const) {
+      expect(said(key)).toContain(SUPPRESSED_MEANING);
       for (const [flag, meaning] of Object.entries(FLAG_MEANING)) {
         if (flag !== "erased") {
-          expect(describe(key)).toContain(meaning);
+          expect(said(key)).toContain(meaning);
         }
       }
     }
     // The roster shows an erasure's marker only on someone who signed up again; the list of
     // suppressions holds markers with no subscriber, so it says what a marker is instead.
-    expect(describe("GET /api/subscribers")).toContain(FLAG_MEANING.erased);
-    expect(describe("GET /api/suppressions")).toContain(ERASED_MARKER_MEANING);
-    expect(describe("GET /api/suppressions")).not.toContain(FLAG_MEANING.erased);
+    expect(said("subscriber")).toContain(FLAG_MEANING.erased);
+    expect(said("suppression")).toContain(ERASED_MARKER_MEANING);
+    expect(said("suppression")).not.toContain(FLAG_MEANING.erased);
     for (const meaning of Object.values(STATUS_MEANING)) {
-      expect(describe("GET /api/subscribers")).toContain(meaning);
+      expect(said("subscriber")).toContain(meaning);
     }
     // Each act says when it is the one to use, and so whose decision it records.
     expect(describe("POST /api/subscribers/:id/unsubscribe")).toContain(
@@ -327,6 +327,71 @@ describe("API reference is generated from the route registration", () => {
         .filter((code) => !notCodes.has(code)),
     );
     expect([...named].sort()).toEqual(Object.keys(REFUSAL_STATUS).sort());
+    // Each code in one group only: a code listed under two moves would merge into one silently.
+    const grouped = refusalGroups().flatMap((g) => g.codes.map((c) => c.code));
+    expect(grouped.length).toBe(Object.keys(REFUSAL_STATUS).length);
+  });
+
+  it("describes every object a route returns, once, first under its resource, and links each route to it", () => {
+    const ref = buildReferenceResponse(defs);
+    const md = referenceMarkdown(ref, "https://newsletter.example.com");
+    const returned = ref.groups.flatMap((g) => g.routes).flatMap((r) => r.returns?.object ?? []);
+    expect(new Set(returned)).toEqual(new Set(ref.objects.map((o) => o.key)));
+    for (const o of ref.objects) {
+      expect(md.match(new RegExp(`^#### ${o.title}$`, "gm")), o.key).toHaveLength(1);
+      expect(md).toContain(`](#${o.title.toLowerCase().replaceAll(" ", "-")})`);
+    }
+    // Stripe's order: the object heads its resource, before the routes that return it.
+    expect(md).toMatch(/^### Sends\n\n#### The send view\n/m);
+    expect(md).toMatch(/^### Posts\n\n#### The post object\n[\s\S]*?^#### The revision object$/m);
+    const byKey = new Map(
+      ref.groups.flatMap((g) => g.routes).map((r) => [`${r.method} ${r.path}`, r]),
+    );
+    expect(byKey.get("POST /api/sends/:id/cancel")?.returns).toEqual({
+      object: "send",
+      as: "send",
+      fields: [
+        expect.objectContaining({ name: "cursor" }),
+        expect.objectContaining({ name: "changed" }),
+      ],
+    });
+  });
+
+  it("states what every send shares once: the conditions, the halts, and the whole send view's example", () => {
+    const md = referenceMarkdown(buildReferenceResponse(defs), "https://newsletter.example.com");
+    // A line from the conditions glossary, a line from the halts, and a field only the full
+    // example carries: each once, in the send view, where route prose used to repeat them.
+    expect(md.match(/recipient handed off for 30 minutes/g)).toHaveLength(1);
+    expect(md.match(/retried after 1, 2, 5, 15, and 30 minutes/g)).toHaveLength(1);
+    expect(md.match(/"deliveries_csv":/g)).toHaveLength(1);
+    // And the topics lead, in plain sentences, the refusal table under Errors.
+    expect([...md.matchAll(/^## (.+)$/gm)].map(([, t]) => t).slice(0, 5)).toEqual([
+      "Authentication",
+      "Errors",
+      "Lists and paging",
+      "Acting safely",
+      "Following changes",
+    ]);
+    expect(md).not.toContain("**");
+    expect(md).toMatch(
+      /^## Errors\n[\s\S]*?\| Next move \| Refusal \| Meaning \|[\s\S]*?^## Lists and paging$/m,
+    );
+    expect(md).toContain("| Read again, then decide | 409 `stale_revision` |");
+    expect(md.indexOf("## Following changes")).toBeLessThan(md.indexOf("## Admin"));
+  });
+
+  it("shows each answer's send at the change its cursor stands at, as the server answers", () => {
+    // An answer's cursor is the change sequence at its read, and the send in it is as of that
+    // read: an act's answer carries the send its act just changed, so its rev is the cursor's.
+    let checked = 0;
+    for (const d of defs) {
+      const res = d.example?.response as { send?: { rev?: number }; cursor?: string } | undefined;
+      if (res?.send?.rev !== undefined && res.cursor !== undefined) {
+        expect(res.send.rev, `${d.method} ${d.path}`).toBe(Number(res.cursor.split(".")[0]));
+        checked++;
+      }
+    }
+    expect(checked).toBe(6);
   });
 
   it("a newly registered route appears in the reference with no separate doc to touch", () => {
@@ -391,14 +456,16 @@ describe("the reference as Markdown, for an agent (/api/reference.md)", () => {
   const defs = router.routes.map((r) => r.def);
 
   it("gives every registered route its own heading, its title over its method and path, under its tier and resource", () => {
-    const md = referenceMarkdown(buildReference(defs), "https://newsletter.example.com");
+    const md = referenceMarkdown(buildReferenceResponse(defs), "https://newsletter.example.com");
     const headings = [...md.matchAll(/^#### (.+)\n\n`(\S+) (\S+)`$/gm)].map(
       ([, t, m, p]) => `${t}: ${m} ${p}`,
     );
     expect(headings.sort()).toEqual(defs.map((d) => `${d.title}: ${d.method} ${d.path}`).sort());
     expect(md).toContain("Base URL `https://newsletter.example.com`");
     // Tiers, then their resources, then routes, each a level down.
-    expect(md).toMatch(/^## Admin\n\n[^#][\s\S]*?^### Posts\n\n#### .+\n\n`\S+ \/api\/posts\S*`$/m);
+    expect(md).toMatch(
+      /^## Admin\n\n[^#][\s\S]*?^### Posts\n\n[\s\S]*?^#### .+\n\n`\S+ \/api\/posts\S*`$/m,
+    );
     expect(md).not.toMatch(/^## \S+: /m);
     // A route's query table, body table, and example come through.
     expect(md).toMatch(/\| Query parameter \| Description \|/);
@@ -406,10 +473,11 @@ describe("the reference as Markdown, for an agent (/api/reference.md)", () => {
       '| Body field | Type | Description |\n| --- | --- | --- |\n| `resolution` (required) | "unsent" \\| "accepted" |',
     );
     expect(md).toContain(
-      "| 409 `not_wedged` | The send is not wedged (nothing ambiguous, recipients still to hand off, or a run yet to look at them), as when another Resolve has settled it. With `send`. |",
+      "Refusals:\n- 409 `run_in_progress`, with `send`: A run holds the send, and its in-flight rows may still get the provider's answer: try again a moment later.\n- 409 `not_wedged`, with `send`: ",
     );
-    // The refusals every route shares are said once, at the top.
-    expect(md.match(/401 `unauthorized`/g)).toHaveLength(1);
+    // The refusals every route shares are said once, at the top, never in a route's own.
+    expect(md.indexOf("401 `unauthorized`")).toBeLessThan(md.indexOf("## Admin"));
+    expect(md.slice(md.indexOf("## Admin"))).not.toContain("`unauthorized`");
     expect(md).toContain("Example response:");
   });
 
