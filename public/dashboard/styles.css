@@ -1934,51 +1934,117 @@ th.num .th-sort {
   cursor: default;
 }
 
-/* API reference tables, one shape for all of them: a name column (a field, a parameter, or a
-   refusal code, with its type or what a refusal carries under it), then the line on what it
-   means, which keeps most of the width. A name breaks only where its words join (the <wbr>
-   the page puts after each _ . /), and mid-word only when nothing else fits. */
-.api-table {
+/* A route's or an object's sections (query, body, returns, refusals, fields) as Stripe's and
+   Mux's references set theirs: a heading over a rule, then unboxed rows, each with the name,
+   its type, and Required on one line and what it means under it, so a long name never
+   squeezes its description. A name breaks only where its words join (the <wbr> the page puts
+   after each _ . /). */
+.block.api-sec {
+  margin-top: 22px;
+}
+.api-sec > .block-head {
   margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
 }
-.api-table th,
-.api-table td {
-  padding: 6px 10px;
-  font-size: 13px;
-  vertical-align: top;
-}
-.api-table thead th,
-.api-table tr.api-move th {
-  font-size: 12.5px;
+.api-sec > .block-head .block-label {
+  font-size: 15px;
   font-weight: 600;
-  background: var(--hover);
+  color: var(--fg);
 }
-.api-table tr.api-move th {
-  padding: 10px 10px 4px;
+.api-sec-meta {
+  margin-left: 2px;
+  font: 400 12px var(--mono);
+  color: var(--muted);
 }
-.api-table td.api-name {
-  width: 32%;
+/* Rules divide rows; the last row in a section has none under it. */
+.api-row,
+.api-lrow {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.api-row:last-child,
+.api-lrow:last-child {
+  border-bottom: 0;
+}
+.api-row-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+code.api-row-name {
+  font-size: 13px;
+  font-weight: 600;
   overflow-wrap: break-word;
 }
-.api-under {
-  display: block;
-  margin-top: 2px;
+.api-row-type {
   font: 12px var(--mono);
+  color: var(--muted);
+}
+/* A type that names an object links to it, and reads as a link. */
+.api-row-type a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.api-row-desc {
+  margin-top: 3px;
+  font-size: 13.5px;
+}
+/* The refusals and the statuses are a ledger: the status in a column of its own, tinted by
+   its class, so a reader scans by status. */
+.api-lrow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 6px;
+}
+.api-st {
+  font: 600 12.5px / 20px var(--mono);
+  color: var(--muted);
+}
+.api-st-4xx {
+  color: var(--warn-fg);
+}
+.api-st-5xx {
+  color: var(--danger-fg);
+}
+.api-st-2xx {
+  color: var(--ok-fg);
+}
+.api-with {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* A status's name is words, not a code. */
+.api-statuses code.api-row-name {
+  font-family: inherit;
+}
+/* A value's short cells beside its name (a condition kind's severity and fields), each led by
+   its column's name, and the label of a later long line ("Remedy:"). */
+.api-row-meta {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.api-row-key {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
 }
 /* What every route shares, described once ahead of the routes: concept prose, an object's
    description, an enum's values under a field's line, and the refusal table's next moves. */
+/* The reference's paragraphs, each with space below it, as a doc page's are. */
 .api-prose {
-  margin: 8px 0 0;
+  margin: 0 0 10px;
   font-size: 14px;
-  max-width: 72ch;
 }
 /* A list in the reference's prose (the status ranges under Requests), set like its paragraphs. */
 .prose-list {
   padding-left: 20px;
 }
 .prose-list li {
-  margin: 2px 0;
+  margin: 6px 0;
 }
 .api-values {
   margin: 4px 0 0;
@@ -1987,54 +2053,24 @@ th.num .th-sort {
 .api-values li {
   margin: 2px 0;
 }
+/* The name of a group an enum's values fall into, over its bullets. */
+.api-values-group {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
 .api-returns {
   margin: 4px 0 6px;
   font-size: 13.5px;
 }
-/* The refusal table, folded under Errors so the topics read as a page. */
-.api-fold {
-  margin-top: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-}
-.api-fold > summary {
-  padding: 9px 12px;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.api-fold > summary .muted {
-  font-weight: 400;
-}
-.api-fold[open] > summary {
-  border-bottom: 1px solid var(--line);
-}
-/* The fold is the frame; its table draws no second one. */
-.api-fold .api-table {
-  border: 0;
-  border-radius: 0 0 8px 8px;
-}
-/* A grid: the same table with a column per thing a value says (the send's condition kinds,
-   its halt causes). Its name column takes only what its longest word needs, so the prose
-   columns keep the width; wider than a phone, it scrolls on its own rather than stacking. */
-.api-table-wrap {
-  overflow-x: auto;
-  margin-top: 8px;
-}
-.api-grid th:first-child,
-.api-grid td:first-child {
-  width: 1%;
-}
-.api-grid td {
-  min-width: 10ch;
-}
-/* A refusal's status, beside its code. */
-.api-status {
-  font: 600 12px var(--mono);
+/* A refusal's next move, under what it means: quieter, the step a client takes from it. */
+.api-move-next {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
   color: var(--muted);
 }
-
 /* editor header */
 .editor-head {
   display: flex;
@@ -4103,16 +4139,27 @@ button.api-filter-clear svg {
   color: var(--fg);
   background: var(--hover);
 }
+/* The reference reads as a document: a doc page's line height, not the browser's default. */
 .api-content {
   min-width: 0;
-  max-width: 820px;
+  max-width: 1440px;
+  line-height: 1.5;
+}
+/* One reading measure for the page, a doc page's (720px): the intro, the topics, and each
+   route's and object's prose and tables keep it, and only a route's examples, beside its
+   prose on a wide screen, reach past it. */
+.api-head,
+.api-blurb,
+.api-section[data-tier="overview"] .api-res,
+.api-op-body {
+  max-width: 720px;
 }
 .api-head {
   margin: 0 0 12px;
 }
 .api-head h1 {
   margin: 0 0 4px;
-  font-size: 22px;
+  font-size: 28px;
 }
 .api-section {
   scroll-margin-top: calc(var(--bar-h) + 2px);
@@ -4125,7 +4172,7 @@ button.api-filter-clear svg {
 }
 /* A tier is a page heading here, not the app's small-caps section label that h2 is elsewhere. */
 .api-section h2 {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 650;
   color: var(--fg);
   text-transform: none;
@@ -4139,11 +4186,10 @@ button.api-filter-clear svg {
   outline: none;
 }
 .api-blurb {
-  margin: 0;
+  margin: 0 0 10px;
   font-size: 14px;
-  max-width: 62ch;
 }
-/* A resource: its heading stays pinned under the room bar while its rows scroll by. */
+/* A resource: its heading over a rule, scrolling with its routes. */
 .api-res {
   margin-top: 16px;
   scroll-margin-top: var(--bar-h);
@@ -4151,9 +4197,6 @@ button.api-filter-clear svg {
 /* A resource's heading, set like the page's other headings, flush with the text: it only
    pins under the bar, its vertical padding the band the rows scroll beneath. */
 .api-res-head {
-  position: sticky;
-  top: var(--bar-h);
-  z-index: var(--z-content);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4165,7 +4208,7 @@ button.api-filter-clear svg {
 
 .api-res-head h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 650;
 }
 /* A Getting started topic is a heading over prose, not a list's head: no rule, a step smaller. */
@@ -4173,7 +4216,7 @@ button.api-filter-clear svg {
   border-bottom: none;
 }
 .api-section[data-tier="overview"] .api-res-head h3 {
-  font-size: 15px;
+  font-size: 18px;
 }
 .api-rows {
   list-style: none;
@@ -4182,50 +4225,8 @@ button.api-filter-clear svg {
 }
 .api-rows > li {
   border-bottom: 1px solid var(--line);
-  /* A route opened from its address lands below the bar and its resource's pinned heading. */
-  scroll-margin-top: calc(var(--bar-h) + 44px);
-}
-/* One route per row: badge, then the route's name over its path, a native disclosure that
-   opens in place to the full documentation. The name leads, since a reader looks for an act. */
-.api-route-sum {
-  display: grid;
-  grid-template-columns: 62px minmax(0, 1fr) 20px;
-  gap: 14px;
-  align-items: start;
-  padding: 9px 6px;
-  border-radius: 6px;
-  list-style: none;
-  cursor: pointer;
-}
-.api-route-sum::-webkit-details-marker {
-  display: none;
-}
-.api-route-sum:hover {
-  background: var(--hover);
-}
-.api-route-name {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.api-route-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-.api-chev {
-  margin-top: 6px;
-  width: 6px;
-  height: 6px;
-  border-right: 1.6px solid var(--muted);
-  border-bottom: 1.6px solid var(--muted);
-  justify-self: center;
-  transform: rotate(-45deg);
-  transition: transform 0.15s;
-}
-.api-route[open] .api-chev,
-.api-object[open] .api-chev {
-  transform: rotate(45deg);
+  /* A route reached from its address lands just under the bar, the rule above it hidden. */
+  scroll-margin-top: calc(var(--bar-h) - 1px);
 }
 /* The verb as a tinted label: its own --method-* color as text over a wash of itself. */
 .api-method {
@@ -4260,55 +4261,25 @@ button.api-filter-clear svg {
   font: 13.5px var(--mono);
   overflow-wrap: anywhere;
 }
-/* Beneath the route's name in a row, the path is how to call it, so it reads quieter. */
-.api-route-name .api-path {
-  color: var(--muted);
-  font-size: 12.5px;
-}
 .api-param {
   color: var(--syntax-variable);
   background: var(--syntax-variable-bg);
   border-radius: 3px;
   padding: 0 2px;
 }
-/* An opened route or object: a rule down its left keeps it with its row, the full width
-   left for its tables. */
-.api-route-detail {
-  margin: 2px 0 0 6px;
-  padding: 10px 6px 22px 18px;
-  border-left: 2px solid var(--line);
-}
-/* Its summary, with the call to copy, as it is or as a link that opens the reference at it. */
-.api-route-lead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px 16px;
-}
-.api-route-tools {
-  display: flex;
-  gap: 6px;
-  flex: none;
-}
 .api-summary {
-  flex: 1 1 320px;
-  margin: 0;
+  margin: 0 0 10px;
   font-size: 15px;
 }
 .api-desc {
-  margin: 8px 0 0;
+  margin: 0 0 10px;
   font-size: 14px;
-  max-width: 72ch;
 }
-/* A query parameter the route can't be called without. */
+/* A field or parameter the request can't do without. */
 .api-req {
-  margin-left: 4px;
-  font-size: 11px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--warn-fg);
 }
 
 .api-empty {
@@ -4316,10 +4287,107 @@ button.api-filter-clear svg {
 }
 /* An object, first under the resource whose routes return it: a row like a route's, that
    opens to its fields and example. */
+/* A route or an object, laid out in full as Stripe and Mux lay theirs: its name and tools,
+   its method and path, then what it does beside its examples on a wide screen, under them
+   on a narrow one. The examples scroll with the page: pinned, one taller than the window
+   (the send view's) would never show its end. */
+/* Each route and object its own block, with room around it so the page reads as one at a time. */
+.api-op {
+  padding: 36px 0 40px;
+}
+.api-op-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.api-op-head h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+}
+.api-op-head h4:focus {
+  outline: none;
+}
+/* A heading is a link to its own address, in the heading's own ink, with a link icon in the
+   margin to its left while it is hovered or focused, as GitHub's headings show theirs. */
+a.api-self {
+  position: relative;
+  color: inherit;
+  text-decoration: none;
+}
+a.api-self svg {
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  opacity: 0;
+}
+a.api-self:hover svg,
+a.api-self:focus-visible svg {
+  opacity: 1;
+}
+.api-op-call {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+.api-op-call .api-method {
+  padding: 0 6px;
+}
+/* Copy sits right after the path it copies, an icon alone, so the two read as one. */
+button.copy-btn.api-copy-path {
+  padding: 3px 5px;
+}
+button.copy-btn.api-copy-path span:empty {
+  display: none;
+}
+.api-op-body {
+  display: grid;
+  gap: 4px 28px;
+}
+.api-op-text,
+.api-op-code {
+  min-width: 0;
+}
+@media (min-width: 1280px) {
+  .api-op-body {
+    max-width: none;
+    /* The examples take what the window has beyond the prose's measure, never under 360px. */
+    grid-template-columns: minmax(0, 720px) minmax(360px, 1fr);
+  }
+  .api-op-code {
+    align-self: start;
+  }
+  .api-op-code > .block:first-child {
+    margin-top: 0;
+  }
+}
+/* The rail lists every route by name under its resource, so it reads as the page's contents. */
+.api-nav-ops {
+  display: none;
+}
+.api-nav-ops.open,
+.api-nav.filtering .api-nav-ops {
+  display: flex;
+  flex-direction: column;
+}
+.api-nav a.api-nav-op {
+  padding-left: 30px;
+  font-size: 13px;
+}
+.api-nav-tier + .api-nav-ops a.api-nav-op {
+  padding-left: 20px;
+}
 .api-object {
   border-bottom: 1px solid var(--line);
-  /* Opened from a route's Returns, it lands below the bar and its resource's pinned heading. */
-  scroll-margin-top: calc(var(--bar-h) + 44px);
+  /* Reached from a route's Returns, it lands just under the bar. */
+  scroll-margin-top: calc(var(--bar-h) - 1px);
 }
 /* Reference room on mobile. The bar stays ONE row at --bar-h, the same as on desktop, so
    the in-page anchors (scroll-margin-top) and the scroll-spy line keep clearing it: the back
@@ -4435,11 +4503,13 @@ button.api-filter-clear svg {
     font-size: 13px;
   }
   /* The API rail is the tier chips alone on a phone: its resources need the column the
-     rail no longer has. A route row stacks its summary under its path. */
+     rail no longer has. */
   .api-filter {
     max-width: none;
   }
-  .api-nav a.api-nav-res {
+  .api-nav a.api-nav-res,
+  .api-nav .api-nav-ops,
+  .api-nav.filtering .api-nav-ops {
     display: none;
   }
   .api-nav a.api-nav-tier {
@@ -4447,25 +4517,6 @@ button.api-filter-clear svg {
   }
   .api-nav a.api-nav-tier ~ a.api-nav-tier {
     margin-top: 0;
-  }
-  .api-route-sum {
-    gap: 10px;
-  }
-  .api-route-detail {
-    margin-left: 0;
-    padding: 6px 0 16px 12px;
-  }
-  /* A table's row stacks on a phone: the name and its type, then the line under them. */
-  .api-table td.api-name,
-  .api-table td.api-name ~ td {
-    display: block;
-    width: auto;
-  }
-  .api-table td.api-name {
-    border-bottom: none;
-  }
-  .api-table td.api-name ~ td {
-    padding-top: 0;
   }
   /* inline-flex centres the chip's text in its 32px; the gap stands in for the space
      between the label and its ↗ that flex drops. */
@@ -4885,12 +4936,22 @@ button.copied svg {
   font-weight: 600;
   color: var(--muted);
 }
-.block pre {
+/* A code block (an example, a curl command, a template): a raised card with its label and Copy
+   in a header inside it, so the code stands apart from the page in both themes. */
+.code-block {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.code-block > .block-head {
+  margin: 0;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.code-block pre {
   margin: 0;
   overflow-x: auto;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
   padding: 10px 12px;
   font: 12.5px / 1.5 var(--mono);
 }

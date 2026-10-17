@@ -89,9 +89,11 @@ const shared: Omit<ReferenceResponse, "groups"> = {
     {
       key: "errors",
       title: "Errors",
-      text: "A refusal names its <field>.\n\nEvery code, by what to do next:",
+      text: "A refusal names its <field>.\n\nThe status:\n- `4xx`: refused.",
+      fields: [{ name: "error", type: "string", description: "Its code." }],
     },
   ],
+  statuses: [{ status: 409, name: "Conflict", meaning: "Its `state` refuses it." }],
   refusals: [
     {
       move: "Nothing: the act no longer applies",
@@ -131,7 +133,7 @@ describe("reference room", () => {
     vi.useRealTimers();
   });
 
-  it("renders each tier's resources as groups of collapsed rows, and a rail of tiers and resources", async () => {
+  it("lays out each tier's resources with every route in full, and a rail of tiers, resources, and routes", async () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount(renderReference);
     await settle();
@@ -148,9 +150,9 @@ describe("reference room", () => {
       "api-admin-sends",
       "api-public-subscriptions",
     ]);
-    expect($("#api-admin-posts .api-res-head").textContent).toBe("Posts");
+    expect($("#api-admin-posts .api-res-head").textContent?.trim()).toBe("Posts");
     // The rail lists a tier's resources only when it has more than one.
-    const nav = $$("#apiNav a");
+    const nav = $$("#apiNav a.api-nav-tier, #apiNav a.api-nav-res");
     expect(nav.map((a) => a.dataset.sec)).toEqual([
       "overview",
       "overview-errors",
@@ -160,32 +162,52 @@ describe("reference room", () => {
       "public",
     ]);
     expect(nav.map((a) => a.textContent)).toEqual([
-      "Getting started",
+      "Introduction",
       "Errors",
       "Admin",
       "Posts",
       "Sends",
       "Public",
     ]);
+    // Under each resource, its object and routes by name, linked to their own addresses.
+    expect(
+      $$("#apiNav .api-nav-ops").map((g) => [
+        g.dataset.of,
+        $$("a", g).map((a) => a.getAttribute("href")),
+      ]),
+    ).toEqual([
+      [
+        "admin-posts",
+        [
+          "#/api-reference/list-posts",
+          "#/api-reference/create-post",
+          "#/api-reference/retrieve-post",
+        ],
+      ],
+      ["admin-sends", ["#/api-reference/objects-send", "#/api-reference/cancel-send"]],
+      ["public-subscriptions", ["#/api-reference/subscribe"]],
+    ]);
     expect($(".api-head p").textContent).toContain(`Base URL ${location.origin}.`);
-    // Every row starts collapsed: badge, then the route's name over its path.
-    const rows = $$<HTMLDetailsElement>("#api-admin-posts details.api-route");
+    // Every route is laid out in full: its name, then its badge and path.
+    const rows = $$("#api-admin-posts li[data-route]");
     expect(rows).toHaveLength(3);
-    expect(rows.every((d) => !d.open)).toBe(true);
+    expect(document.querySelector("details.api-route")).toBeNull();
     expect($(".api-method", rows[0]).className).toBe("api-method m-GET");
     expect($(".api-path", rows[0]).textContent).toBe("/api/posts");
-    expect($(".api-route-title", rows[0]).textContent).toBe("List posts");
-    expect($(".api-route-sum", rows[0]).textContent).not.toContain("List posts.");
+    expect($(".api-op-head h4", rows[0]).textContent?.trim()).toBe("List posts");
+    expect($(".api-op-head", rows[0]).textContent).not.toContain("List posts.");
     expect(document.querySelector(".api-tier")).toBeNull(); // the tier heads the section, not each row
     // A path parameter is marked; the rest of the path is text.
     expect($(".api-path", rows[2]).textContent).toBe("/api/posts/:id");
     expect($$(".api-param", rows[2]).map((p) => p.textContent)).toEqual([":id"]);
     // The detail: summary, description, query, then the examples that exist.
     expect($(".api-desc", rows[0]).textContent).toBe("Offset-paged.");
-    expect($(".api-table td code", rows[0]).textContent).toBe("status");
+    expect($(".api-query code.api-row-name", rows[0]).textContent).toBe("status");
     expect($(".api-summary", rows[1]).textContent).toBe("Create <a post>."); // text, not markup
-    expect($(".api-route-title", rows[1]).textContent).toBe("Create <a post>");
-    expect(document.querySelector(".api-summary a, .api-route-title a")).toBeNull();
+    expect($(".api-op-head h4", rows[1]).textContent?.trim()).toBe("Create <a post>");
+    expect(
+      document.querySelector(".api-summary a, .api-op-head h4 a:not(.api-self), .api-self a"),
+    ).toBeNull();
     expect($$(".block-label", rows[1]).map((l) => l.textContent)).toEqual([
       "Request",
       "Response",
@@ -229,7 +251,7 @@ describe("reference room", () => {
     await settle();
     const curlOf = (row: Element) =>
       $$(".block", row).find((e) => $(".block-label", e).textContent === "curl");
-    const create = $$("#api-admin-posts details.api-route")[1]!;
+    const create = $$("#api-admin-posts li[data-route]")[1]!;
     // No session in this harness, so the dev token stands in for Access.
     expect(curlOf(create)?.querySelector("code")?.textContent).toBe(
       [
@@ -239,7 +261,7 @@ describe("reference room", () => {
         `  -d '{"subject":"Owls"}'`,
       ].join(" \\\n"),
     );
-    expect(curlOf($("#api-webhook-sends details.api-route"))).toBeUndefined();
+    expect(curlOf($("#api-webhook-sends li[data-route]"))).toBeUndefined();
   });
 
   it("copies a code block's plain text, not its highlighted markup, and shows a check for a moment", async () => {
@@ -248,7 +270,7 @@ describe("reference room", () => {
     await mount(renderReference);
     await settle();
     vi.useFakeTimers();
-    const create = $$("#api-admin-posts details.api-route")[1]!;
+    const create = $$("#api-admin-posts li[data-route]")[1]!;
     const copy = $<HTMLButtonElement>(".block button.copy-btn", create);
     const glyph = () => copy.querySelector("svg")?.outerHTML;
     const resting = glyph();
@@ -304,6 +326,7 @@ describe("reference room", () => {
                 code: "post_not_draft",
                 when: "The post is <scheduled>.",
                 details: ["send", "field"],
+                move: "Nothing: the act no longer applies",
               },
             ],
           },
@@ -313,84 +336,145 @@ describe("reference room", () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(withBodies) }]);
     await mount(renderReference);
     await settle();
-    const [upload, del] = $$(".api-route");
+    const [upload, del] = $$("li[data-route]");
     // The body's media types sit in its label, from the registration the router enforces.
     expect(
       $(".api-body", upload!).closest(".block")?.querySelector(".block-label")?.textContent,
     ).toBe("Body · multipart/form-data, image/png");
-    // Each body field with its type, the required one marked; the text stays text.
-    expect($$(".api-body tr", upload!).map((tr) => tr.textContent)).toEqual([
-      "file requiredfileThe image.",
+    // Each body field a row: its name, type, and Required on one line, then what it means;
+    // the text stays text.
+    expect($$(".api-body .api-row", upload!).map((r) => r.textContent)).toEqual([
+      "filefileRequiredThe image.",
       "filenamestringA <name> to store it under.",
     ]);
+    expect($(".api-body .api-row-head .api-req", upload!).textContent).toBe("Required");
     expect(upload!.querySelector(".api-body name")).toBeNull();
     expect(del!.querySelector(".api-body")).toBeNull();
-    // The route's own refusals: status and code, then when, with the fields the body carries.
-    // The route's own refusals: status and code with the fields the body carries under them,
-    // then when.
-    expect($$(".api-errors tr", del!).map((tr) => tr.textContent)).toEqual([
-      "409 post_not_draftwith send, fieldThe post is <scheduled>.",
+    // The route's own refusals, a ledger: the status in a column of its own, tinted by its
+    // class, then the code, the fields the body carries, when, and what to do next.
+    expect($$(".api-errors .api-lrow", del!).map((r) => r.textContent)).toEqual([
+      "409post_not_draftwith send, fieldThe post is <scheduled>.Nothing: the act no longer applies",
     ]);
+    expect($(".api-errors .api-st", del!).className).toBe("api-st api-st-4xx");
+    expect($(".api-errors .api-move-next", del!).textContent).toBe(
+      "Nothing: the act no longer applies",
+    );
     expect(upload!.querySelector(".api-errors")).toBeNull();
   });
 
-  it("describes what every route shares once: the topics, the refusal codes, and each object first under its resource", async () => {
+  it("describes what every route shares once: the topics, the statuses, the refusals any route can give, and each object first under its resource", async () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount(renderReference);
     await settle();
-    // A topic's paragraphs, as text, the refusal table under Errors.
+    // A topic's paragraphs, as text, a paragraph's `- ` lines as a list; under Errors, the
+    // status summary, then the error body's fields, then the refusal table.
     expect($$("#api-overview-errors .api-prose").map((p) => p.textContent)).toEqual([
       "A refusal names its <field>.",
-      "Every code, by what to do next:",
+      "The status:",
+      "4xx: refused.",
+    ]);
+    expect($("#api-overview-errors ul.prose-list li").innerHTML).toBe("<code>4xx</code>: refused.");
+    expect($$("#api-overview-errors .block-label").map((l) => l.textContent)).toEqual([
+      "Status codes",
+      "The error body",
+      "Refusals any route can give",
+    ]);
+    expect($$(".api-statuses .api-lrow").map((r) => r.textContent)).toEqual([
+      "409ConflictIts state refuses it.",
+    ]);
+    expect($$("#api-overview-errors .api-fields .api-row").map((r) => r.textContent)).toEqual([
+      "errorstringIts code.",
     ]);
     expect(document.querySelector("#api-overview-errors .api-prose field")).toBeNull();
-    // The object is a collapsed row like a route's, first under the resource whose routes
-    // return it, marked Object where a route shows its verb.
-    const object = $<HTMLDetailsElement>("#api-admin-sends > details.api-object");
+    // The object is laid out like a route, first under the resource whose routes return it,
+    // marked Object where a route shows its verb.
+    const object = $("#api-admin-sends > article.api-object");
     expect(object.id).toBe("api-objects-send");
-    expect(object.open).toBe(false);
     expect($(".api-method", object).textContent).toBe("Object");
-    expect($(".api-route-title", object).textContent).toBe("The send view");
+    expect($(".api-op-head h4", object).textContent?.trim()).toBe("The send view");
     expect($(".api-path", object).textContent).toBe("1 field");
-    // The refusal table, folded under Errors, each group led by its next move.
-    expect($<HTMLDetailsElement>("#api-overview-errors details.api-fold").open).toBe(false);
-    expect($("#api-overview-errors .api-fold > summary").textContent).toBe(
-      "Every refusal code 1 code, by what to do next",
-    );
-    // A filter that matches a code opens the fold, so the code is in view; clearing it folds again.
-    const filter = $<HTMLInputElement>("#apiFilter");
-    filter.value = "window_closed";
-    filter.dispatchEvent(new Event("input"));
-    expect($<HTMLDetailsElement>("#api-overview-errors details.api-fold").open).toBe(true);
-    filter.value = "";
-    filter.dispatchEvent(new Event("input"));
-    expect($<HTMLDetailsElement>("#api-overview-errors details.api-fold").open).toBe(false);
-    expect($$(".api-refusals tr").map((tr) => tr.textContent)).toEqual([
-      "Nothing: the act no longer applies",
-      "409 window_closedThe fire time has passed.",
+    // Errors lists only the refusals no route lists as its own; there
+    // is no table of every code.
+    expect(document.querySelector(".api-fold")).toBeNull();
+    expect($$(".api-refusals .api-lrow").map((r) => r.textContent)).toEqual([
+      "409window_closedThe fire time has passed.",
     ]);
-    expect($(".api-refusals tr.api-move th").getAttribute("colspan")).toBe("2");
-    // A code breaks only where its words join, and its meaning reads in ink like any table's.
-    expect($(".api-refusals td.api-name code").innerHTML).toBe(
-      '<span class="api-status">409</span> window_<wbr>closed',
-    );
-    expect($(".api-refusals td.api-name + td").classList.contains("muted")).toBe(false);
+    // Unlike a route's own refusals, these carry no next move: the status and line say it.
+    expect(document.querySelector(".api-refusals .api-move-next")).toBeNull();
+    // A code breaks only where its words join.
+    expect($(".api-refusals code.api-row-name").innerHTML).toBe("window_<wbr>closed");
     // An object's fields, an enum's values under its line, and its example.
-    expect($$("#api-objects-send .api-fields tr").map((tr) => tr.textContent)).toEqual([
+    expect($$("#api-objects-send .api-fields .api-row").map((r) => r.textContent)).toEqual([
       "statusstringIts state.scheduled Cancelable.",
     ]);
     expect($$("#api-objects-send .block-label").map((l) => l.textContent)).toEqual(["Example"]);
     expect(fake.unhandled).toEqual([]);
   });
 
-  it("lays out an object's value table as a grid, a lone code breaking where its words join", async () => {
+  it("lists an enum's values that fall into groups under each group's name", async () => {
+    const [send] = shared.objects;
+    const values = [
+      { value: "outage", description: "Down.", group: "An `unavailable` halt" },
+      { value: "sandbox", description: "In the sandbox.", group: "An `account` halt" },
+      { value: "quota", description: "Over quota.", group: "An `account` halt" },
+    ];
+    const fields = [{ name: "cause", type: "string", description: "Why.", values }];
+    fake = fakeApi([
+      {
+        path: "/api/reference",
+        reply: () => ({ ...reference(groups), objects: [{ ...send!, fields }] }),
+      },
+    ]);
+    await mount(renderReference);
+    await settle();
+    const desc = $("#api-objects-send .api-fields .api-row-desc");
+    expect($$(".api-values-group", desc).map((g) => g.innerHTML)).toEqual([
+      "An <code>unavailable</code> halt",
+      "An <code>account</code> halt",
+    ]);
+    expect($$("ul.api-values", desc).map((ul) => $$("li", ul).map((li) => li.textContent))).toEqual(
+      [["outage Down."], ["sandbox In the sandbox.", "quota Over quota."]],
+    );
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("links a field that holds an object to that object's section, by its type", async () => {
+    const [send] = shared.objects;
+    const fields = [
+      ...send!.fields,
+      { name: "conditions", type: "send[]", object: "send" as const, description: "Its kin." },
+    ];
+    fake = fakeApi([
+      {
+        path: "/api/reference",
+        reply: () => ({ ...reference(groups), objects: [{ ...send!, fields }] }),
+      },
+    ]);
+    await mount(renderReference);
+    await settle();
+    const link = $<HTMLAnchorElement>(
+      "#api-objects-send .api-fields .api-row:last-child .api-row-type a",
+    );
+    expect(link.textContent).toBe("send[]");
+    expect(link.getAttribute("href")).toBe("#/api-reference/objects-send");
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("sets an object's value table as rows: short cells beside the name, long ones beneath, the later labelled", async () => {
     const [send] = shared.objects;
     const tables = [
       {
         title: "Condition kinds",
         description: "Each `kind`.",
-        columns: ["Kind", "Meaning"],
-        rows: [["`provider_unavailable`", "An outage, retried at `retry_at`."]],
+        columns: ["Kind", "Severity", "Meaning", "Remedy"],
+        rows: [
+          [
+            "`provider_unavailable`",
+            "`info`",
+            "An outage, retried at `retry_at`. ".repeat(3).trim(),
+            "Nothing: it retries on its own, so no one has to act while it waits.".repeat(2),
+          ],
+        ],
       },
     ];
     fake = fakeApi([
@@ -401,11 +485,19 @@ describe("reference room", () => {
     ]);
     await mount(renderReference);
     await settle();
-    const grid = $("#api-objects-send table.api-grid");
-    expect($$("thead th", grid).map((th) => th.textContent)).toEqual(["Kind", "Meaning"]);
-    const [kind, meaning] = $$("tbody td", grid);
-    expect(kind!.innerHTML).toBe("<code>provider_<wbr>unavailable</code>");
-    expect(meaning!.innerHTML).toBe("An outage, retried at <code>retry_at</code>.");
+    const sec = $(".api-value-rows", $("#api-objects-send")).closest(".api-sec")!;
+    expect($(".block-label", sec).textContent).toBe("Condition kinds");
+    expect($(".api-prose", sec).textContent).toBe("Each kind.");
+    expect(sec.querySelector("table")).toBeNull();
+    const row = $(".api-value-rows .api-row", sec);
+    expect($("code.api-row-name", row).innerHTML).toBe("provider_<wbr>unavailable");
+    expect($(".api-row-meta", row).innerHTML).toBe(
+      '<span class="api-row-key">Severity</span> <code>info</code>',
+    );
+    const lines = $$(".api-row-desc", row);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.querySelector(".api-row-key")).toBeNull();
+    expect($(".api-row-key", lines[1]!).textContent).toBe("Remedy:");
     expect(fake.unhandled).toEqual([]);
   });
 
@@ -429,7 +521,14 @@ describe("reference room", () => {
                 { name: "changed", type: "boolean", description: "False when nothing changed." },
               ],
             },
-            errors: [{ status: 409, code: "window_closed", details: ["send"] }],
+            errors: [
+              {
+                status: 409,
+                code: "window_closed",
+                details: ["send"],
+                move: "Nothing: the act no longer applies",
+              },
+            ],
           },
         ],
       },
@@ -437,23 +536,22 @@ describe("reference room", () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(withReturns) }]);
     await mount(renderReference);
     await settle();
-    const route = $(".api-route");
+    const route = $("li[data-route]");
     expect($(".api-returns", route).textContent).toBe("send: The send view, and:");
-    expect($$(".api-fields tr", route).map((tr) => tr.textContent)).toEqual([
+    expect($$(".api-fields .api-row", route).map((r) => r.textContent)).toEqual([
       "changedbooleanFalse when nothing changed.",
     ]);
-    expect($$(".api-errors tr", route).map((tr) => tr.textContent)).toEqual([
-      "409 window_closedwith sendThe fire time has passed.",
+    expect($$(".api-errors .api-lrow", route).map((r) => r.textContent)).toEqual([
+      "409window_closedwith sendThe fire time has passed.Nothing: the act no longer applies",
     ]);
-    // The object's link is a real link to its address, and jumps there in place: opened, with
-    // focus on its line, the address in the bar, and the room not rendered again.
+    // The object's link is a real link to its address, and jumps there in place, with focus on
+    // its heading, the address in the bar, and the room not rendered again.
     const link = $<HTMLAnchorElement>(".api-obj-link", route);
     expect(link.getAttribute("href")).toBe("#/api-reference/objects-send");
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     link.click();
     expect(scroll.mock.instances).toEqual([$("#api-objects-send")]);
-    expect($<HTMLDetailsElement>("#api-objects-send").open).toBe(true);
-    expect(document.activeElement).toBe($("#api-objects-send > summary"));
+    expect(document.activeElement).toBe($("#api-objects-send h4"));
     expect(location.hash).toBe("#/api-reference/objects-send");
     expect(fake.calls).toHaveLength(1);
   });
@@ -490,22 +588,40 @@ describe("reference room", () => {
     );
   });
 
-  it("copies a route's method and path, and a link that opens the reference at it", async () => {
+  it("copies a route's path from beside it, and makes its heading a link to its own address", async () => {
     const writeText = stubClipboard();
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount(renderReference);
     await settle();
     const route = $("#route-retrieve-post");
-    $<HTMLButtonElement>(".api-route-tools [aria-label='Copy method and path']", route).click();
-    $<HTMLButtonElement>(
-      ".api-route-tools [aria-label='Copy a link to this route']",
+    // Copy sits right after the path and copies the path alone; the method is the client's
+    // own argument, and the curl block carries the whole call.
+    const copy = $<HTMLButtonElement>(
+      ".api-op-call .api-path + button[aria-label='Copy path']",
       route,
-    ).click();
+    );
+    copy.click();
     await settle();
-    expect(writeText.mock.calls.map(([text]) => text)).toEqual([
-      "GET /api/posts/:id",
-      `${location.origin}${location.pathname}#/api-reference/retrieve-post`,
+    expect(writeText.mock.calls.map(([text]) => text)).toEqual(["/api/posts/:id"]);
+    // No separate Copy link: the heading is the link, its icon shown on hover.
+    expect(route.querySelector("[aria-label='Copy a link to this route']")).toBeNull();
+    const self = $<HTMLAnchorElement>("h4 a.api-self", route);
+    expect(self.getAttribute("href")).toBe("#/api-reference/retrieve-post");
+    expect(self.querySelector("svg")).not.toBeNull();
+    // Every heading with an address links to it: a tier, a resource, an object, a topic.
+    expect($$("a.api-self[data-sec]").map((a) => a.getAttribute("href"))).toEqual([
+      "#/api-reference/overview-errors",
+      "#/api-reference/admin",
+      "#/api-reference/admin-posts",
+      "#/api-reference/admin-sends",
+      "#/api-reference/objects-send",
+      "#/api-reference/public",
+      "#/api-reference/public-subscriptions",
     ]);
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    self.click();
+    expect(scroll.mock.instances).toEqual([route]);
+    expect(location.hash).toBe("#/api-reference/retrieve-post");
     // Each row has its own address, named for what it does.
     expect($$("li[data-hay]").map((li) => li.id)).toEqual([
       "route-list-posts",
@@ -516,15 +632,14 @@ describe("reference room", () => {
     ]);
   });
 
-  it("opens and scrolls to the route its address names, and the filter still narrows from there", async () => {
+  it("scrolls to the route its address names, with focus on its heading, and the filter still narrows from there", async () => {
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount((root, signal) => renderReference(root, signal, "cancel-send"));
     await settle();
     const target = $("#route-cancel-send");
-    expect($<HTMLDetailsElement>("details", target).open).toBe(true);
     expect(scroll.mock.instances).toEqual([target]);
-    expect($$<HTMLDetailsElement>("details.api-route").filter((d) => d.open)).toHaveLength(1);
+    expect(document.activeElement).toBe($("h4", target));
     const filter = $<HTMLInputElement>("#apiFilter");
     filter.value = "post create";
     filter.dispatchEvent(new Event("input"));
@@ -533,16 +648,15 @@ describe("reference room", () => {
         .filter((li) => !li.hidden)
         .map((li) => li.id),
     ).toEqual(["route-create-post"]);
-    // An address that names no route opens the reference at its top, nothing opened.
+    // An address that names no route opens the reference at its top.
     unmount();
     scroll.mockClear();
     await mount((root, signal) => renderReference(root, signal, "get-nothing"));
     await settle();
-    expect($$<HTMLDetailsElement>("details.api-route").filter((d) => d.open)).toHaveLength(0);
     expect(scroll).not.toHaveBeenCalled();
   });
 
-  it("clears a filter that hides the object a route's Returns links to, then opens it", async () => {
+  it("clears a filter that hides the object a route's Returns links to, then goes to it", async () => {
     const schedule: ReferenceGroup[] = [
       {
         ...groups[0]!,
@@ -572,7 +686,6 @@ describe("reference room", () => {
     $<HTMLElement>("#route-schedule-post .api-obj-link").click();
     expect(filter.value).toBe("");
     expect($("#api-admin-sends").hidden).toBe(false);
-    expect($<HTMLDetailsElement>("#api-objects-send").open).toBe(true);
     expect(scroll.mock.instances).toEqual([$("#api-objects-send")]);
   });
 
@@ -596,7 +709,7 @@ describe("reference room", () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(withToken) }]);
     await mount(renderReference);
     await settle();
-    expect($(".api-route .api-table td").textContent).toBe("token required");
+    expect($("li[data-route] .api-query .api-row-head").textContent).toBe("tokenRequired");
     expect($$("code", $$(".block").at(-1)!).at(-1)?.textContent).toBe(
       `curl "${location.origin}/confirm?token=:token"`,
     );
@@ -607,8 +720,12 @@ describe("reference room", () => {
     await mount(renderReference);
     await settle();
     // Each rail link is a real link to the part it names, so it opens in a new tab as well.
-    expect($$<HTMLAnchorElement>("#apiNav a").map((a) => a.getAttribute("href"))).toEqual([
-      "#/api-reference/overview",
+    expect(
+      $$<HTMLAnchorElement>("#apiNav a.api-nav-tier, #apiNav a.api-nav-res").map((a) =>
+        a.getAttribute("href"),
+      ),
+    ).toEqual([
+      "#/api-reference",
       "#/api-reference/overview-errors",
       "#/api-reference/admin",
       "#/api-reference/admin-posts",
@@ -623,11 +740,22 @@ describe("reference room", () => {
     expect(document.activeElement).toBe($("#api-admin-sends .api-res-head h3"));
     expect(location.hash).toBe("#/api-reference/admin-sends");
     expect(fake.calls).toHaveLength(1); // the room isn't rendered again
+    // The Introduction goes back to the very top of the page, not to its title under the bar,
+    // focus on its title.
+    const top = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    $("#apiNav a[data-sec='overview']").click();
+    expect(top).toHaveBeenCalledWith(0, 0);
+    expect(document.activeElement).toBe($("#api-intro > h1"));
+    expect(location.hash).toBe("#/api-reference");
+    // A route's link in the rail goes to the route, focus on its heading.
+    $("#apiNav a[data-route='cancel-send']").click();
+    expect(document.activeElement).toBe($("#route-cancel-send h4"));
+    expect(location.hash).toBe("#/api-reference/cancel-send");
     // A modified click (a new tab) is left to the browser.
     const cmd = new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true });
     $("#apiNav a[data-sec='admin-posts']").dispatchEvent(cmd);
     expect(cmd.defaultPrevented).toBe(false);
-    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll).toHaveBeenCalledTimes(3);
   });
 
   it("opens at the part of the page its address names, with focus there", async () => {
@@ -637,35 +765,36 @@ describe("reference room", () => {
     await settle();
     expect(scroll.mock.instances).toEqual([$("#api-admin-sends")]);
     expect(document.activeElement).toBe($("#api-admin-sends .api-res-head h3"));
-    // A tier opens none of its rows.
-    expect($$<HTMLDetailsElement>("#api-admin-sends details").filter((d) => d.open)).toEqual([]);
     unmount();
     scroll.mockClear();
     await mount((root, signal) => renderReference(root, signal, "objects-send"));
     await settle();
     expect(scroll.mock.instances).toEqual([$("#api-objects-send")]);
-    expect($<HTMLDetailsElement>("#api-objects-send").open).toBe(true);
-    expect(document.activeElement).toBe($("#api-objects-send > summary"));
-    // A route's address focuses its line.
+    expect(document.activeElement).toBe($("#api-objects-send h4"));
+    // A route's address focuses its heading.
     unmount();
     await mount((root, signal) => renderReference(root, signal, "retrieve-post"));
     await settle();
-    expect(document.activeElement).toBe($("#route-retrieve-post summary"));
+    expect(document.activeElement).toBe($("#route-retrieve-post h4"));
   });
 
-  it("lights the rail for the last tier or resource heading scrolled under the bar, and stops following once the room is left", async () => {
+  it("lights the rail for the last heading scrolled under the bar, opens its resource's routes there, and stops following once the room is left", async () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount(renderReference);
     await settle();
-    // No layout here, so place the headings by hand: `scrolled` names those above the line.
+    // No layout here, so place the headings by hand: `scrolled` names the last ones above the
+    // line, and everything before them in the page is above it too, as on a real page.
     let scrolled: string[] = [];
-    for (const el of $$(".api-section, .api-res")) {
-      vi.spyOn(el, "getBoundingClientRect").mockImplementation(
-        () => ({ top: scrolled.includes(el.id) ? 0 : 1000 }) as DOMRect,
-      );
+    const marks = $$(".api-section, .api-res, .api-object, li[data-route]");
+    for (const [i, el] of marks.entries()) {
+      vi.spyOn(el, "getBoundingClientRect").mockImplementation(() => {
+        const last = Math.max(-1, ...scrolled.map((id) => marks.findIndex((m) => m.id === id)));
+        return { top: i <= last ? 0 : 1000 } as DOMRect;
+      });
     }
     const nav = $("#apiNav");
-    const active = () => $$("a.active", nav).map((a) => a.dataset.sec);
+    const active = () => $$("a.active", nav).map((a) => a.dataset.sec ?? a.dataset.route);
+    const opened = () => $$(".api-nav-ops.open", nav).map((g) => g.dataset.of);
     // Past the top, the overview and the objects are above the line too.
     const shared = ["api-overview", "api-overview-errors"];
     const scrollTo = (ids: string[]) => {
@@ -674,8 +803,23 @@ describe("reference room", () => {
     };
     scrollTo([]);
     expect(active()).toEqual(["overview"]); // at the top, the overview
+    expect(opened()).toEqual([]);
     scrollTo(["api-admin", "api-admin-posts", "api-admin-sends"]);
     expect(active()).toEqual(["admin-sends"]);
+    // In a resource, the rail lists its routes and lights the one the reader is in.
+    expect(opened()).toEqual(["admin-sends"]);
+    scrollTo(["api-admin", "api-admin-posts", "api-admin-sends", "api-objects-send"]);
+    expect(active()).toEqual(["objects-send"]);
+    scrollTo([
+      "api-admin",
+      "api-admin-posts",
+      "route-list-posts",
+      "api-admin-sends",
+      "api-objects-send",
+      "route-cancel-send",
+    ]);
+    expect(active()).toEqual(["cancel-send"]);
+    expect(opened()).toEqual(["admin-sends"]);
     // A jump straight to a tier lights the tier, before any of its resources pass the line;
     // a resource the rail doesn't list (a one-resource tier) keeps its tier lit.
     scrollTo(["api-admin", "api-admin-posts", "api-admin-sends", "api-public"]);
@@ -688,19 +832,33 @@ describe("reference room", () => {
       "api-public-subscriptions",
     ]);
     expect(active()).toEqual(["public"]);
+    // Scrolled, the address follows the reader with no history entry; at the top it is the
+    // reference's own.
+    const away = vi.spyOn(window, "scrollY", "get").mockReturnValue(300);
+    const tall = vi.spyOn(document.documentElement, "scrollHeight", "get").mockReturnValue(9000);
+    const entries = history.length;
+    scrollTo(["api-admin", "api-admin-posts", "route-list-posts"]);
+    expect(location.hash).toBe("#/api-reference/list-posts");
+    scrollTo(["api-admin", "api-admin-posts"]);
+    expect(location.hash).toBe("#/api-reference/admin-posts");
+    expect(history.length).toBe(entries);
+    away.mockRestore();
+    tall.mockRestore();
+    scrollTo([]);
+    expect(location.hash).toBe("#/api-reference");
     // At the bottom of a scrolled page the last heading wins, even one short of the line.
     const scrollY = vi.spyOn(window, "scrollY", "get").mockReturnValue(500);
     const height = vi
       .spyOn(document.documentElement, "scrollHeight", "get")
       .mockReturnValue(window.innerHeight + 500);
     scrollTo(["api-admin"]);
-    expect(active()).toEqual(["public"]);
+    expect(active()).toEqual(["subscribe"]);
     scrollY.mockRestore(); // back at the top, for what follows
     height.mockRestore();
     // A filtered-out heading is skipped, and with nothing left the rail lights nothing.
     $("#api-admin-sends").hidden = true;
     scrollTo(["api-admin", "api-admin-posts", "api-admin-sends"]);
-    expect(active()).toEqual(["admin-posts"]);
+    expect(active()).toEqual(["retrieve-post"]);
     for (const sec of $$(".api-section")) {
       sec.hidden = true;
     }
@@ -723,11 +881,34 @@ describe("reference room", () => {
     expect(active()).toEqual(["admin-posts"]); // the detached rail no longer moves
   });
 
+  it("keeps a resource's address after a jump to it, though its first object sits just below its heading", async () => {
+    fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
+    await mount(renderReference);
+    await settle();
+    // Laid out as just after a jump to Sends: its heading at the bar's foot (54px when the bar
+    // measures nothing here), the send view one heading's height below it.
+    const at: Record<string, number> = { "api-admin-sends": 54, "api-objects-send": 97 };
+    for (const el of $$(".api-section, .api-res, .api-object, li[data-route]")) {
+      vi.spyOn(el, "getBoundingClientRect").mockImplementation(
+        () =>
+          ({
+            top: at[el.id] ?? (el.compareDocumentPosition($("#api-admin-sends")) & 2 ? 2000 : 0),
+          }) as DOMRect,
+      );
+    }
+    vi.spyOn(window, "scrollY", "get").mockReturnValue(4000);
+    vi.spyOn(document.documentElement, "scrollHeight", "get").mockReturnValue(99999);
+    window.dispatchEvent(new Event("scroll"));
+    expect(location.hash).toBe("#/api-reference/admin-sends");
+    expect($("#apiNav a.active").dataset.sec).toBe("admin-sends");
+  });
+
   it("filters rows by name, method, path, or summary, with the headings and rail links that still hold one", async () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount(renderReference);
     await settle();
     const filter = $<HTMLInputElement>("#apiFilter");
+    const nav = $("#apiNav");
     const type = (value: string) => {
       filter.value = value;
       filter.dispatchEvent(new Event("input"));
@@ -746,14 +927,20 @@ describe("reference room", () => {
     expect($("#api-public").hidden).toBe(true);
     // The topics have no rows to match, so a filter puts them away.
     expect($("#api-overview").hidden).toBe(true);
-    expect($$("#apiNav a").map((a) => (a.hidden ? "hidden" : a.dataset.sec))).toEqual([
-      "hidden",
-      "hidden",
-      "admin",
-      "admin-posts",
-      "hidden",
-      "hidden",
-    ]);
+    expect(
+      $$("#apiNav a.api-nav-tier, #apiNav a.api-nav-res").map((a) =>
+        a.hidden ? "hidden" : a.dataset.sec,
+      ),
+    ).toEqual(["hidden", "hidden", "admin", "admin-posts", "hidden", "hidden"]);
+    // The rail lists every route that matches, in whatever resource, and only those; an
+    // object is listed only while its resource still holds a match.
+    expect(nav.classList.contains("filtering")).toBe(true);
+    expect($("#apiNav a[data-sec='objects-send']").hidden).toBe(true);
+    expect(
+      $$("#apiNav a[data-route]")
+        .filter((a) => !a.hidden)
+        .map((a) => a.dataset.route),
+    ).toEqual(["create-post"]);
     expect($("#apiEmpty").hidden).toBe(true);
     // The last tier still shown keeps the last tier's room to scroll up under the bar.
     expect($$(".api-section.api-last").map((sec) => sec.id)).toEqual(["api-admin"]);
@@ -770,6 +957,7 @@ describe("reference room", () => {
     $("#apiFilterClear").click();
     expect(filter.value).toBe("");
     expect(shown()).toHaveLength(5);
+    expect(nav.classList.contains("filtering")).toBe(false);
     expect($("#api-overview").hidden).toBe(false);
     expect($("#apiFilterClear").hidden).toBe(true);
     expect(document.activeElement).toBe(filter);
@@ -797,7 +985,7 @@ describe("reference room", () => {
             title: "Schedule a post",
             summary: "Schedule it.",
             returns: { object: "send", as: "send" },
-            errors: [{ status: 409, code: "stale_revision" }],
+            errors: [{ status: 409, code: "stale_revision", move: "Read again, then decide" }],
           },
           {
             method: "GET",
@@ -853,14 +1041,14 @@ describe("reference room", () => {
     expect($("#apiNav a[data-sec='overview-errors']").hidden).toBe(false);
     type("window_closed");
     expect(topics()).toEqual(["api-overview-errors"]);
-    // Nothing found points to Getting started, whose link clears the filter to reach it.
+    // Nothing found points to the Introduction, whose link clears the filter and goes to the top.
     type("nothing-matches");
     expect($("#apiEmpty").hidden).toBe(false);
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     $("#apiEmpty a[data-sec='overview']").click();
     expect(filter.value).toBe("");
     expect($("#api-overview").hidden).toBe(false);
-    expect(document.activeElement).toBe($("#api-overview > h2"));
+    expect(document.activeElement).toBe($("#api-intro > h1"));
   });
 
   it("focuses the filter on / unless the reader is typing elsewhere, and stops listening once the room is left", async () => {
@@ -897,7 +1085,7 @@ describe("reference room", () => {
     $("[data-retry]").click();
     await settle();
     expect($$(".api-section")).toHaveLength(3);
-    expect($$("details.api-route")).toHaveLength(5);
+    expect($$("li[data-route]")).toHaveLength(5);
     expect(fake.calls).toHaveLength(2);
   });
 });
