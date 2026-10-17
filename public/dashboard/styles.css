@@ -1973,6 +1973,13 @@ th.num .th-sort {
   font-size: 14px;
   max-width: 72ch;
 }
+/* A list in the reference's prose (the status ranges under Requests), set like its paragraphs. */
+.prose-list {
+  padding-left: 20px;
+}
+.prose-list li {
+  margin: 2px 0;
+}
 .api-values {
   margin: 4px 0 0;
   padding-left: 16px;
@@ -2007,6 +2014,20 @@ th.num .th-sort {
 .api-fold .api-table {
   border: 0;
   border-radius: 0 0 8px 8px;
+}
+/* A grid: the same table with a column per thing a value says (the send's condition kinds,
+   its halt causes). Its name column takes only what its longest word needs, so the prose
+   columns keep the width; wider than a phone, it scrolls on its own rather than stacking. */
+.api-table-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+.api-grid th:first-child,
+.api-grid td:first-child {
+  width: 1%;
+}
+.api-grid td {
+  min-width: 10ch;
 }
 /* A refusal's status, beside its code. */
 .api-status {

@@ -11,6 +11,7 @@ import type {
   ReferenceRefusalGroup,
   ReferenceResource,
   ReferenceResponse,
+  ReferenceTable,
   RouteError,
   RouteReturns,
 } from "../../shared/reference";
@@ -124,7 +125,7 @@ function apiReturnsHtml(
     return null;
   }
   const link = r.object
-    ? html`<a href="#/reference/objects-${r.object}" class="api-obj-link" data-sec="objects-${r.object}">${objects.get(r.object) ?? r.object}</a>`
+    ? html`<a href="#/api-reference/objects-${r.object}" class="api-obj-link" data-sec="objects-${r.object}">${objects.get(r.object) ?? r.object}</a>`
     : null;
   const what = link
     ? r.as
@@ -144,7 +145,7 @@ function apiPathHtml(path: string): Html {
 }
 /** The link that opens the reference at a route, to share in an issue or hand to Claude. */
 function routeLink(r: ReferenceEntry): string {
-  return `${location.origin}${location.pathname}#/reference/${routeAnchor(r)}`;
+  return `${location.origin}${location.pathname}#/api-reference/${routeAnchor(r)}`;
 }
 /** What a route's detail looks up in the rest of the reference. */
 interface Lookups {
@@ -212,6 +213,21 @@ function apiRouteHtml(r: ReferenceEntry, look: Lookups): Html {
 /** A resource's routes within a tier, in the order the tier lists them. */
 const routesIn = (g: ReferenceGroup, res: ReferenceResource) =>
   g.routes.filter((r) => r.resource === res.key);
+// A grid cell: a lone code (a kind, a cause) breaks where its words join, like a name;
+// anything else is inline Markdown.
+function gridCell(text: string): Html {
+  const code = /^`([^`]+)`$/.exec(text)?.[1];
+  return html`<td>${code === undefined ? inline(text) : html`<code>${breakable(code)}</code>`}</td>`;
+}
+// A table of a field's values, under its object's fields: a head row, then a row per value.
+function apiTableHtml(t: ReferenceTable): Html {
+  return html`<div class="block"><div class="block-head"><span class="block-label">${t.title}</span></div>
+      ${prose(t.description, "api-prose")}
+      <div class="api-table-wrap"><table class="api-table api-grid"><thead><tr>${t.columns.map((c) => html`<th>${c}</th>`)}</tr></thead><tbody>${t.rows.map(
+        (r) => html`<tr>${r.map(gridCell)}</tr>`,
+      )}</tbody></table></div>
+    </div>`;
+}
 // An object its resource's routes return, first under the resource as Stripe puts it: one
 // collapsed line that opens to its fields and example.
 function apiObjectHtml(o: ReferenceObject): Html {
@@ -224,6 +240,7 @@ function apiObjectHtml(o: ReferenceObject): Html {
       <div class="api-route-detail">
         ${prose(o.description, "api-prose")}
         ${apiFieldsTable(o.fields)}
+        ${(o.tables ?? []).map(apiTableHtml)}
         ${apiExample("Example", o.example)}
       </div>
     </details>`;
@@ -280,12 +297,12 @@ function apiOverviewHtml(ref: ReferenceResponse): Html {
 // for moving.
 function apiNavHtml(ref: ReferenceResponse): Html {
   const part = (sec: string, title: string) =>
-    html`<a href="#/reference/${sec}" class="api-nav-res" data-sec="${sec}">${title}</a>`;
-  return html`<a href="#/reference/overview" class="api-nav-tier" data-sec="overview" data-tier="overview">Getting started</a>${ref.concepts.map(
+    html`<a href="#/api-reference/${sec}" class="api-nav-res" data-sec="${sec}">${title}</a>`;
+  return html`<a href="#/api-reference/overview" class="api-nav-tier" data-sec="overview" data-tier="overview">Getting started</a>${ref.concepts.map(
     (c) => part(`overview-${c.key}`, c.title),
   )}${ref.groups.map(
     (g) =>
-      html`<a href="#/reference/${g.access}" class="api-nav-tier" data-sec="${g.access}" data-tier="${g.access}">${g.title}</a>${
+      html`<a href="#/api-reference/${g.access}" class="api-nav-tier" data-sec="${g.access}" data-tier="${g.access}">${g.title}</a>${
         g.resources.length > 1
           ? g.resources.map((res) => part(`${g.access}-${res.key}`, res.title))
           : null
@@ -420,8 +437,8 @@ function reveal(target: HTMLElement): void {
 }
 
 /**
- * The API reference room. `anchor` (from `#/reference/<anchor>`) names what to bring into view
- * once the reference is in: a route (`post-api-sends-id-cancel`), opened, or a part of the page
+ * The API reference room. `anchor` (from `#/api-reference/<anchor>`) names what to bring into view
+ * once the reference is in: a route (`cancel-send`), opened, or a part of the page
  * the rail and Returns links name (`admin-sends`, `objects-send`, `overview-errors`). One that
  * names nothing opens the reference at its top.
  */
@@ -433,7 +450,7 @@ export async function renderReference(
   setHtml(
     root,
     roomShell(
-      "reference",
+      "api-reference",
       html`<div class="toc-label">API</div><nav class="api-nav" id="apiNav" aria-label="API sections"></nav>`,
       html`<div class="api-content" id="apiContent"><p class="muted">Loading…</p></div>`,
     ),
@@ -480,7 +497,7 @@ export async function renderReference(
   setHtml(navEl, apiNavHtml(ref));
   setHtml(
     contentEl,
-    html`<header class="api-head"><h1>API reference</h1><p class="muted">Generated from the route registration, so every endpoint the app and Claude can call is listed here. Base URL <code>${location.origin}</code>.</p><div class="api-filter">${icon("search")}<input type="search" id="apiFilter" placeholder="Filter by name, path, URL, or error code" autocomplete="off" aria-label="Filter routes" aria-keyshortcuts="/"><kbd aria-hidden="true">/</kbd><button type="button" class="icon api-filter-clear" id="apiFilterClear" aria-label="Clear filter" hidden>${icon("x")}</button></div></header>${apiOverviewHtml(ref)}${ref.groups.map((g) => apiSectionHtml(g, look))}<p class="api-empty muted" id="apiEmpty" hidden>Nothing matches. Try a path segment like <code>sends</code>, a method like <code>DELETE</code>, or a code like <code>stale_revision</code>, or start from <a href="#/reference/overview" data-sec="overview">Getting started</a>.</p>`,
+    html`<header class="api-head"><h1>API reference</h1><p class="muted">Every endpoint this instance serves, the one API the web editor and Claude both call. It's read from the running code, so it always matches this version. Base URL <code>${location.origin}</code>.</p><div class="api-filter">${icon("search")}<input type="search" id="apiFilter" placeholder="Filter by name, path, URL, or error code" autocomplete="off" aria-label="Filter routes" aria-keyshortcuts="/"><kbd aria-hidden="true">/</kbd><button type="button" class="icon api-filter-clear" id="apiFilterClear" aria-label="Clear filter" hidden>${icon("x")}</button></div></header>${apiOverviewHtml(ref)}${ref.groups.map((g) => apiSectionHtml(g, look))}<p class="api-empty muted" id="apiEmpty" hidden>Nothing matches. Try a path segment like <code>sends</code>, a method like <code>DELETE</code>, or a code like <code>stale_revision</code>, or start from <a href="#/api-reference/overview" data-sec="overview">Getting started</a>.</p>`,
   );
   const filterEl = $<HTMLInputElement>("#apiFilter");
   const clearEl = $("#apiFilterClear");

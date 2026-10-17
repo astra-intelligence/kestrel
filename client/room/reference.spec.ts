@@ -122,7 +122,7 @@ describe("reference room", () => {
   let fake: FakeApi;
   beforeEach(() => {
     resetShell();
-    location.hash = "#/reference";
+    location.hash = "#/api-reference";
   });
   afterEach(() => {
     fake?.restore();
@@ -211,13 +211,13 @@ describe("reference room", () => {
         access: "webhook",
         title: "Webhooks",
         blurb: "Provider callbacks.",
-        resources: [{ key: "delivery", title: "Delivery events" }],
+        resources: [{ key: "sends", title: "Sends" }],
         routes: [
           {
             method: "POST",
             path: "/webhooks/ses",
             access: "webhook",
-            resource: "delivery",
+            resource: "sends",
             title: "SES events",
             summary: "SES events.",
           },
@@ -239,7 +239,7 @@ describe("reference room", () => {
         `  -d '{"subject":"Owls"}'`,
       ].join(" \\\n"),
     );
-    expect(curlOf($("#api-webhook-delivery details.api-route"))).toBeUndefined();
+    expect(curlOf($("#api-webhook-sends details.api-route"))).toBeUndefined();
   });
 
   it("copies a code block's plain text, not its highlighted markup, and shows a check for a moment", async () => {
@@ -383,6 +383,32 @@ describe("reference room", () => {
     expect(fake.unhandled).toEqual([]);
   });
 
+  it("lays out an object's value table as a grid, a lone code breaking where its words join", async () => {
+    const [send] = shared.objects;
+    const tables = [
+      {
+        title: "Condition kinds",
+        description: "Each `kind`.",
+        columns: ["Kind", "Meaning"],
+        rows: [["`provider_unavailable`", "An outage, retried at `retry_at`."]],
+      },
+    ];
+    fake = fakeApi([
+      {
+        path: "/api/reference",
+        reply: () => ({ ...reference(groups), objects: [{ ...send!, tables }] }),
+      },
+    ]);
+    await mount(renderReference);
+    await settle();
+    const grid = $("#api-objects-send table.api-grid");
+    expect($$("thead th", grid).map((th) => th.textContent)).toEqual(["Kind", "Meaning"]);
+    const [kind, meaning] = $$("tbody td", grid);
+    expect(kind!.innerHTML).toBe("<code>provider_<wbr>unavailable</code>");
+    expect(meaning!.innerHTML).toBe("An outage, retried at <code>retry_at</code>.");
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("links what a route returns to its object, and fills a refusal's line from the refusal table", async () => {
     const withReturns: ReferenceGroup[] = [
       {
@@ -422,13 +448,13 @@ describe("reference room", () => {
     // The object's link is a real link to its address, and jumps there in place: opened, with
     // focus on its line, the address in the bar, and the room not rendered again.
     const link = $<HTMLAnchorElement>(".api-obj-link", route);
-    expect(link.getAttribute("href")).toBe("#/reference/objects-send");
+    expect(link.getAttribute("href")).toBe("#/api-reference/objects-send");
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     link.click();
     expect(scroll.mock.instances).toEqual([$("#api-objects-send")]);
     expect($<HTMLDetailsElement>("#api-objects-send").open).toBe(true);
     expect(document.activeElement).toBe($("#api-objects-send > summary"));
-    expect(location.hash).toBe("#/reference/objects-send");
+    expect(location.hash).toBe("#/api-reference/objects-send");
     expect(fake.calls).toHaveLength(1);
   });
 
@@ -469,7 +495,7 @@ describe("reference room", () => {
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
     await mount(renderReference);
     await settle();
-    const route = $("#route-get-api-posts-id");
+    const route = $("#route-retrieve-post");
     $<HTMLButtonElement>(".api-route-tools [aria-label='Copy method and path']", route).click();
     $<HTMLButtonElement>(
       ".api-route-tools [aria-label='Copy a link to this route']",
@@ -478,24 +504,24 @@ describe("reference room", () => {
     await settle();
     expect(writeText.mock.calls.map(([text]) => text)).toEqual([
       "GET /api/posts/:id",
-      `${location.origin}${location.pathname}#/reference/get-api-posts-id`,
+      `${location.origin}${location.pathname}#/api-reference/retrieve-post`,
     ]);
-    // Each row has its own address, from its method and the path to type.
+    // Each row has its own address, named for what it does.
     expect($$("li[data-hay]").map((li) => li.id)).toEqual([
-      "route-get-api-posts",
-      "route-post-api-posts",
-      "route-get-api-posts-id",
-      "route-post-api-sends-id-cancel",
-      "route-get-subscribe",
+      "route-list-posts",
+      "route-create-post",
+      "route-retrieve-post",
+      "route-cancel-send",
+      "route-subscribe",
     ]);
   });
 
   it("opens and scrolls to the route its address names, and the filter still narrows from there", async () => {
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     fake = fakeApi([{ path: "/api/reference", reply: () => reference(groups) }]);
-    await mount((root, signal) => renderReference(root, signal, "post-api-sends-id-cancel"));
+    await mount((root, signal) => renderReference(root, signal, "cancel-send"));
     await settle();
-    const target = $("#route-post-api-sends-id-cancel");
+    const target = $("#route-cancel-send");
     expect($<HTMLDetailsElement>("details", target).open).toBe(true);
     expect(scroll.mock.instances).toEqual([target]);
     expect($$<HTMLDetailsElement>("details.api-route").filter((d) => d.open)).toHaveLength(1);
@@ -506,7 +532,7 @@ describe("reference room", () => {
       $$("li[data-hay]")
         .filter((li) => !li.hidden)
         .map((li) => li.id),
-    ).toEqual(["route-post-api-posts"]);
+    ).toEqual(["route-create-post"]);
     // An address that names no route opens the reference at its top, nothing opened.
     unmount();
     scroll.mockClear();
@@ -543,7 +569,7 @@ describe("reference room", () => {
     filter.dispatchEvent(new Event("input"));
     // The send view heads Sends, which the filter hid.
     expect($("#api-admin-sends").hidden).toBe(true);
-    $<HTMLElement>("#route-post-api-posts-id-schedule .api-obj-link").click();
+    $<HTMLElement>("#route-schedule-post .api-obj-link").click();
     expect(filter.value).toBe("");
     expect($("#api-admin-sends").hidden).toBe(false);
     expect($<HTMLDetailsElement>("#api-objects-send").open).toBe(true);
@@ -582,12 +608,12 @@ describe("reference room", () => {
     await settle();
     // Each rail link is a real link to the part it names, so it opens in a new tab as well.
     expect($$<HTMLAnchorElement>("#apiNav a").map((a) => a.getAttribute("href"))).toEqual([
-      "#/reference/overview",
-      "#/reference/overview-errors",
-      "#/reference/admin",
-      "#/reference/admin-posts",
-      "#/reference/admin-sends",
-      "#/reference/public",
+      "#/api-reference/overview",
+      "#/api-reference/overview-errors",
+      "#/api-reference/admin",
+      "#/api-reference/admin-posts",
+      "#/api-reference/admin-sends",
+      "#/api-reference/public",
     ]);
     const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     $("#apiNav a[data-sec='public']").click();
@@ -595,7 +621,7 @@ describe("reference room", () => {
     $("#apiNav a[data-sec='admin-sends']").click();
     expect(scroll.mock.instances).toEqual([$("#api-public"), $("#api-admin-sends")]);
     expect(document.activeElement).toBe($("#api-admin-sends .api-res-head h3"));
-    expect(location.hash).toBe("#/reference/admin-sends");
+    expect(location.hash).toBe("#/api-reference/admin-sends");
     expect(fake.calls).toHaveLength(1); // the room isn't rendered again
     // A modified click (a new tab) is left to the browser.
     const cmd = new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true });
@@ -622,9 +648,9 @@ describe("reference room", () => {
     expect(document.activeElement).toBe($("#api-objects-send > summary"));
     // A route's address focuses its line.
     unmount();
-    await mount((root, signal) => renderReference(root, signal, "get-api-posts-id"));
+    await mount((root, signal) => renderReference(root, signal, "retrieve-post"));
     await settle();
-    expect(document.activeElement).toBe($("#route-get-api-posts-id summary"));
+    expect(document.activeElement).toBe($("#route-retrieve-post summary"));
   });
 
   it("lights the rail for the last tier or resource heading scrolled under the bar, and stops following once the room is left", async () => {
@@ -804,19 +830,19 @@ describe("reference room", () => {
 
     // A refusal code pasted from a response, though neither path nor summary says it.
     type("stale_revision");
-    expect(shown()).toEqual(["route-post-api-posts-id-schedule"]);
+    expect(shown()).toEqual(["route-schedule-post"]);
     // The object a route returns, by its title.
     type("send view");
-    expect(shown()).toEqual(["route-post-api-posts-id-schedule"]);
+    expect(shown()).toEqual(["route-schedule-post"]);
     // A real URL, the path parameters filled in: only the route it calls, its query dropped.
     type(`${location.origin}/api/posts/abc123/schedule?x=1`);
-    expect(shown()).toEqual(["route-post-api-posts-id-schedule"]);
+    expect(shown()).toEqual(["route-schedule-post"]);
     type("delete /api/posts/abc123");
     expect(shown()).toEqual([]);
     type("get /api/posts/abc123");
-    expect(shown()).toEqual(["route-get-api-posts-id"]);
+    expect(shown()).toEqual(["route-retrieve-post"]);
     type("/api/posts/abc123/revisions/r7/");
-    expect(shown()).toEqual(["route-get-api-posts-id-revisions-rev"]);
+    expect(shown()).toEqual(["route-read-revision"]);
     expect(topics()).toEqual([]);
     expect($("#api-overview").hidden).toBe(true);
     // A topic is found by its title, and Errors by any code in its table.
