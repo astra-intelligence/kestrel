@@ -49,7 +49,7 @@ const subs = [
     id: "s2",
     email: "bad@b.c",
     created_at: 2,
-    suppression: { reason: "bounce", detail: "550 no such user" },
+    suppression: { reason: "bounce", detail: "550 no such user", erased_at: null },
   }),
   subscriber({
     id: "s3",
@@ -284,7 +284,11 @@ describe("subscribers view", () => {
         reply: () => ({
           counts,
           subscribers: blocked
-            ? [{ ...subs[0], suppression: { reason: "manual", detail: null } }, subs[1], subs[2]]
+            ? [
+                { ...subs[0], suppression: { reason: "manual", detail: null, erased_at: null } },
+                subs[1],
+                subs[2],
+              ]
             : subs,
           page,
         }),
@@ -349,8 +353,8 @@ describe("subscribers view", () => {
         reply: () => ({
           counts,
           subscribers: [
-            { ...subs[0], suppression: { reason: "manual", detail: null } },
-            { ...subs[2], suppression: { reason: "manual", detail: null } },
+            { ...subs[0], suppression: { reason: "manual", detail: null, erased_at: null } },
+            { ...subs[2], suppression: { reason: "manual", detail: null, erased_at: null } },
           ],
           page,
         }),
@@ -387,8 +391,11 @@ describe("subscribers view", () => {
           counts,
           subscribers: [
             subs[1],
-            { ...subs[2], suppression: { reason: "import_complaint", detail: null } },
-            { ...subs[0], suppression: { reason: "erased", detail: null } },
+            {
+              ...subs[2],
+              suppression: { reason: "import_complaint", detail: null, erased_at: null },
+            },
+            { ...subs[0], suppression: { reason: "erased", detail: null, erased_at: null } },
           ],
           page,
         }),
@@ -424,6 +431,32 @@ describe("subscribers view", () => {
     await settle();
     expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
     expect($("#toasts").textContent).toMatch(/Cleared the bounce on bad@b\.c/);
+    expect(fake.unhandled).toEqual([]);
+  });
+
+  it("flags an erasure kept beneath a bounce, and says a lift leaves the address suppressed (SPEC §7)", async () => {
+    fake = fakeApi([
+      {
+        path: "/api/subscribers",
+        reply: () => ({
+          counts,
+          subscribers: [
+            { ...subs[1], suppression: { reason: "bounce", detail: null, erased_at: 1 } },
+          ],
+          page,
+        }),
+      },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    expect($$("tr[data-id='s2'] .row-flag").map((f) => f.textContent)).toEqual([
+      "bounced",
+      "erased",
+    ]);
+    pick("s2", "Clear");
+    expect($(".modal .hint").textContent).toMatch(
+      /They were erased at their request, so they stay suppressed until they confirm a new sign-up\.$/,
+    );
     expect(fake.unhandled).toEqual([]);
   });
 
@@ -518,7 +551,7 @@ describe("subscribers view", () => {
       [
         "badge suppressed",
         "erased",
-        "Erased at their request, then signed up again. Only their confirmation email is sent, and confirming lifts this.",
+        "Erased at their request, then signed up again. Only their confirmation email is sent, and confirming lifts this. Beside another flag, it stays when that one is lifted.",
       ],
     ]);
     expect(
@@ -570,7 +603,11 @@ describe("subscribers view", () => {
         reply: () => ({
           counts,
           subscribers: [
-            { ...subs[2], suppression: { reason: "erased", detail: null }, status: "pending" },
+            {
+              ...subs[2],
+              suppression: { reason: "erased", detail: null, erased_at: null },
+              status: "pending",
+            },
           ],
           page,
         }),
@@ -592,8 +629,11 @@ describe("subscribers view", () => {
         reply: () => ({
           counts,
           subscribers: [
-            { ...subs[0], suppression: { reason: "import_bounce", detail: null } },
-            { ...subs[1], suppression: { reason: "import_complaint", detail: null } },
+            { ...subs[0], suppression: { reason: "import_bounce", detail: null, erased_at: null } },
+            {
+              ...subs[1],
+              suppression: { reason: "import_complaint", detail: null, erased_at: null },
+            },
           ],
           page,
         }),
@@ -612,7 +652,9 @@ describe("subscribers view", () => {
         path: "/api/subscribers",
         reply: () => ({
           counts,
-          subscribers: [{ ...subs[0], suppression: { reason: "erased", detail: null } }],
+          subscribers: [
+            { ...subs[0], suppression: { reason: "erased", detail: null, erased_at: null } },
+          ],
           page,
         }),
       },

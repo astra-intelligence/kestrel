@@ -246,12 +246,23 @@ export function confirmBlock(sub: Subscriber, onDone: () => void, signal: AbortS
     });
 }
 
+/**
+ * Whether lifting the suppression lets mail go to the subscriber again: only if they're
+ * confirmed, and never while an erasure sits beneath it, which the lift leaves in its place
+ * until they confirm a new sign-up (SPEC §7).
+ */
+function mailedAfterLift(sub: Subscriber): string {
+  if (sub.suppression?.erased_at != null) {
+    return "They were erased at their request, so they stay suppressed until they confirm a new sign-up.";
+  }
+  return sub.status === "confirmed"
+    ? "They’re confirmed, so they’ll receive your posts again."
+    : "They’ll receive posts again only once they’re confirmed.";
+}
+
 /** Unblock undoes the publisher's own block, and only that: the dialog says what follows. */
 export function confirmUnblock(sub: Subscriber, onDone: () => void, signal: AbortSignal): void {
-  const mailed =
-    sub.status === "confirmed"
-      ? "They’re confirmed, so they’ll receive your posts again."
-      : "They’ll receive posts again only once they’re confirmed.";
+  const mailed = mailedAfterLift(sub);
   const m = modal(
     html`<h3>Unblock this address?</h3><p class="hint">Undoes the block on <strong>${sub.email}</strong>. ${mailed}</p><div class="actions"><button type="button" id="ubCancel">Cancel</button><button type="button" class="primary" id="ubGo">Unblock</button></div>`,
     signal,
@@ -292,10 +303,7 @@ export function confirmClear(
     flag === "bounced"
       ? "an address where mail failed. Clear it only when you know the reason is gone, such as a reader who tells you their mailbox is fixed"
       : "an address that reported your mail as spam. Clear it only when they’ve asked you to send them your posts again";
-  const mailed =
-    sub.status === "confirmed"
-      ? "They’re confirmed, so they’ll receive your posts again."
-      : "They’ll receive posts again only once they’re confirmed.";
+  const mailed = mailedAfterLift(sub);
   const m = modal(
     html`<h3>Clear this ${what}?</h3><p class="hint">Lets mail go again to <strong>${sub.email}</strong>, ${why}. ${mailed}</p><div class="actions"><button type="button" id="cCancel">Cancel</button><button type="button" class="danger" id="cGo">Clear</button></div>`,
     signal,

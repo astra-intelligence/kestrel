@@ -1894,6 +1894,7 @@ export function createRouter({
             reason: "manual",
             detail: "Our own test address",
             created_at: 1760400000000,
+            erased_at: null,
           },
           added: true,
         },

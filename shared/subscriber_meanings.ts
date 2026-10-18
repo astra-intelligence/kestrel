@@ -34,7 +34,7 @@ export const FLAG_MEANING: Record<SuppressionFlag, string> = {
   complaint: "Marked as spam, here or at the service it was imported from.",
   blocked: "Stopped by hand, by you or at the service it was imported from. You can unblock it.",
   erased:
-    "Erased at their request, then signed up again. Only their confirmation email is sent, and confirming lifts this.",
+    "Erased at their request, then signed up again. Only their confirmation email is sent, and confirming lifts this. Beside another flag, it stays when that one is lifted.",
 };
 
 /**

@@ -32,7 +32,12 @@ export async function withSuppressions(
   const by = new Map(found.map((s) => [s.email, s]));
   return rows.map((row) => {
     const sup = by.get(row.email);
-    return { ...row, suppression: sup ? { reason: sup.reason, detail: sup.detail } : null };
+    return {
+      ...row,
+      suppression: sup
+        ? { reason: sup.reason, detail: sup.detail, erased_at: sup.erased_at }
+        : null,
+    };
   });
 }
 
@@ -395,10 +400,9 @@ export async function audienceCount(db: D1Database): Promise<number> {
   return row?.n ?? 0;
 }
 
-// A suppression as the API answers it. `erased_at` stays in the database: a client reads an
-// erasure from the `erased` reason, which the address shows again once whatever stood in the
-// marker's place is lifted.
-const SUPPRESSION_COLUMNS = "email, reason, detail, created_at";
+// A suppression as the API answers it, `erased_at` included, so a client sees an erasure kept
+// beneath a bounce, complaint, or block before a lift reveals it.
+const SUPPRESSION_COLUMNS = "email, reason, detail, created_at, erased_at";
 
 export async function isSuppressed(db: D1Database, email: string): Promise<boolean> {
   const row = await db.prepare("SELECT 1 FROM suppressions WHERE email = ?").bind(email).first();

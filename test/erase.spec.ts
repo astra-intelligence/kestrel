@@ -692,6 +692,13 @@ describe("an erasure kept beneath another suppression, once that one is lifted (
         .bind(email)
         .first<{ erased_at: number }>())!.erased_at;
       expect((await suppressionOf(email))?.reason).not.toBe("erased");
+      // The API shows the erasure beneath, before a lift reveals it.
+      const listed = await readJson(
+        await SELF.fetch(`${base}/api/suppressions`, { headers: AUTH }),
+      );
+      expect(listed.suppressions).toEqual([
+        expect.objectContaining({ email, erased_at: erasedAt }),
+      ]);
 
       expect(await clearOk(email)).toBe(true);
 

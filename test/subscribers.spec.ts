@@ -631,6 +631,7 @@ describe("subscribers: admin + suppressions", () => {
         reason: "manual",
         detail: "Our own test address",
         created_at: expect.any(Number),
+        erased_at: null,
       },
       added: true,
     });
@@ -793,7 +794,11 @@ describe("subscribers: admin list filter/search and unsubscribe-by-id", () => {
     const body = await readJson(res);
     expect(body.subscribers.map((s: any) => s.email)).toEqual([suppressed]);
     // Each row carries its suppression inside it (for the inline flag): why, and the words.
-    expect(body.subscribers[0].suppression).toEqual({ reason: "complaint", detail: null });
+    expect(body.subscribers[0].suppression).toEqual({
+      reason: "complaint",
+      detail: null,
+      erased_at: null,
+    });
     // The page envelope reflects the filtered total, not the whole table.
     expect(body.page).toMatchObject({ total: 1, offset: 0 });
   });

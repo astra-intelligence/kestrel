@@ -206,11 +206,17 @@ function wireCountFilters(root: HTMLElement, state: ListState, reload: () => voi
 function flagLabel(s: Subscriber): string {
   return (s.suppression && SUPPRESSION_FLAG[s.suppression.reason]) || "suppressed";
 }
+// An erasure kept beneath a bounce, complaint, or block shows as a second flag, so the
+// publisher knows lifting the first leaves the address suppressed (SPEC §7).
 function suppressionFlag(s: Subscriber): Html | null {
   if (!s.suppression) {
     return null;
   }
-  return html` <span class="badge suppressed row-flag">${flagLabel(s)}</span>`;
+  const erasedBeneath =
+    s.suppression.erased_at !== null && s.suppression.reason !== "erased"
+      ? html` <span class="badge suppressed row-flag">erased</span>`
+      : null;
+  return html` <span class="badge suppressed row-flag">${flagLabel(s)}</span>${erasedBeneath}`;
 }
 
 // The legend: what each label a row can show means (DESIGN §3), every pill drawn as the

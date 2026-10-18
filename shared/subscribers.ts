@@ -29,6 +29,12 @@ export interface Suppression {
   reason: SuppressionReason;
   detail: string | null;
   created_at: number;
+  /**
+   * When the address was erased at the person's request, or null. Set on the `erased` marker,
+   * and on a bounce, complaint, or block that stands in its place, which a lift then turns
+   * back into the marker (SPEC §7).
+   */
+  erased_at: number | null;
 }
 
 /** Why a subscriber's address is suppressed, as a subscriber carries it. */
@@ -36,6 +42,8 @@ export interface SubscriberSuppression {
   reason: SuppressionReason;
   /** The provider's or the publisher's words, if any. */
   detail: string | null;
+  /** When the address was erased, or null; as on `Suppression`. */
+  erased_at: number | null;
 }
 
 export interface Subscriber {

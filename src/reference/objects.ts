@@ -703,8 +703,8 @@ const SUBSCRIBER_FIELDS: ReferenceField[] = [
   },
   {
     name: "suppression",
-    type: "{ reason, detail } | null",
-    description: `Whether the address is suppressed, null when it isn't: \`reason\`, why and whose decision it was, as a suppression's (Suppressions), and \`detail\`, the provider's words or the publisher's. ${SUPPRESSED_MEANING} On the roster \`erased\` means: ${FLAG_MEANING.erased}`,
+    type: "{ reason, detail, erased_at } | null",
+    description: `Whether the address is suppressed, null when it isn't: \`reason\`, why and whose decision it was, as a suppression's (Suppressions), \`detail\`, the provider's words or the publisher's, and \`erased_at\`, when it was erased, as a suppression's. ${SUPPRESSED_MEANING} On the roster \`erased\` means: ${FLAG_MEANING.erased}`,
   },
   {
     name: "origin",
@@ -761,6 +761,12 @@ const SUPPRESSION_FIELDS: ReferenceField[] = [
     description: "The provider's words, or the publisher's.",
   },
   { name: "created_at", type: "number", description: "When it was suppressed." },
+  {
+    name: "erased_at",
+    type: "number | null",
+    description:
+      "When the address was erased at the person's request, or null. Set on the `erased` marker, and on a bounce, complaint, or block standing in its place: lifting that one leaves the address suppressed as `erased`, so it isn't mailed until the person confirms a new sign-up.",
+  },
 ];
 
 const IMPORT_PLAN_FIELDS: ReferenceField[] = [
@@ -952,6 +958,7 @@ export const OBJECTS: Record<ObjectKey, Omit<ReferenceObject, "key">> = {
       reason: "manual",
       detail: "Our own test address",
       created_at: 1760400000000,
+      erased_at: null,
     } satisfies Suppression,
   },
   import_plan: {
