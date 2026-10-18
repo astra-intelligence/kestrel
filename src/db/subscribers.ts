@@ -179,9 +179,9 @@ export async function releaseConfirmation(
  * the `status = 'pending'` guard, so the token is left in place (not cleared) and a
  * double-click still lands on the confirmed page rather than an "invalid link".
  *
- * Confirming also lifts an `erased` suppression on the address (see `ERASED`), and only
- * when this confirm is the one that took effect. Any other suppression is the publisher's
- * to clear and is left alone.
+ * Confirming also lifts an erasure on the address (see `ERASED`), and only when this confirm
+ * is the one that took effect: the `erased` marker goes, and an erasure kept under another
+ * suppression is forgotten. That other suppression is the publisher's to lift and stays.
  *
  * The consent is then this app's own (SPEC §7): the subscriber reads as joining through its
  * double opt-in, not through any import that added them pending, and the evidence is the
@@ -219,6 +219,11 @@ export async function confirm(
         "DELETE FROM suppressions WHERE email = ? AND reason = ? AND EXISTS (SELECT 1 FROM subscribers WHERE id = ? AND status = 'confirmed' AND confirmed_at = ?)",
       )
       .bind(row.email, ERASED, row.id, confirmedAt),
+    db
+      .prepare(
+        "UPDATE suppressions SET erased_at = NULL WHERE email = ? AND erased_at IS NOT NULL AND EXISTS (SELECT 1 FROM subscribers WHERE id = ? AND status = 'confirmed' AND confirmed_at = ?)",
+      )
+      .bind(row.email, row.id, confirmedAt),
   ]);
   return getById(db, row.id);
 }
@@ -390,6 +395,11 @@ export async function audienceCount(db: D1Database): Promise<number> {
   return row?.n ?? 0;
 }
 
+// A suppression as the API answers it. `erased_at` stays in the database: a client reads an
+// erasure from the `erased` reason, which the address shows again once whatever stood in the
+// marker's place is lifted.
+const SUPPRESSION_COLUMNS = "email, reason, detail, created_at";
+
 export async function isSuppressed(db: D1Database, email: string): Promise<boolean> {
   const row = await db.prepare("SELECT 1 FROM suppressions WHERE email = ?").bind(email).first();
   return row !== null;
@@ -398,7 +408,10 @@ export async function isSuppressed(db: D1Database, email: string): Promise<boole
 /**
  * The suppression reason that marks an erased person (SPEC §7, Erasing a subscriber): the
  * address is kept only so it is never mailed by accident, and the person may still come
- * back by subscribing again, their own confirmation lifting the marker.
+ * back by subscribing again, their own confirmation lifting the marker. The erasure itself is
+ * `erased_at`, on the address's one suppression whatever its reason, so a bounce, complaint,
+ * or block standing in the marker's place still carries it, and lifting that suppression
+ * leaves the marker. A row whose reason is `erased` always has `erased_at`.
  */
 export const ERASED: SuppressionReason = "erased";
 
@@ -446,10 +459,11 @@ function withoutAddress(text: string | null, email: string, placeholder: string)
  * evidence for it along; put one random placeholder, `erased:<hex>`, in place of their
  * address on every past delivery row, so each record still sums to its audience; and keep
  * the address only as an `erased` suppression with no detail. A suppression already there
- * stays as it is (a bounce is still a bounce), and an earlier erasure's marker takes this
- * one's time. A provider's words or message id on a delivery row that name the address get
- * the placeholder in its place too, in whatever case it was written, the rest of the text
- * kept as it was. A real provider's message id is opaque and never matches; the local
+ * stays as it is (a bounce is still a bounce) and records the erasure beneath it, so lifting
+ * it later leaves the marker; an earlier erasure's marker takes this one's time. A
+ * provider's words or message id on a delivery row that name the address get the
+ * placeholder in its place too, in whatever case it was written, the rest of the text kept
+ * as it was. A real provider's message id is opaque and never matches; the local
  * stand-in's spells out the address, and it is still unique with the placeholder in it.
  *
  * One batch, so it all lands together or not at all. It is refused (`in_flight`) while a
@@ -502,7 +516,10 @@ export async function erase(db: D1Database, id: string): Promise<EraseOutcome> {
       .bind(email, now, id),
     db
       .prepare(
-        `INSERT INTO suppressions (email, reason, detail, created_at) SELECT ?1, ?3, NULL, ?2 WHERE ${idle} ON CONFLICT (email) DO UPDATE SET created_at = excluded.created_at, detail = NULL WHERE suppressions.reason = excluded.reason`,
+        `INSERT INTO suppressions (email, reason, detail, created_at, erased_at) SELECT ?1, ?3, NULL, ?2, ?2 WHERE ${idle}
+         ON CONFLICT (email) DO UPDATE SET erased_at = excluded.erased_at,
+           created_at = CASE WHEN suppressions.reason = excluded.reason THEN excluded.created_at ELSE suppressions.created_at END,
+           detail = CASE WHEN suppressions.reason = excluded.reason THEN NULL ELSE suppressions.detail END`,
       )
       .bind(email, now, ERASED),
     db
@@ -544,6 +561,7 @@ export async function addSuppression(
 ): Promise<void> {
   // One suppression per address, and the first one stands, except over an `erased` marker:
   // a bounce or complaint on an erased address must still stop it being sent confirmations.
+  // The marker's `erased_at` stays beneath it, so lifting the bounce leaves the marker.
   await db
     .prepare(
       "INSERT INTO suppressions (email, reason, detail, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (email) DO UPDATE SET reason = excluded.reason, detail = excluded.detail, created_at = excluded.created_at WHERE suppressions.reason = ?",
@@ -571,7 +589,7 @@ export async function block(
         "INSERT INTO suppressions (email, reason, detail, created_at) VALUES (?, 'manual', ?, ?) ON CONFLICT (email) DO NOTHING",
       )
       .bind(address, detail ?? null, Date.now()),
-    db.prepare("SELECT * FROM suppressions WHERE email = ?").bind(address),
+    db.prepare(`SELECT ${SUPPRESSION_COLUMNS} FROM suppressions WHERE email = ?`).bind(address),
   ]);
   const suppression = unwrap(read?.results[0] as SuppressionRow | undefined, "suppression");
   return { suppression, added: (insert?.meta.changes ?? 0) > 0 };
@@ -579,7 +597,7 @@ export async function block(
 
 export async function listSuppressions(db: D1Database): Promise<SuppressionRow[]> {
   const { results } = await db
-    .prepare("SELECT * FROM suppressions ORDER BY created_at DESC LIMIT 1000")
+    .prepare(`SELECT ${SUPPRESSION_COLUMNS} FROM suppressions ORDER BY created_at DESC LIMIT 1000`)
     .all<SuppressionRow>();
   return results;
 }
@@ -594,26 +612,35 @@ export async function suppressionsFor(
     return [];
   }
   const { results } = await db
-    .prepare("SELECT * FROM suppressions WHERE email IN (SELECT value FROM json_each(?))")
+    .prepare(
+      `SELECT ${SUPPRESSION_COLUMNS} FROM suppressions WHERE email IN (SELECT value FROM json_each(?))`,
+    )
     .bind(JSON.stringify(emails))
     .all<SuppressionRow>();
   return results;
 }
 
 /**
- * Clear an address's suppression, the publisher's deliberate act (SPEC §7). An erasure's
- * marker is never cleared this way: only the person's own confirmation lifts it, so it
- * answers `erased` and leaves the marker in place.
+ * Clear an address's suppression, the publisher's deliberate act (SPEC §7). An erasure is
+ * never cleared this way: only the person's own confirmation lifts it. So the marker itself
+ * answers `erased` and stays, and a suppression that stood in an erasure's place gives way
+ * to the marker, at the erasure's time, rather than leaving the address with nothing on file.
  */
 export async function clearSuppression(
   db: D1Database,
   email: string,
 ): Promise<"cleared" | "none" | "erased"> {
-  const res = await db
-    .prepare("DELETE FROM suppressions WHERE email = ? AND reason <> ?")
-    .bind(email, ERASED)
-    .run();
-  if ((res.meta.changes ?? 0) > 0) {
+  const [reverted, deleted] = await db.batch([
+    db
+      .prepare(
+        "UPDATE suppressions SET reason = ?2, detail = NULL, created_at = erased_at WHERE email = ?1 AND reason <> ?2 AND erased_at IS NOT NULL",
+      )
+      .bind(email, ERASED),
+    db
+      .prepare("DELETE FROM suppressions WHERE email = ? AND reason <> ? AND erased_at IS NULL")
+      .bind(email, ERASED),
+  ]);
+  if ((reverted?.meta.changes ?? 0) + (deleted?.meta.changes ?? 0) > 0) {
     return "cleared";
   }
   return (await suppressionOf(db, email))?.reason === ERASED ? "erased" : "none";

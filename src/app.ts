@@ -1668,7 +1668,7 @@ export function createRouter({
         "Erase a subscriber: remove their data and keep only a do-not-contact marker. Can't be undone.",
       description:
         `${SUBSCRIBER_ACTIONS.erase.when} Unsubscribing stops the mail and keeps everything; erasing removes what the list knows about them. ` +
-        "One batch: deletes the subscriber's row and evidence, replaces their address on every past delivery row with one placeholder (`erased:` and random hex, so each record still sums to its audience), and suppresses the address as `erased`, unless it already has a bounce, complaint, or block, which it keeps. Answers `erased`: the `email`, how many `deliveries` show the placeholder, and the `suppression` left. Only their own confirmation lifts the marker, never an import, and `POST /api/subscribers` asks for `acknowledge_erasure` first. Nothing of the id is kept, so a repeat answers 404. A later receipt on an erased row keeps its outcome without the provider's words; a bounce or complaint suppresses its address, replacing the marker.",
+        "One batch: deletes the subscriber's row and evidence, replaces their address on every past delivery row with one placeholder (`erased:` and random hex, so each record still sums to its audience), and suppresses the address as `erased`, unless it already has a bounce, complaint, or block, which it keeps with the erasure recorded beneath it. Answers `erased`: the `email`, how many `deliveries` show the placeholder, and the `suppression` left. Only their own confirmation lifts the marker, never an import, and `POST /api/subscribers` asks for `acknowledge_erasure` first. Nothing of the id is kept, so a repeat answers 404. A later receipt on an erased row keeps its outcome without the provider's words; a bounce or complaint suppresses its address, replacing the marker.",
       example: {
         response: {
           erased: { email: "reader@example.com", deliveries: 12, suppression: "erased" },
@@ -1929,7 +1929,7 @@ export function createRouter({
       resource: "suppressions",
       title: "Unblock or clear an address",
       summary: "Lift an address's suppression, so it may be mailed again.",
-      description: `Both of the editor's acts that lift a suppression: "Unblock" for the publisher's own block, when they decide to mail the address again, and "Clear" for a bounce or a complaint. ${SUBSCRIBER_ACTIONS.clear.when} Either is a deliberate, rare act, on the publisher's word. An erasure's marker is never cleared here; an erasure that found a block keeps the block, and clearing it clears the address. Answers \`cleared: false\` when there was no suppression.`,
+      description: `Both of the editor's acts that lift a suppression: "Unblock" for the publisher's own block, when they decide to mail the address again, and "Clear" for a bounce or a complaint. ${SUBSCRIBER_ACTIONS.clear.when} Either is a deliberate, rare act, on the publisher's word. An erasure is never cleared here: its marker is refused, and an address erased while it carried a bounce, complaint, or block gets the \`erased\` marker back when that one is cleared, answering \`cleared: true\`. Answers \`cleared: false\` when there was no suppression.`,
       example: { response: { email: "reader@example.com", cleared: true } },
       errors: [{ code: "erasure_marker", details: ["suppression"] }],
       handler: suppressionRoutes.clear,

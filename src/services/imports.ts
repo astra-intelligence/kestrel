@@ -37,7 +37,7 @@ import {
   type PlainListStatus,
   parseImportFile,
 } from "../../shared/imports";
-import type { ListEntry, ListState } from "../db/imports";
+import type { ListEntry, ListState, SuppressionHere } from "../db/imports";
 import * as imports from "../db/imports";
 import { countSubscribers, ERASED } from "../db/subscribers";
 import { onFreePlanLimits } from "../env";
@@ -123,20 +123,24 @@ const WRITE_OUTCOMES: ReadonlySet<ImportOutcome> = new Set([
  * to pending through the public form, so only its owner's confirmation undoes the leaving
  * (I2). A suppression here stands, except that an erased marker gives way to any other
  * reason, so a known bounce or complaint still stops the address being sent confirmations.
- * An erased marker with no subscriber behind it also blocks an unsubscribed row: recording
- * the person as unsubscribed would bring back the data the erasure removed. A row that
- * itself says the address was erased never creates a subscriber or confirms a pending one
- * either: it is blocked by its own marker, which it still brings, so a pending subscriber
- * stays pending and only their own confirmation lifts it, as after an erasure here.
+ * An erasure here with no subscriber behind it also blocks an unsubscribed row, whatever
+ * suppression stands in its marker's place: recording the person as unsubscribed would bring
+ * back the data the erasure removed. A row that itself says the address was erased never
+ * creates a subscriber or confirms a pending one either: it is blocked by its own marker,
+ * which it still brings (beneath whatever suppression stands, which then counts as added),
+ * so a pending subscriber stays pending and only their own confirmation lifts it, as after an
+ * erasure here.
  */
 export function classify(
   row: ImportRow,
   here: ListEntry | undefined,
-  suppressionHere: string | undefined,
+  suppressionHere: SuppressionHere | undefined,
 ): { outcome: ImportOutcome; suppressionAdded: boolean } {
   const suppressionAdded =
     row.suppression !== null &&
-    (suppressionHere === undefined || (suppressionHere === ERASED && row.suppression !== ERASED));
+    (suppressionHere === undefined ||
+      (suppressionHere.reason === ERASED && row.suppression !== ERASED) ||
+      (row.erased && !suppressionHere.erased));
   const leftHere =
     here?.status === "unsubscribed" ||
     (here?.status === "pending" && here.unsubscribed_at !== null);
@@ -162,7 +166,7 @@ export function classify(
       (here.confirmed_at ?? 0) > row.unsubscribed_at;
     outcome =
       here === undefined
-        ? suppressionHere === ERASED
+        ? suppressionHere?.erased
           ? "kept_suppressed"
           : "added_unsubscribed"
         : here.status === "unsubscribed"
@@ -174,7 +178,7 @@ export function classify(
     outcome = "left_out";
   }
   if (
-    row.suppression === ERASED &&
+    row.erased &&
     (outcome === "added_confirmed" ||
       outcome === "confirmed_pending" ||
       outcome === "added_unsubscribed")
@@ -474,6 +478,7 @@ export async function commitImport(
         e: row.email,
         r: SUPPRESSION_REASON[row.suppression],
         at: row.suppressed_at,
+        er: row.erased,
       });
     }
   }
@@ -533,12 +538,12 @@ export async function commitImport(
     for (const p of unsettled) {
       const e = p.row.email;
       const { outcome } = classify(
-        { ...p.row, suppression: null },
+        { ...p.row, suppression: null, erased: false },
         state.subscribers.get(e),
         applied.suppressed.has(e)
           ? state.subscribers.has(e)
             ? undefined
-            : ERASED
+            : { reason: ERASED, erased: true }
           : state.suppressions.get(e),
       );
       // The guard held the write back, so whatever the list would allow now did not happen.

@@ -173,7 +173,10 @@ export interface ImportRow {
   status: ImportStatus;
   opt_in: OptIn;
   origin: string;
+  /** For a merged row, the strongest of its repeats' suppressions, where an erasure is the weakest. */
   suppression: SuppressionClaim | null;
+  /** Whether the file says the address was erased: its suppression, or any repeat's for a merged row. */
+  erased: boolean;
   subscribed_at: number | null;
   confirmed_at: number | null;
   unsubscribed_at: number | null;
@@ -270,6 +273,7 @@ function parsePlainList(text: string, declared: PlainListStatus): ParseResult {
       opt_in: "unknown",
       origin: "unknown",
       suppression: declared === "bounced" ? "bounce" : null,
+      erased: false,
       subscribed_at: null,
       confirmed_at: null,
       unsubscribed_at: null,
@@ -526,6 +530,8 @@ function parseCsvFile(text: string): ParseResult {
       const raw = cell(idx.email);
       const email = normalizeEmail(raw);
       const valid = isValidEmail(email);
+      const claim =
+        suppression === "" ? null : pick("suppression", idx.suppression, SUPPRESSION_CLAIMS);
       rows.push({
         row: r,
         email: valid ? email : raw,
@@ -533,8 +539,8 @@ function parseCsvFile(text: string): ParseResult {
         status: pick("status", idx.status, IMPORT_STATUSES),
         opt_in: pick("opt_in", idx.opt_in, OPT_INS),
         origin,
-        suppression:
-          suppression === "" ? null : pick("suppression", idx.suppression, SUPPRESSION_CLAIMS),
+        suppression: claim,
+        erased: claim === "erased",
         subscribed_at: instant("subscribed_at", idx.subscribed_at),
         confirmed_at: instant("confirmed_at", idx.confirmed_at),
         unsubscribed_at: instant("unsubscribed_at", idx.unsubscribed_at),
@@ -548,7 +554,9 @@ function parseCsvFile(text: string): ParseResult {
   return { ok: true, file: { kind: "csv", rows } };
 }
 
-// Merging repeats: which claim wins. Higher wins; for opt_in the weakest claim wins.
+// Merging repeats: which claim wins. Higher wins; for opt_in the weakest claim wins. An
+// erasure is the weakest suppression, since a bounce, complaint, or block says more about
+// the address, and the merged row keeps it apart as `erased` so it is never lost (SPEC §7).
 const STATUS_RANK: Record<ImportStatus, number> = {
   none: 0,
   pending: 1,
@@ -556,10 +564,10 @@ const STATUS_RANK: Record<ImportStatus, number> = {
   unsubscribed: 3,
 };
 const SUPPRESSION_RANK: Record<SuppressionClaim, number> = {
-  manual: 0,
-  bounce: 1,
-  complaint: 2,
-  erased: 3,
+  erased: 0,
+  manual: 1,
+  bounce: 2,
+  complaint: 3,
 };
 const OPT_IN_STRENGTH: Record<OptIn, number> = { unknown: 0, single: 1, double: 2 };
 
@@ -583,7 +591,8 @@ export interface MergedImport {
 
 /**
  * Fold an address's repeats into one row (SPEC §7): status unsubscribed over subscribed over
- * pending over none; suppression erased over complaint over bounce over manual; the weakest
+ * pending over none; suppression complaint over bounce over manual over erased, with an
+ * erasure in any repeat kept as `erased` whichever suppression wins; the weakest
  * opt-in claim; the earliest consent times and the latest unsubscribe and suppression times;
  * and the evidence and origin of the row whose status won (the first such row on a tie).
  */
@@ -615,6 +624,7 @@ export function mergeRows(rows: readonly ImportRow[]): MergedImport {
     ) {
       held.suppression = row.suppression;
     }
+    held.erased ||= row.erased;
     if (OPT_IN_STRENGTH[row.opt_in] < OPT_IN_STRENGTH[held.opt_in]) {
       held.opt_in = row.opt_in;
     }
@@ -786,9 +796,9 @@ export const IMPORT_OUTCOME_MEANINGS: Record<ImportOutcome, string> = {
   kept_unsubscribed:
     "`subscribed`, but unsubscribed here, or pending again after leaving until they confirm here themselves. An unsubscribe here is never reversed (I2).",
   kept_suppressed:
-    "`subscribed`, but the address carries a suppression here, a do-not-contact marker included: never added or confirmed. Also `unsubscribed` for an address whose suppression here is the do-not-contact marker an erasure left, and, for an address erased in the file (its `suppression` is `erased`, which is still added), `subscribed` or `unsubscribed` with no subscriber here, or `subscribed` and pending here, which stays pending: no subscriber is recorded or confirmed, so an import never brings back an erased person’s data.",
+    "`subscribed`, but the address carries a suppression here, a do-not-contact marker included: never added or confirmed. Also `unsubscribed` for an address erased here, whatever suppression stands in its marker’s place now, and, for an address erased in the file (any of its rows’ `suppression` is `erased`, which is still added), `subscribed` or `unsubscribed` with no subscriber here, or `subscribed` and pending here, which stays pending: no subscriber is recorded or confirmed, so an import never brings back an erased person’s data.",
   suppressed:
-    "The row carries a suppression and the address has none here (or only a do-not-contact marker, which a bounce, a complaint, or a manual suppression replaces), and nothing else changes. Applied whatever the row’s `status`.",
+    "The row carries a suppression and the address has none here (or only a do-not-contact marker, which a bounce, a complaint, or a manual suppression replaces, or one the file says was erased, which records the erasure beneath it), and nothing else changes. Applied whatever the row’s `status`.",
   left_out:
     "`pending` or `none` with nothing to apply: counted, never confirmed. An import sends no email.",
   invalid: "The address isn’t valid.",

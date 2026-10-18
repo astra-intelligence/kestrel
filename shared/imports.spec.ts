@@ -48,6 +48,7 @@ describe("the CSV format (SPEC §7)", () => {
         opt_in: "double",
         origin: "sendy",
         suppression: null,
+        erased: false,
         subscribed_at: null,
         confirmed_at: null,
         unsubscribed_at: null,
@@ -247,6 +248,7 @@ describe("merging an address's repeats (SPEC §7)", () => {
     opt_in: "double",
     origin: "sendy",
     suppression: null,
+    erased: over.suppression === "erased",
     subscribed_at: null,
     confirmed_at: null,
     unsubscribed_at: null,
@@ -307,12 +309,28 @@ describe("merging an address's repeats (SPEC §7)", () => {
     expect(merged.repeats.map((r) => r.row)).toEqual([2, 3]);
   });
 
-  it("ranks erased over every other suppression, and unknown as the weakest opt-in", () => {
+  it("keeps a bounce or complaint over an erasure, and the erasure beside it, so a known bad address is never sent a confirmation", () => {
+    for (const other of ["bounce", "complaint", "manual"] as const) {
+      for (const order of [
+        ["erased", other],
+        [other, "erased"],
+      ] as const) {
+        const merged = mergeRows(order.map((suppression, i) => row({ row: i + 1, suppression })));
+        expect(merged.rows[0]).toMatchObject({ suppression: other, erased: true });
+      }
+    }
+  });
+
+  it("keeps an erasure alone as the suppression, and unknown as the weakest opt-in", () => {
     const merged = mergeRows([
       row({ row: 1, suppression: "erased", opt_in: "single" }),
-      row({ row: 2, suppression: "complaint", opt_in: "unknown" }),
+      row({ row: 2, opt_in: "unknown" }),
     ]);
-    expect(merged.rows[0]).toMatchObject({ suppression: "erased", opt_in: "unknown" });
+    expect(merged.rows[0]).toMatchObject({
+      suppression: "erased",
+      erased: true,
+      opt_in: "unknown",
+    });
   });
 
   it("keeps the first row's origin and evidence when the status ties", () => {

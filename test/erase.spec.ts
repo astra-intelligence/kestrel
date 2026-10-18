@@ -44,6 +44,16 @@ async function eraseOk(email: string): Promise<EraseResponse> {
   return res.json();
 }
 
+/** Clear the address's suppression, the publisher's Clear or Unblock; whether it cleared one. */
+async function clearOk(email: string): Promise<boolean> {
+  const res = await SELF.fetch(`${base}/api/suppressions/${encodeURIComponent(email)}`, {
+    method: "DELETE",
+    headers: AUTH,
+  });
+  expect(res.status).toBe(200);
+  return (await readJson(res)).cleared;
+}
+
 function adminAdd(body: Record<string, unknown>): Promise<Response> {
   return SELF.fetch(`${base}/api/subscribers`, {
     method: "POST",
@@ -179,8 +189,9 @@ describe("erasing a subscriber (SPEC §7)", () => {
     const body = await eraseOk(email);
 
     expect(body).toEqual({ erased: { email, deliveries: 2, suppression: "erased" } });
+    const erasedAt = (await subs.suppressionOf(env.DB, email))!.created_at;
     expect((await everyRow()).filter((l) => l.toLowerCase().includes(email))).toEqual([
-      `suppressions: ${JSON.stringify({ email, reason: "erased", detail: null, created_at: (await subs.suppressionOf(env.DB, email))!.created_at })}`,
+      `suppressions: ${JSON.stringify({ email, reason: "erased", detail: null, created_at: erasedAt, erased_at: erasedAt })}`,
     ]);
     // One placeholder for the person, the same on every send.
     const { results } = await env.DB.prepare(
@@ -430,19 +441,49 @@ describe("an import row that itself says the address was erased (SPEC §7)", () 
     });
   }
 
-  it("is blocked, keeping the suppression here, for an address already suppressed here", async () => {
+  it("is blocked, keeping the suppression here with the erasure beneath it, for an address already suppressed here", async () => {
     await subs.addSuppression(env.DB, email, "bounce");
 
     const { plan, result } = await planAndCommit(
       csvFile([`${email},unsubscribed,unknown,sendy,erased,,,,,`]),
     );
 
-    const blocked = [{ row: 1, email, outcome: "kept_suppressed", suppression_added: false }];
+    const blocked = [{ row: 1, email, outcome: "kept_suppressed", suppression_added: true }];
     expect(plan.rows).toEqual(blocked);
     expect(result.rows).toEqual(blocked);
     expect(await subs.getByEmail(env.DB, email)).toBeNull();
     expect((await suppressionOf(email))?.reason).toBe("bounce");
     expect(await tablesNaming(email)).toEqual(["suppressions"]);
+
+    expect(await clearOk(email)).toBe(true);
+    expect((await suppressionOf(email))?.reason).toBe("erased");
+  });
+
+  it("brings a bounce the file also lists, with the erasure beneath it, so no confirmation reaches the address", async () => {
+    for (const order of [
+      ["bounced", "erased"],
+      ["erased", "bounced"],
+    ]) {
+      await resetDatabase();
+      const { plan } = await planAndCommit(
+        csvFile(
+          order.map(
+            (claim) => `${email},none,unknown,sendy,${claim === "bounced" ? "bounce" : claim},,,,,`,
+          ),
+        ),
+      );
+      expect(plan.rows).toEqual([
+        { row: 1, email, outcome: "suppressed", suppression_added: true },
+        { row: 2, email, outcome: "merged", suppression_added: false },
+      ]);
+      expect((await suppressionOf(email))?.reason).toBe("import_bounce");
+      expect(await readJson(await adminAdd({ email }))).toMatchObject({ action: "suppressed" });
+      expect(await confirmationsTo(email)).toBe(0);
+
+      expect(await clearOk(email)).toBe(true);
+      expect((await suppressionOf(email))?.reason).toBe("erased");
+      expect((await adminAdd({ email })).status).toBe(409);
+    }
   });
 });
 
@@ -605,6 +646,108 @@ describe("erasing someone a send run is handing off (SPEC §7)", () => {
 
     expect((await erase("id-ada@example.com")).status).toBe(200);
     expect((await everyRow()).filter((l) => l.includes(email))).toHaveLength(1);
+  });
+});
+
+describe("an erasure kept beneath another suppression, once that one is lifted (SPEC §7)", () => {
+  const email = "ada@example.com";
+
+  /** Each way an erased address comes to carry a reason other than the marker. */
+  const beneath: [string, () => Promise<void>][] = [
+    [
+      "a bounce it had before the erasure",
+      async () => {
+        await subs.addSuppression(env.DB, email, "bounce", "Permanent/General");
+        await eraseOk(email);
+      },
+    ],
+    [
+      "a complaint it had before the erasure",
+      async () => {
+        await subs.addSuppression(env.DB, email, "complaint");
+        await eraseOk(email);
+      },
+    ],
+    [
+      "a block it had before the erasure",
+      async () => {
+        await subs.block(env.DB, email, "Our own test address");
+        await eraseOk(email);
+      },
+    ],
+    [
+      "a bounce that replaced the marker after the erasure",
+      async () => {
+        await eraseOk(email);
+        await subs.addSuppression(env.DB, email, "bounce");
+      },
+    ],
+  ];
+
+  for (const [what, setUp] of beneath) {
+    it(`leaves the marker, at the erasure's time, for ${what}`, async () => {
+      await seedConfirmed(email);
+      await setUp();
+      const erasedAt = (await env.DB.prepare("SELECT erased_at FROM suppressions WHERE email = ?")
+        .bind(email)
+        .first<{ erased_at: number }>())!.erased_at;
+      expect((await suppressionOf(email))?.reason).not.toBe("erased");
+
+      expect(await clearOk(email)).toBe(true);
+
+      expect(await suppressionOf(email)).toEqual({ email, reason: "erased", detail: null });
+      expect((await subs.suppressionOf(env.DB, email))!.created_at).toBe(erasedAt);
+      // An import still never brings the person back, under any status.
+      const { plan } = await planAndCommit(
+        csvFile([
+          `${email},subscribed,double,sendy,,,,,,`,
+          `other@example.com,subscribed,double,sendy,,,,,,`,
+        ]),
+      );
+      expect(plan.rows).toEqual([
+        { row: 1, email, outcome: "kept_suppressed", suppression_added: false },
+      ]);
+      const unsubscribed = await importCsv([`${email},unsubscribed,unknown,sendy,,,,,,`]);
+      expect(unsubscribed.counts).toEqual(counts({ kept_suppressed: 1 }));
+      expect(await subs.getByEmail(env.DB, email)).toBeNull();
+      // Adding the address by hand asks first, as after any erasure.
+      const refused = await adminAdd({ email });
+      expect(refused.status).toBe(409);
+      expect(await readJson(refused)).toMatchObject({
+        error: "erasure_acknowledgement_required",
+        erased_at: erasedAt,
+      });
+      expect(await confirmationsTo(email)).toBe(0);
+      // Clearing again finds only the marker, which it refuses.
+      const again = await SELF.fetch(`${base}/api/suppressions/${email}`, {
+        method: "DELETE",
+        headers: AUTH,
+      });
+      expect(again.status).toBe(409);
+      expect((await readJson(again)).error).toBe("erasure_marker");
+    });
+  }
+
+  it("is lifted by the person's own confirmation, so clearing the bounce then clears the address", async () => {
+    await seedConfirmed(email);
+    await eraseOk(email);
+    await publicSubscribe(email);
+    expect(await confirmationsTo(email)).toBe(1);
+    // A bounce lands before they confirm, replacing the marker.
+    await subs.addSuppression(env.DB, email, "bounce");
+    const token = (await subs.getByEmail(env.DB, email))!.confirm_token!;
+    await SELF.fetch(`${base}/confirm`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }).toString(),
+    });
+    expect((await subs.getByEmail(env.DB, email))!.status).toBe("confirmed");
+    expect((await suppressionOf(email))?.reason).toBe("bounce");
+
+    expect(await clearOk(email)).toBe(true);
+
+    expect(await suppressionOf(email)).toBeNull();
+    expect(await subs.audienceEmails(env.DB)).toEqual([email]);
   });
 });
 

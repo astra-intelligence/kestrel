@@ -439,3 +439,18 @@ describe("schema (0011_sends_render_warnings)", () => {
     expect(row?.render_warnings).toBe("[]");
   });
 });
+
+describe("schema (0012_suppressions_erased_at)", () => {
+  it("records the erasure on a marker inserted without it, as the previous release's Worker inserts one (SPEC §7)", async () => {
+    await env.DB.prepare(
+      "INSERT INTO suppressions (email, reason, created_at) VALUES ('a@example.com', 'erased', 5), ('b@example.com', 'bounce', 6)",
+    ).run();
+    const { results } = await env.DB.prepare(
+      "SELECT email, erased_at FROM suppressions ORDER BY email",
+    ).all();
+    expect(results).toEqual([
+      { email: "a@example.com", erased_at: 5 },
+      { email: "b@example.com", erased_at: null },
+    ]);
+  });
+});

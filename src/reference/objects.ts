@@ -751,7 +751,8 @@ const SUPPRESSION_FIELDS: ReferenceField[] = [
   {
     name: "reason",
     type: "string",
-    description: "Why, and whose decision it was.",
+    description:
+      "Why, and whose decision it was. An address erased while it carried a bounce, complaint, or block keeps that reason, and reads `erased` again once that one is lifted: an erasure survives any lift.",
     values: REASON_VALUES,
   },
   {
