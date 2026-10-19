@@ -11,10 +11,9 @@
  */
 
 import type { ImportRecord, OptIn, OutcomeCounts } from "../../shared/imports";
-import type { SubscriberStatus } from "../../shared/subscribers";
+import type { SubscriberStatus, UnsubscribeCause } from "../../shared/subscribers";
 import { readOutcomeCounts } from "./import_counts";
 import { importNotice } from "./notifications";
-import { ERASED } from "./subscribers";
 
 /**
  * The most bytes of JSON one statement binds. D1 refuses a string over 2,000,000 bytes;
@@ -55,6 +54,8 @@ export interface ListEntry {
   confirmed_at: number | null;
   /** When they last left, kept while they are pending again. */
   unsubscribed_at: number | null;
+  /** Why they left, kept while they are pending again. */
+  unsubscribe_cause: UnsubscribeCause | null;
 }
 
 /** The list as it stands for some addresses: their subscribers, and their suppressions' reasons. */
@@ -73,7 +74,7 @@ export async function readListState(db: D1Database, emails: readonly string[]): 
   const statements = chunks.flatMap((chunk) => [
     db
       .prepare(
-        "SELECT email, status, import_id, confirmed_at, unsubscribed_at FROM subscribers WHERE email IN (SELECT value FROM json_each(?))",
+        "SELECT email, status, import_id, confirmed_at, unsubscribed_at, unsubscribe_cause FROM subscribers WHERE email IN (SELECT value FROM json_each(?))",
       )
       .bind(chunk),
     db
@@ -91,6 +92,7 @@ export async function readListState(db: D1Database, emails: readonly string[]): 
           import_id: r.import_id as string | null,
           confirmed_at: r.confirmed_at as number | null,
           unsubscribed_at: r.unsubscribed_at as number | null,
+          unsubscribe_cause: r.unsubscribe_cause as UnsubscribeCause | null,
         });
       } else {
         state.suppressions.set(r.email as string, r.reason as string);
@@ -164,11 +166,12 @@ export async function getImportByPlanHash(
   return row ? toRecord(row) : null;
 }
 
-/** A subscriber the import confirms or adds, with the provenance the import gives them. */
+/** A subscriber the import confirms or adds, with the provenance the import gives them;
+ *  none for one the file says was erased. */
 export interface ConsentRow {
   e: string;
-  opt: OptIn;
-  org: string;
+  opt: OptIn | null;
+  org: string | null;
   ev: string | null;
   /** The source's confirmation time (its `confirmed_at`, else its `subscribed_at`), or null. */
   cat: number | null;
@@ -177,9 +180,15 @@ export interface ConsentRow {
 /** A new subscriber's ids, beside its consent. */
 export interface NewRow extends ConsentRow {
   id: string;
-  tok: string;
+  /** Null for one the file says was erased, who holds no token. */
+  tok: string | null;
   /** For an unsubscribed one, when the source says they left, or null. */
   uat: number | null;
+}
+
+/** A new unsubscribed subscriber, with why they left. */
+export interface UnsubscribedRow extends NewRow {
+  c: UnsubscribeCause;
 }
 
 /** Everything one import writes. Each list holds the rows its plan meant for that write. */
@@ -189,11 +198,13 @@ export interface ImportWrites {
     principal_email: string | null;
     counts: OutcomeCounts;
   };
-  unsubscribe: { e: string; uat: number | null }[];
-  addUnsubscribed: NewRow[];
+  unsubscribe: { e: string; uat: number | null; c: UnsubscribeCause }[];
+  addUnsubscribed: UnsubscribedRow[];
   confirm: ConsentRow[];
   addConfirmed: NewRow[];
   suppress: { e: string; r: string; at: number | null }[];
+  /** The addresses the file says left by an erasure, whose records are stripped to the address. */
+  erase: string[];
   /** Whether to tell the publisher of the import (one Claude committed, SPEC §8). */
   notice: boolean;
 }
@@ -214,17 +225,17 @@ const v = (field: string) => `json_extract(j.value, '$.${field}')`;
  * Apply an import in one batch, all of it or none: its record first (every row it touches
  * names it), then, each guarded against the list as it stands, the unsubscribes, the new
  * unsubscribed addresses, the confirmations of pending subscribers, the new confirmed ones,
- * the suppressions, and the publisher's notice. Confirmations run before the suppressions
- * so a row's own bounce lands beside its subscriber; a suppression already here holds any
- * confirmation back, an erased marker included, and is never replaced, and an erased marker
- * holds back a new unsubscribed address too, since no import brings back an erased person's
- * data (SPEC §7). Throws on a second
- * import of the same plan (`plan_hash` is unique), having written nothing.
+ * the suppressions, the stripping of whoever the file says left by an erasure, the records of
+ * past sends losing their address (`forget`), and the publisher's notice. Confirmations run before the suppressions so a row's own bounce lands
+ * beside its subscriber; a suppression already here holds any confirmation back and is never
+ * replaced. Throws on a second import of the same plan (`plan_hash` is unique), having
+ * written nothing.
  */
 export async function applyImport(
   db: D1Database,
   writes: ImportWrites,
   suppressionDetail: string,
+  forget: D1PreparedStatement[] = [],
 ): Promise<AppliedWrites> {
   const r = writes.record;
   const now = r.created_at;
@@ -261,36 +272,52 @@ export async function applyImport(
     }
   };
 
-  // Unsubscribe a pending or confirmed subscriber, unless they confirmed here (not by an
-  // import) after the source says they left: their newer act stands.
+  // Unsubscribe a pending or confirmed subscriber by the row's cause, unless they confirmed
+  // here (not by an import) after the source says they left: their newer act stands. One who
+  // already left, unsubscribed or pending again, takes the row's cause only when it is the
+  // stronger, an erasure over a complaint over the rest, as `strongerCause` ranks them; one
+  // still unsubscribed keeps when they left.
+  const cause = v("c");
+  const held = "COALESCE(subscribers.unsubscribe_cause, 'import')";
   add(
     "unsubscribed",
-    `UPDATE subscribers SET status = 'unsubscribed', unsubscribed_at = COALESCE(${v("uat")}, ?2)
+    `UPDATE subscribers SET
+            unsubscribed_at = CASE WHEN subscribers.status = 'unsubscribed' THEN subscribers.unsubscribed_at
+                                   ELSE COALESCE(${v("uat")}, ?2) END,
+            unsubscribe_cause = CASE WHEN subscribers.unsubscribe_cause IS NULL THEN ${cause}
+                                     WHEN subscribers.unsubscribe_cause = 'erased' OR ${cause} = 'erased' THEN 'erased'
+                                     WHEN subscribers.unsubscribe_cause = 'complaint' OR ${cause} = 'complaint' THEN 'complaint'
+                                     ELSE subscribers.unsubscribe_cause END,
+            status = 'unsubscribed'
        FROM json_each(?1) AS j
       WHERE subscribers.email = ${v("e")}
-        AND subscribers.status IN ('pending', 'confirmed')
-        AND NOT (subscribers.status = 'confirmed' AND subscribers.import_id IS NULL
-                 AND ${v("uat")} IS NOT NULL AND COALESCE(subscribers.confirmed_at, 0) > ${v("uat")})
+        AND ((subscribers.status IN ('pending', 'confirmed')
+              AND NOT (subscribers.status = 'confirmed' AND subscribers.import_id IS NULL
+                       AND ${v("uat")} IS NOT NULL AND COALESCE(subscribers.confirmed_at, 0) > ${v("uat")}))
+          OR (subscribers.status = 'unsubscribed'
+              AND ((${cause} = 'erased' AND ${held} <> 'erased')
+                OR (${cause} = 'complaint' AND ${held} NOT IN ('erased', 'complaint')))))
       RETURNING email`,
     writes.unsubscribe,
     now,
   );
-  // An address that left before it came here is recorded as unsubscribed, unless it was
-  // erased here: a subscriber row would bring back the data the erasure removed.
+  // An address that left before it came here is recorded as unsubscribed, by the row's cause.
+  // One the file says was erased holds only its address, so it names no import (SPEC §7).
   add(
     "addedUnsubscribed",
     `INSERT INTO subscribers (id, email, status, unsub_token, created_at, confirmed_at, unsubscribed_at,
-                              origin, opt_in, consent_evidence, import_id)
-     SELECT ${v("id")}, ${v("e")}, 'unsubscribed', ${v("tok")}, ?2, ${v("cat")}, COALESCE(${v("uat")}, ?2),
-            ${v("org")}, ${v("opt")}, ${v("ev")}, ?3
-       FROM json_each(?1) AS j
-      WHERE NOT EXISTS (SELECT 1 FROM suppressions s WHERE s.email = ${v("e")} AND s.reason = ?4)
+                              origin, opt_in, consent_evidence, import_id, unsubscribe_cause)
+     SELECT ${v("id")}, ${v("e")}, 'unsubscribed', ${v("tok")},
+            CASE WHEN ${cause} = 'erased' THEN COALESCE(${v("uat")}, ?2) ELSE ?2 END,
+            ${v("cat")}, COALESCE(${v("uat")}, ?2),
+            ${v("org")}, ${v("opt")}, ${v("ev")}, CASE WHEN ${cause} = 'erased' THEN NULL ELSE ?3 END,
+            ${cause}
+       FROM json_each(?1) AS j WHERE true
      ON CONFLICT (email) DO NOTHING
      RETURNING email`,
     writes.addUnsubscribed,
     now,
     r.id,
-    ERASED,
   );
   // Confirm a subscriber still pending here who never left, with no suppression here; its
   // link stops working. A pending row that once left was put back by whoever typed its
@@ -323,21 +350,42 @@ export async function applyImport(
     now,
     r.id,
   );
-  // Suppress an address with no suppression here; the first one stands, except over an
-  // erased marker, which any other reason replaces, as `addSuppression` rules: a bounce or a
-  // complaint must still stop the address being sent confirmations.
+  // Suppress an address with no suppression here; the first one stands.
   add(
     "suppressed",
     `INSERT INTO suppressions (email, reason, detail, created_at)
      SELECT ${v("e")}, ${v("r")}, ?2, COALESCE(${v("at")}, ?3) FROM json_each(?1) AS j WHERE true
-     ON CONFLICT (email) DO UPDATE SET reason = excluded.reason, detail = excluded.detail,
-                                       created_at = excluded.created_at
-      WHERE suppressions.reason = 'erased' AND excluded.reason <> 'erased'
+     ON CONFLICT (email) DO NOTHING
      RETURNING email`,
     writes.suppress,
     suppressionDetail,
     now,
   );
+  // Whoever now stands unsubscribed by an erasure the file gave is stripped to the address and
+  // when, as an erasure here strips them, and a bounce or block on the address loses its words
+  // (SPEC §7). A record already stripped is left as it is. Past sends here keep their rows.
+  // These come after every statement whose answer is read (`kinds`), so they report nothing.
+  const erasedHere = `SELECT value FROM json_each(?1) WHERE value IN
+      (SELECT email FROM subscribers WHERE status = 'unsubscribed' AND unsubscribe_cause = 'erased')`;
+  for (const chunk of jsonChunks(writes.erase)) {
+    statements.push(
+      db
+        .prepare(
+          `UPDATE subscribers SET created_at = COALESCE(unsubscribed_at, ?2), confirmed_at = NULL,
+                  confirm_token = NULL, confirm_sent_at = NULL, confirm_attempt_at = NULL,
+                  unsub_token = NULL, origin = NULL, opt_in = NULL,
+                  consent_evidence = NULL, import_id = NULL
+            WHERE email IN (${erasedHere}) AND unsub_token IS NOT NULL`,
+        )
+        .bind(chunk, now),
+      db
+        .prepare(`UPDATE suppressions SET detail = NULL WHERE email IN (${erasedHere})`)
+        .bind(chunk),
+    );
+  }
+  // Then the records of past sends lose each erased person's address, as Erase rewrites them:
+  // `forget` is `forgetDeliveries`' statements for the addresses this import erases.
+  statements.push(...forget);
   if (writes.notice) {
     statements.push(importNotice(db, r.id, now));
   }
@@ -382,6 +430,7 @@ export interface ListRow {
   created_at: number | null;
   confirmed_at: number | null;
   unsubscribed_at: number | null;
+  unsubscribe_cause: UnsubscribeCause | null;
   reason: string | null;
   suppressed_at: number | null;
 }
@@ -401,12 +450,13 @@ export async function listForExport(
     .prepare(
       `SELECT * FROM (
          SELECT s.email, s.status, s.opt_in, s.origin, s.consent_evidence, s.created_at,
-                s.confirmed_at, s.unsubscribed_at, p.reason, p.created_at AS suppressed_at
+                s.confirmed_at, s.unsubscribed_at, s.unsubscribe_cause, p.reason,
+                p.created_at AS suppressed_at
            FROM subscribers s LEFT JOIN suppressions p ON p.email = s.email
           WHERE s.email > ?1 ORDER BY s.email LIMIT ?2)
        UNION ALL
        SELECT * FROM (
-         SELECT p.email, NULL, NULL, NULL, NULL, NULL, NULL, NULL, p.reason, p.created_at
+         SELECT p.email, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, p.reason, p.created_at
            FROM suppressions p
           WHERE p.email > ?1 AND NOT EXISTS (SELECT 1 FROM subscribers s WHERE s.email = p.email)
           ORDER BY p.email LIMIT ?2)

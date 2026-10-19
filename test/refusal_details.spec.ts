@@ -482,7 +482,7 @@ const CASES: Case[] = [
 
   // --- subscribers, suppressions ---
   {
-    refusal: "POST /api/subscribers erasure_acknowledgement_required",
+    refusal: "POST /api/subscribers signup_required",
     when: "adding an erased address",
     run: async () => {
       await erased("e@x.io");
@@ -506,14 +506,6 @@ const CASES: Case[] = [
     refusal: "POST /api/subscribers/:id/erase run_in_progress",
     when: "a subscriber a send run is handing off",
     run: async () => call("POST", `/api/subscribers/${await handedOff("h@x.io")}/erase`),
-  },
-  {
-    refusal: "POST /api/suppressions/lift erasure_marker",
-    when: "lifting an erasure's marker",
-    run: async () => {
-      await erased("m@x.io");
-      return call("POST", "/api/suppressions/lift", { email: "m@x.io", reason: "erased" });
-    },
   },
   {
     refusal: "POST /api/suppressions/lift suppression_changed",
@@ -540,6 +532,15 @@ const CASES: Case[] = [
     when: "confirming subscribers without the attestation",
     run: async () => {
       const file = csv(confirmedRow);
+      return call("POST", "/api/imports", { file, plan_hash: await planHash(file) });
+    },
+  },
+  {
+    refusal: "POST /api/imports run_in_progress",
+    when: "erasing someone a send run is handing off",
+    run: async () => {
+      await handedOff("h2@x.io");
+      const file = csv("h2@x.io,subscribed,unknown,sendy,erased,,,,,");
       return call("POST", "/api/imports", { file, plan_hash: await planHash(file) });
     },
   },
