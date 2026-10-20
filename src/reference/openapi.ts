@@ -79,6 +79,8 @@ interface Operation {
   description: string;
   tags: string[];
   "x-kestrel-access": ReferenceEntry["access"];
+  /** Present on a route that answers a whole list or a file rather than a page of it. */
+  "x-kestrel-bulk"?: true;
   security?: Record<string, string[]>[];
   parameters?: Parameter[];
   requestBody?: { required: true; content: Record<string, MediaType> };
@@ -337,6 +339,7 @@ function operation(
     description: r.description ? `${r.summary}\n\n${r.description}` : r.summary,
     tags: [tag],
     "x-kestrel-access": r.access,
+    ...(r.bulk ? { "x-kestrel-bulk": true as const } : {}),
     ...(r.access === "admin" ? {} : { security: [] }),
     ...(parameters.length ? { parameters } : {}),
     responses: {},

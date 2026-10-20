@@ -233,6 +233,18 @@ describe("dashboard", () => {
     );
   });
 
+  it("reports Claude as connected once a revision came through Claude's connector (SPEC §11)", async () => {
+    fake = world([post({ author: "you@example.com", author_client: "claude" })], sendServer());
+    await mount(renderDashboard);
+    await vi.advanceTimersByTimeAsync(0);
+    expect($(".conn-status").textContent).toBe("Claude is connected.");
+    expect($$(".pub-links a").map((a) => a.getAttribute("href"))).toEqual([
+      "#/api-reference",
+      "#/docs/working-with-claude",
+    ]);
+    expect(fake.unhandled).toEqual([]);
+  });
+
   it("doesn't call a service token's revision Claude, since a service token is automation (SPEC §11)", async () => {
     fake = world([post({ author: "service", author_client: null })], sendServer());
     await mount(renderDashboard);

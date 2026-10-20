@@ -12,6 +12,9 @@ export const EDITOR_CLIENT = "editor";
 /** The name Claude Code sends. */
 export const CLAUDE_CODE_CLIENT = "claude-code";
 
+/** The name the instance's MCP server gives the calls it makes, for Claude Desktop and claude.ai. */
+export const CLAUDE_CLIENT = "claude";
+
 /** The longest client name taken: a short word, never a sentence. */
 export const CLIENT_NAME_MAX = 32;
 

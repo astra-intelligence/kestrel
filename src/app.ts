@@ -47,6 +47,7 @@ import { json, notFound } from "./lib/errors";
 import { RASTER_IMAGE_TYPES } from "./lib/image_types";
 import { MISSED_THRESHOLD_MS } from "./lib/time";
 import { unwrap } from "./lib/unwrap";
+import * as mcp from "./mcp/server";
 import { buildReferenceResponse, referenceIndexMarkdown, resourceMarkdown } from "./reference";
 import { sendBrief } from "./reference/objects";
 import { openApiDocument } from "./reference/openapi";
@@ -458,6 +459,69 @@ export function createRouter({
             buildInfo().version,
           ),
         ),
+    },
+
+    // --- the MCP server (authed; each tool one route of this manifest) ---
+    // For Claude Desktop and claude.ai, which reach a service only as a connector (SPEC §11).
+    // Under /api so the Access application that gates the API already covers it.
+    {
+      method: "POST",
+      path: mcp.MCP_PATH,
+      access: "admin",
+      accepts: JSON_BODY,
+      programOrigins: mcp.CLAUDE_ORIGINS,
+      resource: "system",
+      title: "Call the MCP server",
+      summary:
+        "The instance's MCP server, which Claude Desktop and claude.ai connect to as a custom connector: one JSON-RPC message a request, answered in JSON.",
+      description:
+        "Stateless MCP over Streamable HTTP, 2025-06-18 and 2025-11-25, opened by `initialize`: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, and `resources/read`, one message a request. A notification, or a client's answer to a request, is taken with a 202 and no body. Malformed JSON is a 400 with JSON-RPC's `-32700`, and a batch, or an `MCP-Protocol-Version` this server doesn't speak, a 400 with `-32600`; an error inside the server is a JSON-RPC error, or the tool's, never a 500. A request naming Claude's origin (`https://claude.ai`, `https://claude.com`) with no `Sec-Fetch-Site` is Claude's servers', not a page's. Its tools are a curated set for a publisher in a chat (search and read posts, sends, and subscribers; save a draft; send a test; schedule, move, or cancel a send; import or unsubscribe), each calling one or more of this API's routes with arguments picked from those routes' own fields, plus `kestrel_api_read` for any other admin read that answers JSON or Markdown, never an export. Settings, the template, suppressions, Resolve, uploads, and erasure stay in the editor. A call runs its routes as the person signed in, naming its client `claude`, so a change records the person via Claude, and a refusal comes back as a tool error led by its code, its words, and the next move, never answered for the person. The resources are the publisher's docs, as Markdown.",
+      body: [
+        { name: "jsonrpc", type: '"2.0"', description: "JSON-RPC's version.", required: true },
+        {
+          name: "id",
+          type: "string | number",
+          description: "The request's id, which its answer carries. Absent on a notification.",
+        },
+        {
+          name: "method",
+          type: "string",
+          description:
+            "`initialize`, `ping`, `tools/list`, or `tools/call`, or a notification's. Absent on a client's answer.",
+        },
+        {
+          name: "params",
+          type: "object",
+          description:
+            "The method's parameters: for `tools/call`, the tool's `name` and its `arguments`.",
+        },
+        { name: "result", type: "object", description: "A client's answer: taken, and ignored." },
+        { name: "error", type: "object", description: "A client's answer: taken, and ignored." },
+      ],
+      example: {
+        request: {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "get_post", arguments: { id: "p_abc123" } },
+        },
+      },
+      handler: (c) =>
+        mcp.handle(
+          c,
+          r,
+          mcp.routerTools(r, () => buildReferenceResponse(r.routes.map((route) => route.def))),
+        ),
+    },
+    {
+      method: "GET",
+      path: mcp.MCP_PATH,
+      access: "admin",
+      resource: "system",
+      title: "Open an MCP stream",
+      summary:
+        "Not offered: answers 405, since the MCP server is stateless and sends nothing a client didn't ask for.",
+      handler: mcp.stream,
     },
 
     // --- app settings (authed; runtime preferences, never secrets) ---
@@ -1002,7 +1066,7 @@ export function createRouter({
       resource: "posts",
       title: "Render a post's email",
       summary:
-        "Render the post to its email and describe it (the preview's URL, subject, warnings, and `frozen`), as JSON.",
+        "Render the post to its email and describe it (the preview's URL, subject, plain text, warnings, and `frozen`), as JSON.",
       description:
         "Once the post is scheduled this is its frozen copy, exactly as it will fire, and once sent the record's; a draft renders live. A frozen copy's `warnings` are the ones its render gave when it was frozen or last re-made.",
       returns: {
@@ -1014,6 +1078,12 @@ export function createRouter({
               "The rendered email as a page behind the admin gate, `GET /api/posts/:id/preview`: not a public link.",
           },
           { name: "subject", type: "string", description: "The email's subject." },
+          {
+            name: "text",
+            type: "string",
+            description:
+              "The email's plain-text part, from the same render as the page, as a reader whose mail client shows no HTML reads it. The recipient's fields are filled as a test fills them, as on the page.",
+          },
           {
             name: "warnings",
             type: "string[]",
@@ -1440,6 +1510,7 @@ export function createRouter({
     {
       method: "GET",
       path: "/api/sends/:id/deliveries.csv",
+      bulk: true,
       access: "admin",
       resource: "sends",
       title: "Export a send's deliveries",
@@ -1659,6 +1730,7 @@ export function createRouter({
       // Before `/api/subscribers/:id`, which would otherwise take `export` as an id.
       method: "GET",
       path: "/api/subscribers/export",
+      bulk: true,
       access: "admin",
       resource: "subscribers",
       title: "Export the list",
@@ -1914,6 +1986,7 @@ export function createRouter({
     {
       method: "GET",
       path: "/api/imports/template.csv",
+      bulk: true,
       access: "admin",
       resource: "imports",
       title: "Get the CSV template",
@@ -1924,6 +1997,7 @@ export function createRouter({
     {
       method: "GET",
       path: "/api/imports/template.txt",
+      bulk: true,
       access: "admin",
       resource: "imports",
       title: "Get the plain-list template",

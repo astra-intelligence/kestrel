@@ -172,6 +172,8 @@ export interface ReferenceEntry {
   /** The refusals the route gives of its own; the ones its tier shares are stated once. */
   errors?: RouteError[];
   example?: RouteExample;
+  /** It answers a whole list or a file rather than a page of it; absent otherwise. */
+  bulk?: true;
 }
 
 /** A resource as a tier lists it: its key and its heading. */

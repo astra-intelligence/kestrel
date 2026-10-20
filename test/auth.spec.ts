@@ -1,5 +1,5 @@
 import { createExecutionContext, SELF } from "cloudflare:test";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRouter } from "../src/app";
 import { isHumanAllowed, principalFromClaims } from "../src/auth/access";
@@ -8,6 +8,7 @@ import type { AppEnv } from "../src/env";
 import { getConfig } from "../src/env";
 import type { Principal, RequestContext } from "../src/router";
 import * as settingsRoutes from "../src/routes/settings";
+import { accessDeployment } from "./support/access";
 import { NOT_CONNECTED_DEPLOY, SES_DEPLOY } from "./support/deploy";
 import { adminAuth, base, DEV_SECRET, readJson } from "./support/http";
 import { fetchWith, withVars } from "./support/worker_env";
@@ -290,35 +291,6 @@ describe("the auth mode follows how the request signed in", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  /** An Access deployment whose team serves a key this spec holds, so a request can carry
-   *  an assertion the app verifies for real. A team domain of its own per test, since the
-   *  app caches a team's keys for the life of the isolate. `stored` is the team domain as
-   *  the operator entered it, which may carry a scheme or a trailing slash. */
-  async function accessDeployment(stored: (team: string) => string = (team) => team) {
-    const team = `team-${crypto.randomUUID()}.cloudflareaccess.com`;
-    const vars = { ACCESS_TEAM_DOMAIN: stored(team), ACCESS_AUD: "aud-tag" };
-    const { publicKey, privateKey } = await generateKeyPair("RS256");
-    const jwk = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
-    const realFetch = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url === `https://${team}/cdn-cgi/access/certs`) {
-        return Response.json({ keys: [jwk] });
-      }
-      return realFetch(input, init);
-    });
-    const assertion = async (claims: { email?: string; common_name?: string }) => ({
-      "Cf-Access-Jwt-Assertion": await new SignJWT(claims)
-        .setProtectedHeader({ alg: "RS256", kid: "k1" })
-        .setIssuer(`https://${team}`)
-        .setAudience("aud-tag")
-        .setIssuedAt()
-        .setExpirationTime("5m")
-        .sign(privateKey),
-    });
-    return { vars, assertion };
-  }
 
   it("reports access for a request signed in through Access, in whoami and the settings reflection", async () => {
     const { vars, assertion } = await accessDeployment();

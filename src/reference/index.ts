@@ -110,6 +110,7 @@ function entry(r: RouteDef): ReferenceEntry {
       move: REFUSAL_MOVE[e.code],
     })),
     example: r.example,
+    ...(r.bulk ? { bulk: true as const } : {}),
   };
 }
 
