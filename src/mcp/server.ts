@@ -12,6 +12,7 @@
  * only the envelope around them.
  */
 
+import type { DocsResponse } from "../../shared/docs";
 import {
   JSON_RPC_ERRORS,
   type JsonRpcId,
@@ -28,7 +29,17 @@ import { log } from "../lib/log";
 import { openApiDocument } from "../reference/openapi";
 import type { RequestContext, Router } from "../router";
 import { MCP_INSTRUCTIONS } from "./instructions";
-import { type ToolRoute, toolRequest, toolResult, toolsFrom } from "./tools";
+import {
+  API_READ_NAME,
+  type Api,
+  curatedTools,
+  editorLink,
+  type RouteRef,
+  readAnswer,
+  routeRequest,
+  type ToolRoute,
+  unknownArgs,
+} from "./tools";
 
 export { MCP_PATH } from "./tools";
 
@@ -40,7 +51,7 @@ export function routerTools(router: Router, reference: () => ReferenceResponse):
   let tools = toolsByRouter.get(router);
   if (!tools) {
     const ref = reference();
-    tools = toolsFrom(ref, openApiDocument(ref, "", buildInfo().version));
+    tools = curatedTools(openApiDocument(ref, "", buildInfo().version));
     toolsByRouter.set(router, tools);
   }
   return tools;
@@ -109,7 +120,7 @@ export async function handle(
       const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
       return result(id, {
         protocolVersion: SUPPORTED.includes(asked) ? asked : MCP_PROTOCOL_VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
         serverInfo: { name: "kestrel", title: "Kestrel", version: buildInfo().version },
         instructions: MCP_INSTRUCTIONS,
       });
@@ -125,6 +136,15 @@ export async function handle(
       }
       return result(id, await call(c, router, t, params.arguments));
     }
+    case "resources/list":
+      return result(id, { resources: await docResources(c, router) });
+    case "resources/read": {
+      const uri = typeof params.uri === "string" ? params.uri : "";
+      const contents = await readDoc(c, router, uri);
+      return contents
+        ? result(id, { contents: [contents] })
+        : error(id, RESOURCE_NOT_FOUND, `no resource is at ${uri}`);
+    }
     default:
       return error(
         id,
@@ -134,7 +154,58 @@ export async function handle(
   }
 }
 
-/** One tool call: its route's request, through the router, and the answer as a tool result. */
+/** The JSON-RPC code MCP gives a resource that isn't there. */
+const RESOURCE_NOT_FOUND = -32002;
+
+/** Where a publishing doc is served as a resource: `kestrel://docs/<slug>`. */
+const DOC_URI = "kestrel://docs/";
+
+/** A route's request on the caller's behalf, through the router, read once. */
+async function through(c: RequestContext, router: Router, r: RouteRef, parts = {}) {
+  return readAnswer(
+    await router.handle(routeRequest(r, parts, c.url.origin, c.req.headers), c.env, c.ctx),
+  );
+}
+
+/** The publisher's docs as resources, from the docs route: the pages a publisher reads. */
+async function docResources(c: RequestContext, router: Router) {
+  const a = await through(c, router, { method: "GET", path: "/api/docs" });
+  const docs = a.ok ? (a.body as DocsResponse).docs : [];
+  return docs
+    .filter((d) => d.set === "publishing")
+    .map((d) => ({
+      uri: `${DOC_URI}${d.slug}`,
+      name: d.slug,
+      title: d.title,
+      mimeType: "text/markdown",
+    }));
+}
+
+/** One publishing doc's Markdown, from the route that serves it to an agent, or null. */
+async function readDoc(c: RequestContext, router: Router, uri: string) {
+  const slug = uri.startsWith(DOC_URI) ? uri.slice(DOC_URI.length) : "";
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return null;
+  }
+  const a = await through(
+    c,
+    router,
+    { method: "GET", path: "/api/docs/:name.md" },
+    {
+      params: { name: slug },
+    },
+  );
+  return a.ok ? { uri, mimeType: "text/markdown", text: a.text } : null;
+}
+
+/** Whether a tool may call a route: one it declares, or any GET for the read escape hatch. */
+function allows(t: ToolRoute, r: RouteRef): boolean {
+  return t.def.name === API_READ_NAME
+    ? r.method === "GET"
+    : t.def.routes.some((x) => x.method === r.method && x.path === r.path);
+}
+
+/** One tool call: the tool's run, each route it calls through the router as the caller. */
 async function call(
   c: RequestContext,
   router: Router,
@@ -144,11 +215,21 @@ async function call(
   if (args !== undefined && !isObject(args)) {
     return { content: [{ type: "text", text: "arguments must be an object" }], isError: true };
   }
-  const req = toolRequest(t, args ?? {}, c.url.origin, c.req.headers);
-  if (typeof req === "string") {
-    return { content: [{ type: "text", text: req }], isError: true };
+  const given = args ?? {};
+  const stray = unknownArgs(t, given);
+  if (stray) {
+    return { content: [{ type: "text", text: stray }], isError: true };
   }
-  const res = await router.handle(req, c.env, c.ctx);
-  log.info("mcp.call", { tool: t.tool.name, status: res.status });
-  return toolResult(res);
+  const api: Api = {
+    async call(r, parts = {}) {
+      if (!allows(t, r)) {
+        throw new Error(`${t.def.name} calls ${r.method} ${r.path}, which it doesn't declare`);
+      }
+      return through(c, router, r, parts);
+    },
+    editor: (page) => editorLink(c.config.appOrigin, page),
+  };
+  const out = await t.def.run(api, given);
+  log.info("mcp.call", { tool: t.tool.name, error: out.isError });
+  return out;
 }

@@ -1,7 +1,7 @@
 // The Model Context Protocol as the instance's MCP server speaks it (POST /api/mcp, SPEC §11):
 // the JSON-RPC envelope, the protocol versions it serves, and a tool as `tools/list` lists it.
-// Only the parts a stateless, tools-only server uses. The Worker answers in these shapes; a
-// spec reads them back, so the two are held to one definition.
+// Only the parts a stateless server of tools and read-only resources uses. The Worker answers in
+// these shapes; a spec reads them back, so the two are held to one definition.
 
 /** The protocol revisions served, newest first: the ones opened by an `initialize` handshake.
  *  A client asking for another is answered with the newest, as the protocol's negotiation says. */
@@ -29,16 +29,18 @@ export type JsonRpcResponse =
       error: { code: number; message: string; data?: unknown };
     };
 
-/** What a tool's annotations hint to the client, so it can ask before a change. */
+/** What a tool's annotations hint to the client, so it can ask before a change: whether it only
+ *  reads, whether a change it makes is one to undo with care, and whether it reaches past the
+ *  instance (an email to someone). */
 export interface ToolAnnotations {
   title: string;
   readOnlyHint: boolean;
   destructiveHint?: boolean;
   idempotentHint?: boolean;
-  openWorldHint: false;
+  openWorldHint: boolean;
 }
 
-/** A tool as `tools/list` lists it: one API route, under its own name. */
+/** A tool as `tools/list` lists it: one task, over one or more API routes. */
 export interface McpTool {
   name: string;
   title: string;

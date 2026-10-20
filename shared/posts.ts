@@ -147,6 +147,9 @@ export interface PostSavedResponse {
 export interface PreviewResponse {
   url: string;
   subject: string;
+  /** The email's plain-text part, from the same render as the page: what a mail client shows
+   *  a reader who doesn't load HTML, and a client that can't show a page reads instead. */
+  text: string;
   warnings: string[];
   frozen: boolean;
 }

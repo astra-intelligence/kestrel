@@ -1,19 +1,21 @@
 import { SELF } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpTool } from "../shared/mcp";
-import { routeAnchor } from "../shared/reference";
 import { createRouter } from "../src/app";
-import { getConfig } from "../src/env";
+import { type AppEnv, getConfig } from "../src/env";
 import { MCP_INSTRUCTIONS } from "../src/mcp/instructions";
-import { isTool, toolName } from "../src/mcp/tools";
+import { curatedTools, operationOf, pickedField, TOOL_DEFS, TOOL_PAGE } from "../src/mcp/tools";
 import { buildReferenceResponse } from "../src/reference";
+import { openApiDocument } from "../src/reference/openapi";
 import { accessDeployment } from "./support/access";
 import { resetDatabase } from "./support/fixtures";
-import { adminAuth, base, readJson } from "./support/http";
-import { fetchWith, withVars } from "./support/worker_env";
+import { adminAuth, base, JSON_AUTH, readJson } from "./support/http";
+import { fetchWith } from "./support/worker_env";
 
 // The MCP server (SPEC §11): Claude Desktop and claude.ai reach the instance as a connector,
-// and each tool is one route of the same API, called as the person signed in, via Claude.
+// through a curated set of tools, each calling the API's own routes as the person signed in,
+// via Claude.
 
 beforeEach(resetDatabase);
 afterEach(() => {
@@ -21,6 +23,12 @@ afterEach(() => {
 });
 
 const PERSON = { email: "you@example.com", client: "editor" };
+
+/** The OpenAPI document this suite's manifest generates, as the server reads it. */
+function manifestDocument() {
+  const router = createRouter(getConfig(env as AppEnv));
+  return openApiDocument(buildReferenceResponse(router.routes.map((r) => r.def)), "", "test");
+}
 
 let nextId = 1;
 
@@ -44,7 +52,7 @@ async function listTools(): Promise<McpTool[]> {
   return (await readJson(res)).result.tools;
 }
 
-/** A tool call's result, as the server answers it. */
+/** A tool call's result: whether it was an error, and its text. */
 async function callTool(
   name: string,
   args: Record<string, unknown>,
@@ -60,49 +68,105 @@ async function callTool(
   return { isError: result.isError, text: result.content[0].text };
 }
 
-describe("the tools are the API's routes (SPEC §11)", () => {
-  it("lists one tool for every authoring route but dev tooling, uploads, and the server's own", async () => {
-    const config = getConfig(withVars({}));
-    const routes = buildReferenceResponse(
-      createRouter(config).routes.map((r) => r.def),
-    ).groups.flatMap((g) => g.routes);
-    const names = (await listTools()).map((t) => t.name);
-    expect(names).toEqual(routes.filter(isTool).map((r) => toolName(routeAnchor(r))));
-    expect(new Set(names).size).toBe(names.length);
-    for (const name of [
-      "create_post",
+/** A tool call that must succeed, its JSON answer read. */
+async function callOk(name: string, args: Record<string, unknown>): Promise<any> {
+  const r = await callTool(name, args);
+  expect(r.isError, r.text).toBe(false);
+  return JSON.parse(r.text);
+}
+
+const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+
+describe("the tools are a curated set over the API's routes (SPEC §11)", () => {
+  it("lists the publisher's tasks, and the read escape hatch, and nothing else", async () => {
+    expect((await listTools()).map((t) => t.name)).toEqual([
+      "search_posts",
       "get_post",
-      "schedule_post",
+      "preview_post",
+      "list_sends",
+      "get_send",
+      "search_subscribers",
+      "get_subscriber",
+      "get_publication",
+      "save_draft",
+      "send_test",
+      "schedule_send",
+      "reschedule_send",
       "cancel_send",
-      "commit_import",
-    ]) {
-      expect(names).toContain(name);
+      "import_subscribers",
+      "unsubscribe_subscriber",
+      "kestrel_api_read",
+    ]);
+  });
+
+  it("gives every tool a title and says whether it only reads or what its change risks", async () => {
+    const tools = await listTools();
+    for (const t of tools) {
+      expect(t.title, t.name).toMatch(/\S/);
+      expect(t.annotations.title).toBe(t.title);
+      expect(typeof t.annotations.readOnlyHint).toBe("boolean");
+      expect(typeof t.annotations.openWorldHint).toBe("boolean");
+      if (!t.annotations.readOnlyHint) {
+        expect(typeof t.annotations.destructiveHint, t.name).toBe("boolean");
+      }
     }
-    for (const name of ["upload_image", "upload_logo", "load_demo_dataset", "call_mcp_server"]) {
-      expect(names).not.toContain(name);
-    }
-    for (const name of names) {
-      expect(name).toMatch(/^[a-z0-9_]{1,64}$/);
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    expect(byName.get("send_test")).toMatchObject({ destructiveHint: false, openWorldHint: true });
+    expect(byName.get("schedule_send")).toMatchObject({
+      destructiveHint: true,
+      openWorldHint: true,
+    });
+    expect(byName.get("save_draft")).toMatchObject({ destructiveHint: false });
+  });
+
+  it("wraps only routes the manifest registers on the authoring API, a read only GETs", () => {
+    const doc = manifestDocument();
+    for (const def of TOOL_DEFS) {
+      expect(def.routes.length, def.name).toBeGreaterThan(0);
+      for (const r of def.routes) {
+        const op = operationOf(doc, r);
+        expect(op, `${def.name}: ${r.method} ${r.path}`).not.toBeNull();
+        expect(op?.["x-kestrel-access"]).toBe("admin");
+        if (def.annotations.readOnlyHint) {
+          expect(r.method, def.name).toBe("GET");
+        }
+      }
     }
   });
 
-  it("takes each tool's name, description, and arguments from the route's own reference", async () => {
+  it("picks every argument from a field one of its own routes takes", () => {
+    const doc = manifestDocument();
+    for (const def of TOOL_DEFS) {
+      for (const [name, p] of Object.entries(def.args)) {
+        expect(def.routes, `${def.name}.${name}`).toContainEqual(p.route);
+        expect(pickedField(doc, p), `${def.name}.${name}`).not.toBeNull();
+      }
+    }
+  });
+
+  it("refuses to build a tool whose route, or whose picked field, left the manifest", () => {
+    const gone = manifestDocument();
+    delete gone.paths["/api/sends/{id}/cancel"];
+    expect(() => curatedTools(gone)).toThrow(/cancel_send picks the path field id/);
+    const field = manifestDocument();
+    const op = operationOf(field, { method: "POST", path: "/api/posts/:id/test" });
+    delete op?.requestBody?.content["application/json"]?.schema.properties?.to;
+    expect(() => curatedTools(field)).toThrow(/send_test picks the body field to/);
+  });
+
+  it("reads each argument's schema and words from its route", async () => {
     const tools = await listTools();
-    const get = tools.find((t) => t.name === "get_post");
-    expect(get?.title).toBe("Get a post");
-    expect(get?.annotations).toEqual({
-      title: "Get a post",
-      readOnlyHint: true,
-      openWorldHint: false,
+    const schedule = tools.find((t) => t.name === "schedule_send");
+    const props = schedule?.inputSchema.properties as Record<string, { description: string }>;
+    expect(Object.keys(props)).toEqual(["id", "fire_at", "email_only"]);
+    expect(schedule?.inputSchema.required).toEqual(["id"]);
+    expect(schedule?.inputSchema.additionalProperties).toBe(false);
+    const op = operationOf(manifestDocument(), {
+      method: "POST",
+      path: "/api/posts/:id/schedule",
     });
-    expect(get?.inputSchema.required).toEqual(["id"]);
-    const schedule = tools.find((t) => t.name === "schedule_post");
-    expect(schedule?.description).toContain("Calls `POST /api/posts/:id/schedule`.");
-    expect(schedule?.description).toContain("`fire_at_too_soon`");
-    expect(Object.keys(schedule?.inputSchema.properties as object)).toEqual(
-      expect.arrayContaining(["id", "fire_at"]),
-    );
-    expect(schedule?.annotations.destructiveHint).toBe(true);
+    const fireAt = op?.requestBody?.content["application/json"]?.schema.properties?.fire_at;
+    expect(props.fire_at?.description).toBe(`${fireAt?.description} Omit it for the soonest.`);
     // Each schema stands alone: an object it names is under its own `$defs`.
     for (const t of tools) {
       const text = JSON.stringify(t.inputSchema);
@@ -118,17 +182,20 @@ describe("the tools are the API's routes (SPEC §11)", () => {
     const res = await rpc("initialize", { protocolVersion: "2025-06-18" }, await adminAuth(PERSON));
     const { result } = await readJson(res);
     expect(result.protocolVersion).toBe("2025-06-18");
-    expect(result.capabilities).toEqual({ tools: { listChanged: false } });
+    expect(result.capabilities).toEqual({
+      tools: { listChanged: false },
+      resources: { listChanged: false },
+    });
     expect(result.instructions).toBe(MCP_INSTRUCTIONS);
     const names = (await listTools()).map((t) => t.name);
-    for (const [named] of MCP_INSTRUCTIONS.matchAll(/\b(?:get|list)_[a-z_]+/g)) {
+    for (const [named] of MCP_INSTRUCTIONS.matchAll(/\b[a-z]+_[a-z_]+\b/g)) {
       expect(names).toContain(named);
     }
   });
 });
 
-describe("a tool call is its route, as the person, via Claude (SPEC §11, Who acted)", () => {
-  it("records a change made through a tool as the signed-in person via Claude, whatever client the caller named", async () => {
+describe("a tool call runs its routes as the person, via Claude (SPEC §11, Who acted)", () => {
+  it("records a draft saved through a tool as the signed-in person via Claude, whatever client the caller named", async () => {
     const { vars, assertion } = await accessDeployment();
     const headers = {
       ...(await assertion({ email: "you@example.com" })),
@@ -137,98 +204,251 @@ describe("a tool call is its route, as the person, via Claude (SPEC §11, Who ac
     const send = (init: RequestInit) => fetchWith(vars, "/api/mcp", init);
     const res = await rpc(
       "tools/call",
-      { name: "create_post", arguments: { subject: "Via a tool" } },
+      { name: "save_draft", arguments: { subject: "Via a tool" } },
       headers,
       send,
     );
     const { result } = await readJson(res);
     expect(result.isError).toBe(false);
-    const created = JSON.parse(result.content[0].text);
-    expect(created.post).toMatchObject({
+    const saved = JSON.parse(result.content[0].text);
+    expect(saved.post).toMatchObject({
       subject: "Via a tool",
       author: "you@example.com",
       author_client: "claude",
     });
-    const read = await rpc(
-      "tools/call",
-      { name: "get_post", arguments: { id: created.post.id } },
-      headers,
-      send,
-    );
-    expect(JSON.parse((await readJson(read)).result.content[0].text).post.id).toBe(created.post.id);
   });
 
-  it("passes a tool's arguments to the route's path, query, and body", async () => {
-    const created = JSON.parse((await callTool("create_post", { subject: "One" })).text);
-    const saved = await callTool("update_post", {
-      id: created.post.id,
-      markdown: "Hello",
+  it("saves a draft against the revision it read, and hands back the newer text when another save landed", async () => {
+    const created = await callOk("save_draft", { subject: "One", markdown: "first" });
+    const id = created.post.id;
+    const saved = await callOk("save_draft", {
+      id,
+      markdown: "second",
       base_revision: created.revision_id,
     });
-    expect(saved.isError).toBe(false);
-    const read = JSON.parse((await callTool("get_post", { id: created.post.id })).text);
-    expect(read.markdown).toBe("Hello");
-    const listed = JSON.parse((await callTool("list_posts", { status: "draft", limit: 1 })).text);
-    expect(listed.posts.map((p: { id: string }) => p.id)).toEqual([created.post.id]);
-  });
-
-  it("refuses an argument the route doesn't take, naming it, as the route itself does", async () => {
-    const body = await callTool("create_post", { subject: "S", title: "T" });
-    expect(body.isError).toBe(true);
-    expect(body.text).toContain("Refused: HTTP 400 bad_request. title isn’t a field this takes");
-    const query = await callTool("list_posts", { colour: "red" });
-    expect(query.isError).toBe(true);
-    expect(query.text).toContain("colour isn’t a query parameter this takes");
-    const path = await callTool("get_post", {});
-    expect(path).toEqual({
-      isError: true,
-      text: "id is required: it is the `id` in the route's path.",
+    expect((await callOk("get_post", { id })).markdown).toBe("second");
+    const stale = await callTool("save_draft", {
+      id,
+      markdown: "third",
+      base_revision: created.revision_id,
     });
+    expect(stale.isError).toBe(true);
+    expect(stale.text).toMatch(/^Refused: HTTP 409 stale_revision\. /);
+    expect(stale.text).toContain("Next move: Read again, then decide.");
+    expect(stale.text).toContain(
+      `a newer revision, ${saved.revision_id}, by you@example.com via claude`,
+    );
+    expect(stale.text.endsWith("\n\nsecond")).toBe(true);
   });
 
-  it("gives Claude a refusal as a tool error carrying its code, its words, and the next move", async () => {
+  it("reads a page at a time, and the next page from its offset", async () => {
+    for (let i = 0; i < TOOL_PAGE + 1; i++) {
+      await SELF.fetch(`${base}/api/posts`, {
+        method: "POST",
+        headers: JSON_AUTH,
+        body: JSON.stringify({ subject: `Post ${i}` }),
+      });
+    }
+    const first = await callOk("search_posts", {});
+    expect(first.posts.length).toBe(TOOL_PAGE);
+    expect(first).toMatchObject({ total: TOOL_PAGE + 1, next_offset: TOOL_PAGE });
+    expect(Object.keys(first.posts[0])).toEqual([
+      "id",
+      "subject",
+      "status",
+      "email_only",
+      "updated_at",
+      "send",
+    ]);
+    const last = await callOk("search_posts", { offset: first.next_offset });
+    expect(last.posts.length).toBe(1);
+    expect(last.next_offset).toBeNull();
+    expect((await callOk("search_posts", { search: "Post 13", status: "draft" })).total).toBe(1);
+  });
+
+  it("previews the email's text through the render path, and links the designed email", async () => {
+    const created = await callOk("save_draft", {
+      subject: "Hello",
+      markdown: "Waxwings **arrived**.",
+    });
+    const preview = await callOk("preview_post", { id: created.post.id });
+    expect(preview).toMatchObject({ subject: "Hello", frozen: false, warnings: [] });
+    expect(preview.text).toContain("Waxwings arrived.");
+    expect(preview.editor).toMatch(new RegExp(`/dashboard/\\?to=/edit/${created.post.id}$`));
+  });
+
+  it("schedules, tests, moves, and cancels a send, and Send now is scheduling for the soonest", async () => {
+    const post = (await callOk("save_draft", { subject: "Soon", markdown: "x" })).post;
+    const tooSoon = await callTool("schedule_send", {
+      id: post.id,
+      fire_at: new Date(Date.now() + 1000).toISOString(),
+    });
+    expect(tooSoon.isError).toBe(true);
+    expect(tooSoon.text).toMatch(/^Refused: HTTP 400 fire_at_too_soon\. /);
+    expect(tooSoon.text).toContain("Next move: Fix the request.");
+    const scheduled = await callOk("schedule_send", { id: post.id, fire_at: inHours(2) });
+    expect(scheduled.send).toMatchObject({ post_id: post.id, status: "scheduled" });
+    const test = await callOk("send_test", { id: post.id, to: "you@example.com" });
+    expect(test).toMatchObject({ sent: true, to: "you@example.com", frozen: true });
+    const moved = await callOk("reschedule_send", { id: scheduled.send.id, fire_at: inHours(3) });
+    expect(moved.changed).toBe(true);
+    const send = await callOk("get_send", { id: scheduled.send.id });
+    expect(send.send.rescheduled_by).toEqual({
+      kind: "human",
+      email: "you@example.com",
+      client: "claude",
+    });
+    expect((await callOk("cancel_send", { id: scheduled.send.id })).send.status).toBe("canceled");
+    const now = await callOk("schedule_send", { id: post.id });
+    expect(now.send.status).toBe("scheduled");
+    const listed = await callOk("list_sends", { status: "scheduled" });
+    expect(listed.sends.map((s: { id: string }) => s.id)).toEqual([now.send.id]);
+  });
+
+  it("plans an import before committing, and never gives the attestation for the person", async () => {
     const file = { name: "l.txt", text: "a@x.io\n" };
-    const plan = JSON.parse((await callTool("plan_import", { file })).text);
-    const refused = await callTool("commit_import", { file, plan_hash: plan.plan_hash });
+    const plan = await callOk("import_subscribers", { file });
+    expect(plan).toMatchObject({ planned: true, attestation: { version: 1 } });
+    expect((await callOk("search_subscribers", {})).total).toBe(0);
+    const refused = await callTool("import_subscribers", { file, plan_hash: plan.plan_hash });
     expect(refused.isError).toBe(true);
-    const [lead, move, , body] = refused.text.split("\n");
-    expect(lead).toMatch(/^Refused: HTTP 409 attestation_required\. /);
-    expect(move).toBe("Next move: Confirm, then send again.");
-    expect(JSON.parse(body ?? "")).toMatchObject({
-      error: "attestation_required",
-      attestation: plan.attestation,
-    });
-  });
-
-  it("can never let an import grow a send, since a tool call isn't the editor (SPEC §7)", async () => {
-    const created = JSON.parse((await callTool("create_post", { subject: "Soon" })).text);
-    const fireAt = new Date(Date.now() + 3_600_000).toISOString();
-    expect(
-      (await callTool("schedule_post", { id: created.post.id, fire_at: fireAt })).isError,
-    ).toBe(false);
-    const file = { name: "l.txt", text: "a@x.io\n" };
-    const plan = JSON.parse((await callTool("plan_import", { file })).text);
-    expect(plan.sends_growing.length).toBe(1);
-    const refused = await callTool("commit_import", {
+    const lines = refused.text.split("\n");
+    expect(lines[0]).toMatch(/^Refused: HTTP 409 attestation_required\. /);
+    expect(lines[1]).toBe("Next move: Confirm, then send again.");
+    expect(lines[2]).toBe(`The words for the publisher to confirm: "${plan.attestation.text}"`);
+    expect(lines[3]).toContain(
+      "Only if they do, call again with attestation { version: 1, accepted: true }.",
+    );
+    expect((await callOk("search_subscribers", {})).total).toBe(0);
+    const done = await callOk("import_subscribers", {
       file,
       plan_hash: plan.plan_hash,
-      attestation: { version: plan.attestation.version, accepted: true },
-      acknowledge_sends: plan.sends_growing.map((s: { id: string }) => s.id),
+      attestation: { version: 1, accepted: true },
+    });
+    expect(done.import.principal).toEqual({
+      kind: "human",
+      email: "you@example.com",
+      client: "claude",
+    });
+  });
+
+  it("sends the publisher to the dashboard for an import that would grow a scheduled send (SPEC §7)", async () => {
+    const post = (await callOk("save_draft", { subject: "Soon", markdown: "x" })).post;
+    await callOk("schedule_send", { id: post.id, fire_at: inHours(2) });
+    const file = { name: "l.txt", text: "a@x.io\n" };
+    const plan = await callOk("import_subscribers", { file });
+    expect(plan.sends_growing.length).toBe(1);
+    const refused = await callTool("import_subscribers", {
+      file,
+      plan_hash: plan.plan_hash,
+      attestation: { version: 1, accepted: true },
     });
     expect(refused.isError).toBe(true);
     expect(refused.text).toMatch(/^Refused: HTTP 409 sends_acknowledgement_required\. /);
+    expect(refused.text).toContain('- "Soon", firing');
+    expect(refused.text).toMatch(
+      /Only the publisher can acknowledge that, in the dashboard, choosing the same file: \S+\/dashboard\/\?to=\/subscribers\/import$/,
+    );
+  });
+
+  it("finds a subscriber by address, and unsubscribes them", async () => {
+    const file = { name: "l.txt", text: "a@x.io\n" };
+    const plan = await callOk("import_subscribers", { file });
+    await callOk("import_subscribers", {
+      file,
+      plan_hash: plan.plan_hash,
+      attestation: { version: 1, accepted: true },
+    });
+    const found = await callOk("get_subscriber", { email: "a@x.io" });
+    expect(found.subscriber).toMatchObject({
+      email: "a@x.io",
+      status: "confirmed",
+      receives_posts: true,
+    });
+    const left = await callOk("unsubscribe_subscriber", { id: found.subscriber.id });
+    expect(left.subscriber).toMatchObject({
+      status: "unsubscribed",
+      unsubscribe_cause: "publisher",
+    });
+    expect((await callTool("get_subscriber", {})).text).toBe("Give one of `id` or `email`.");
+  });
+
+  it("reads the publication: who is signed in, and its identity, provider, and list", async () => {
+    const pub = await callOk("get_publication", {});
+    expect(pub.signed_in_as).toEqual({ kind: "human", email: "you@example.com", client: "claude" });
+    expect(pub.subscribers).toEqual({ pending: 0, confirmed: 0, unsubscribed: 0, suppressed: 0 });
+    expect(Object.keys(pub.deployment)).toEqual([
+      "app_origin",
+      "provider",
+      "from_address",
+      "min_lead_minutes",
+      "free_plan_limits",
+    ]);
+    expect(pub.scheduled_sends).toEqual([]);
+  });
+
+  it("reads any other admin GET through the escape hatch, and never a write or a dev route", async () => {
+    const ref = await callTool("kestrel_api_read", { path: "/api/reference.md" });
+    expect(ref.isError).toBe(false);
+    expect(ref.text).toMatch(/^# /);
+    const post = (await callOk("save_draft", { subject: "R" })).post;
+    const revs = await callTool("kestrel_api_read", { path: `/api/posts/${post.id}/revisions` });
+    expect(JSON.parse(revs.text).revisions.length).toBe(1);
+    for (const path of [
+      "/api/dev/outbox",
+      "/api/mcp",
+      "/health",
+      "https://evil.example/api/posts",
+      "/api/nope",
+    ]) {
+      const r = await callTool("kestrel_api_read", { path });
+      expect(r.isError, path).toBe(true);
+      expect(r.text).toContain("isn't a route this reads");
+    }
+    const bad = await callTool("kestrel_api_read", { path: "/api/posts?colour=red" });
+    expect(bad.text).toContain(
+      "Refused: HTTP 400 bad_request. colour isn’t a query parameter this takes",
+    );
+  });
+
+  it("refuses an argument the tool doesn't take, naming it, and a missing post as the route does", async () => {
+    const stray = await callTool("get_post", { id: "p_x", title: "T" });
+    expect(stray).toEqual({
+      isError: true,
+      text: "`title` isn't an argument get_post takes; it takes `id`.",
+    });
+    const missing = await callTool("get_post", { id: "p_none" });
+    expect(missing.text).toMatch(/^Refused: HTTP 404 not_found\./);
+  });
+});
+
+describe("the publisher's docs are resources", () => {
+  it("lists the publishing pages, and reads one as Markdown", async () => {
+    const auth = await adminAuth(PERSON);
+    const list = (await readJson(await rpc("resources/list", {}, auth))).result.resources;
+    const page = list.find((r: { name: string }) => r.name === "working-with-claude");
+    expect(page).toEqual({
+      uri: "kestrel://docs/working-with-claude",
+      name: "working-with-claude",
+      title: "Working with Claude",
+      mimeType: "text/markdown",
+    });
+    expect(list.some((r: { name: string }) => r.name === "access")).toBe(false);
+    const read = (await readJson(await rpc("resources/read", { uri: page.uri }, auth))).result;
+    expect(read.contents[0].text).toMatch(/^# Working with Claude/);
+    const none = await readJson(await rpc("resources/read", { uri: "kestrel://docs/nope" }, auth));
+    expect(none.error.code).toBe(-32002);
   });
 });
 
 describe("the server's door (SPEC §11)", () => {
   it("refuses a request with no credential before any tool runs", async () => {
-    const res = await rpc("tools/call", { name: "create_post", arguments: { subject: "S" } }, {});
+    const res = await rpc("tools/call", { name: "save_draft", arguments: { subject: "S" } }, {});
     expect(res.status).toBe(401);
     const { vars } = await accessDeployment();
     const access = await rpc("tools/list", {}, {}, (init) => fetchWith(vars, "/api/mcp", init));
     expect(access.status).toBe(401);
-    // Nothing the refused call named was made.
-    expect(JSON.parse((await callTool("list_posts", {})).text).posts).toEqual([]);
+    expect((await callOk("search_posts", {})).posts).toEqual([]);
   });
 
   it("refuses a request another site's page sent", async () => {
@@ -264,7 +484,7 @@ describe("the server's door (SPEC §11)", () => {
 
   it("answers an unknown method or tool as JSON-RPC errors", async () => {
     const auth = await adminAuth(PERSON);
-    expect((await readJson(await rpc("resources/list", {}, auth))).error.code).toBe(-32601);
+    expect((await readJson(await rpc("prompts/list", {}, auth))).error.code).toBe(-32601);
     expect((await readJson(await rpc("tools/call", { name: "nope" }, auth))).error.code).toBe(
       -32602,
     );

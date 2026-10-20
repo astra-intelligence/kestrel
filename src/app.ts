@@ -474,7 +474,7 @@ export function createRouter({
       summary:
         "The instance's MCP server, which Claude Desktop and claude.ai connect to as a custom connector: one JSON-RPC message a request, answered in JSON.",
       description:
-        "Stateless MCP over Streamable HTTP, the revisions opened by `initialize` (2025-03-26 through 2025-11-25): `initialize`, `ping`, `tools/list`, and `tools/call`. A notification, or a client's answer to a request, is taken with a 202 and no body; an `MCP-Protocol-Version` this server doesn't speak is a 400. Each tool is one route of this API, named for its anchor in this reference in underscores (`get_post`), taking the route's path parameters, query parameters, and body fields as its arguments. Every admin route is a tool except the dev routes, the ones that take an upload, and this server's own. A call runs its route as the person signed in, naming its client `claude`, so a change records the person via Claude, and a refusal comes back as a tool error led by its code, its words, and the next move.",
+        "Stateless MCP over Streamable HTTP, the revisions opened by `initialize` (2025-03-26 through 2025-11-25): `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, and `resources/read`. A notification, or a client's answer to a request, is taken with a 202 and no body; an `MCP-Protocol-Version` this server doesn't speak is a 400. Its tools are a curated set for a publisher in a chat (search and read posts, sends, and subscribers; save a draft; send a test; schedule, move, or cancel a send; import or unsubscribe), each calling one or more of this API's routes with arguments picked from those routes' own fields, plus `kestrel_api_read` for any other admin read. Settings, the template, suppressions, Resolve, uploads, and erasure stay in the editor. A call runs its routes as the person signed in, naming its client `claude`, so a change records the person via Claude, and a refusal comes back as a tool error led by its code, its words, and the next move, never answered for the person. The resources are the publisher's docs, as Markdown.",
       body: [
         { name: "jsonrpc", type: '"2.0"', description: "JSON-RPC's version.", required: true },
         {
@@ -1065,7 +1065,7 @@ export function createRouter({
       resource: "posts",
       title: "Render a post's email",
       summary:
-        "Render the post to its email and describe it (the preview's URL, subject, warnings, and `frozen`), as JSON.",
+        "Render the post to its email and describe it (the preview's URL, subject, plain text, warnings, and `frozen`), as JSON.",
       description:
         "Once the post is scheduled this is its frozen copy, exactly as it will fire, and once sent the record's; a draft renders live. A frozen copy's `warnings` are the ones its render gave when it was frozen or last re-made.",
       returns: {
@@ -1077,6 +1077,12 @@ export function createRouter({
               "The rendered email as a page behind the admin gate, `GET /api/posts/:id/preview`: not a public link.",
           },
           { name: "subject", type: "string", description: "The email's subject." },
+          {
+            name: "text",
+            type: "string",
+            description:
+              "The email's plain-text part, from the same render as the page, as a reader whose mail client shows no HTML reads it.",
+          },
           {
             name: "warnings",
             type: "string[]",

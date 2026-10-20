@@ -120,6 +120,7 @@ export async function preview(c: RequestContext): Promise<Response> {
   const body: PreviewResponse = {
     url: `${c.config.appOrigin}/api/posts/${input.post.id}/preview`,
     subject: email.subject,
+    text: email.text,
     warnings,
     frozen: frozen !== null,
   };

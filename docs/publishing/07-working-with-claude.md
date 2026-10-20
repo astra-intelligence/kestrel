@@ -33,7 +33,7 @@ Every Claude plan can add custom connectors; the Free plan allows one. Anthropic
 
 **Your Kestrel has to allow Claude's sign-in first.** If Claude says it couldn't connect or the sign-in failed, the Access application needs Managed OAuth on, with Claude's address among its allowed redirect URIs, as [Lock the dashboard with Access](../get-started/03-access.md#5-turn-on-managed-oauth) describes.
 
-Claude reaches your Kestrel from Anthropic's servers, not your computer, so this works only for a deployed instance, never one running on your own computer. Each tool Claude sees is one action of the API, such as **Create a post** or **Schedule a post**, marked as reading or changing something. Uploading an image or a logo isn't one, since a connector can't send Kestrel a file: add those in the dashboard, or through Claude Code. A connector has no instance repository, so your instance's instructions for Claude don't reach it: Kestrel tells it the most important ones itself when it connects, such as asking you before anything that reaches readers.
+Claude reaches your Kestrel from Anthropic's servers, not your computer, so this works only for a deployed instance, never one running on your own computer. Claude sees a short list of tools, each a task such as **Save a draft**, **Send a test email**, or **Schedule a post**, marked as reading or changing something, plus one that reads anything else in your Kestrel. Your settings, the email template, blocking an address, resolving a send, uploading images, and erasing a subscriber stay in the dashboard, and Claude tells you when something is yours to finish there. A connector has no instance repository, so your instance's instructions for Claude don't reach it: Kestrel tells it the most important ones itself when it connects, such as asking you before anything that reaches readers.
 
 How long the sign-in lasts is the Access application's grant session, as for Claude Code. To disconnect, remove the connector in Claude.
 
@@ -46,7 +46,7 @@ A script that runs with no one there uses a service token instead, as [Connect a
 - **Take a sent post out of your archive, or put it back.** Claude asks first, as the dashboard does, since taking a post out breaks links people shared.
 - **Check how a send did.** Claude reads the send's record and reports what was delivered, unsent, bounced, or complained.
 - **Recover an earlier version.** Every save keeps a whole version of a post, and Claude can read them back.
-- **Import a list.** In Claude Code, its `/migrate-list` skill asks what anything ambiguous in your old service's export means, and converts a few rows for you to check. It imports once you attest, and if a scheduled post would grow, you finish the import in the dashboard.
+- **Import a list.** Claude plans the import first and shows you what it would do. It imports once you accept the attestation in the chat, never on its own. In Claude Code, its `/migrate-list` skill asks what anything ambiguous in your old service's export means, and converts a few rows for you to check. It imports once you attest, and if a scheduled post would grow, you finish the import in the dashboard.
 
 ## The lines it can't cross
 

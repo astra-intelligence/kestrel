@@ -1,19 +1,50 @@
 /**
- * The MCP server's tools, each one API route (SPEC §11): a fourth projection of the OpenAPI
- * document, which is itself generated from the route manifest, so a tool's name, description,
- * and input schema can't drift from the route it calls. A tool is called by building the request
- * the route takes and handing it to the router, so it meets the route's own gate, door, and
- * handler, and nothing here decides what a call may do.
+ * The MCP server's tools (SPEC §11): a small set shaped for a publisher working in Claude's chat,
+ * each a task (find a post, save a draft, schedule a send) rather than one route. A tool holds no
+ * rule of the app's own. It calls one or more routes through the router, as the request each
+ * route takes, so the route's gate, strict door, who-acted record, and refusals decide every call;
+ * what a tool adds is which routes a task needs, in what order, and how much of their answers a
+ * chat needs to read.
  *
- * Which routes are tools is one rule (`isTool`): the authoring API, less the dev routes, the
- * routes that take an upload, and the MCP server's own. An upload is a file's bytes, which a tool
- * call's JSON arguments can't carry; Claude Code, which can, uploads through `kestrel api`.
+ * Each tool stays tied to the route manifest: it declares the routes it wraps, and every argument
+ * it takes is a field picked from one of those routes (`pick`), its schema and words read from
+ * the OpenAPI document the manifest generates, never restated here. A spec fails when a declared
+ * route or a picked field leaves the manifest. A tool never answers a confirmation for the person:
+ * a refusal that asks for one comes back as the tool's error, saying what is affected and who can
+ * give it.
+ *
+ * Left out on purpose, so they stay in the editor: settings and template writes, suppressions,
+ * Resolve, uploads, reader pages, erasure, and the dev routes. `kestrel_api_read` reaches any
+ * other admin read, never a write.
  */
 
-import type { McpTool, ToolResult } from "../../shared/mcp";
-import type { ReferenceEntry, ReferenceResponse } from "../../shared/reference";
+import { dashboardLink } from "../../shared/dashboard_link";
+import type { GrowingSend, ImportCommitResponse, ImportPlanResponse } from "../../shared/imports";
+import type { McpTool, ToolAnnotations, ToolResult } from "../../shared/mcp";
+import type {
+  Post,
+  PostListResponse,
+  PostResponse,
+  PostSavedResponse,
+  PreviewResponse,
+  StaleRevisionError,
+  TestSendResponse,
+} from "../../shared/posts";
 import { concretePath } from "../../shared/reference";
-import { CLAUDE_CLIENT, CLIENT_HEADER } from "../../shared/who_acted";
+import type {
+  ScheduleResponse,
+  SendActionResponse,
+  SendListResponse,
+  SendResponse,
+  SendView,
+} from "../../shared/sends";
+import type { SettingsResponse } from "../../shared/settings";
+import type {
+  Subscriber,
+  SubscriberListResponse,
+  SubscriberResponse,
+} from "../../shared/subscribers";
+import { CLAUDE_CLIENT, CLIENT_HEADER, type WhoamiResponse } from "../../shared/who_acted";
 import { ACCESS_JWT_HEADER } from "../auth/access";
 import { type OpenApiDocument, openApiPath, type Schema } from "../reference/openapi";
 import { REFUSAL_MOVE, type RefusalCode } from "../reference/refusals";
@@ -21,33 +52,753 @@ import { REFUSAL_MOVE, type RefusalCode } from "../reference/refusals";
 /** The path the MCP server answers at, which no tool calls. */
 export const MCP_PATH = "/api/mcp";
 
-/** A tool, and how its arguments become the route's request. */
+/** The page size a tool's list reads when the call names none: a chat reads a page, not a list. */
+export const TOOL_PAGE = 25;
+
+/** The most text one tool answer carries, so no answer costs a chat tens of thousands of tokens. */
+export const TOOL_TEXT_MAX = 60_000;
+
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+
+/** A route a tool wraps, as the manifest registers it. */
+export interface RouteRef {
+  method: Method;
+  path: string;
+}
+
+const route = (method: Method, path: string): RouteRef => ({ method, path });
+
+/** A tool's argument: a field picked from one of its routes, by where the route takes it. */
+export interface ArgPick {
+  route: RouteRef;
+  in: "path" | "query" | "body";
+  /** The field's name on the route: a path parameter, a query parameter, or a top-level body field. */
+  field: string;
+  /** Whether the tool needs it; absent, the route's own word decides. */
+  required?: boolean;
+  /** What the tool adds to the route's own description of the field, such as when it is needed. */
+  note?: string;
+}
+
+function pick(
+  r: RouteRef,
+  where: ArgPick["in"],
+  field: string,
+  more: Pick<ArgPick, "required" | "note"> = {},
+): ArgPick {
+  return { route: r, in: where, field, ...more };
+}
+
+/** A route's answer, read once: its status, its body as text, and that text parsed as JSON. */
+export interface Answer {
+  status: number;
+  ok: boolean;
+  text: string;
+  body: unknown;
+}
+
+/** The parts of a route's request a tool fills. */
+export interface RequestParts {
+  params?: Record<string, unknown>;
+  query?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+}
+
+/** What a tool may do: call one of its declared routes, and link into the editor. */
+export interface Api {
+  call(r: RouteRef, parts?: RequestParts): Promise<Answer>;
+  /** A link to one of the editor's pages (`/edit/<id>`), which opens after a sign-in too. */
+  editor(page: string): string;
+}
+
+/** A tool as this module defines it, before its schema is read from the manifest. */
+export interface ToolDef {
+  name: string;
+  title: string;
+  description: string;
+  annotations: Omit<ToolAnnotations, "title">;
+  /** Every route the tool calls; a call to any other is a bug, refused at once. */
+  routes: RouteRef[];
+  /** Its arguments by name, each picked from one of `routes`. */
+  args: Record<string, ArgPick>;
+  run(api: Api, args: Record<string, unknown>): Promise<ToolResult>;
+}
+
+/** A tool as `tools/list` lists it, with the definition that runs it. */
 export interface ToolRoute {
   tool: McpTool;
-  method: string;
-  /** The manifest path, its `:name` parameters still to fill. */
-  path: string;
-  pathParams: string[];
-  queryParams: string[];
-  /** The route takes a JSON body, so the arguments left over are its fields. */
-  takesBody: boolean;
+  def: ToolDef;
 }
 
-/** Whether a route is a tool: the authoring API, less dev tooling, uploads, and this server. */
-export function isTool(
-  r: Pick<ReferenceEntry, "access" | "resource" | "path" | "accepts">,
-): boolean {
-  return (
-    r.access === "admin" &&
-    r.resource !== "dev" &&
-    !r.path.startsWith(MCP_PATH) &&
-    (r.accepts ?? []).every((type) => type === "application/json")
-  );
+// --- answers ---
+
+function text(value: string, isError = false): ToolResult {
+  const cut =
+    value.length > TOOL_TEXT_MAX
+      ? `${value.slice(0, TOOL_TEXT_MAX)}\n\n[Cut at ${TOOL_TEXT_MAX} characters: ask for a smaller page.]`
+      : value;
+  return { content: [{ type: "text", text: cut }], isError };
 }
 
-/** A tool's name: the route's anchor in the reference (its `operationId`), in underscores. */
-export function toolName(operationId: string): string {
-  return operationId.replace(/-/g, "_");
+function data(value: unknown): ToolResult {
+  return text(JSON.stringify(value));
+}
+
+/** An epoch time as the ISO time a reader and Claude both read; null stays null. */
+function iso(ms: number | null | undefined): string | null {
+  return typeof ms === "number" ? new Date(ms).toISOString() : null;
+}
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * A route's refusal as a tool error: its status, code, and words, the next move the reference
+ * gives the code, the field at fault, then what the tool adds (`lines`), such as what a
+ * confirmation would affect and where the person gives it.
+ */
+export function refused(a: Answer, lines: string[] = []): ToolResult {
+  const body = isObject(a.body) ? a.body : {};
+  const code = typeof body.error === "string" ? body.error : undefined;
+  const message = typeof body.message === "string" ? body.message : undefined;
+  const move = code && Object.hasOwn(REFUSAL_MOVE, code) ? REFUSAL_MOVE[code as RefusalCode] : null;
+  const words = message ?? (code ? undefined : a.text || undefined);
+  const out = [`Refused: HTTP ${a.status}${code ? ` ${code}` : ""}.${words ? ` ${words}` : ""}`];
+  if (move) {
+    out.push(`Next move: ${move}.`);
+  }
+  if (typeof body.field === "string") {
+    out.push(`Fix: \`${body.field}\`.`);
+  }
+  return text([...out, ...lines].join("\n"), true);
+}
+
+// --- what a chat reads of each object ---
+
+function postBrief(p: Post) {
+  return {
+    id: p.id,
+    subject: p.subject,
+    status: p.status,
+    email_only: p.email_only,
+    updated_at: iso(p.updated_at),
+    send: p.send ? { id: p.send.id, status: p.send.status, fire_at: iso(p.send.fire_at) } : null,
+  };
+}
+
+function postFull(p: Post) {
+  return {
+    ...postBrief(p),
+    slug: p.slug,
+    archive_url: p.archive_url,
+    unlisted_url: p.unlisted_url,
+    published_at: iso(p.published_at),
+    archive_live: p.archive_live,
+    current_revision: p.current_revision,
+    author: p.author,
+    author_client: p.author_client,
+    actions: p.actions.map((x) => x.name),
+  };
+}
+
+function sendBrief(s: SendView) {
+  return {
+    id: s.id,
+    post_id: s.post_id,
+    subject: s.subject,
+    status: s.status,
+    phase: s.phase,
+    fire_at: iso(s.fire_at),
+    audience: s.audience.count,
+    conditions: s.conditions.map((c) => c.message),
+  };
+}
+
+function sendFull(s: SendView) {
+  return {
+    ...sendBrief(s),
+    email_only: s.email_only,
+    started_at: iso(s.started_at),
+    completed_at: iso(s.completed_at),
+    tested_at: iso(s.tested_at),
+    remade_at: iso(s.remade_at),
+    audience: s.audience,
+    counts: s.counts,
+    conditions: s.conditions.map((c) => ({
+      kind: c.kind,
+      severity: c.severity,
+      message: c.message,
+    })),
+    actions: s.actions.map((x) => x.name),
+    scheduled_by: s.scheduled_by,
+    rescheduled_by: s.rescheduled_by,
+    canceled_by: s.canceled_by,
+    resolved_by: s.resolved_by,
+    archive: s.links.archive,
+    unlisted: s.links.unlisted,
+  };
+}
+
+function subscriberBrief(s: Subscriber) {
+  return {
+    id: s.id,
+    email: s.email,
+    status: s.status,
+    receives_posts: s.receives_posts,
+    confirmed_at: iso(s.confirmed_at),
+    unsubscribed_at: iso(s.unsubscribed_at),
+    unsubscribe_cause: s.unsubscribe_cause,
+    suppression: s.suppression,
+  };
+}
+
+/** The next page's offset, or null on the last. */
+function nextOffset(page: { total: number; limit: number; offset: number }): number | null {
+  return page.offset + page.limit < page.total ? page.offset + page.limit : null;
+}
+
+/** Growing sends as lines a person reads: each subject, fire time, and how many it gains. */
+function growingLines(sends: readonly GrowingSend[]): string[] {
+  return sends.map((s) => `- "${s.subject}", firing ${iso(s.fire_at)}, would gain ${s.gains}.`);
+}
+
+/** The named args that were given, with nothing absent written. */
+function only(args: Record<string, unknown>, names: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(names.filter((n) => args[n] !== undefined).map((n) => [n, args[n]]));
+}
+
+// --- the routes the tools wrap ---
+
+const LIST_POSTS = route("GET", "/api/posts");
+const GET_POST = route("GET", "/api/posts/:id");
+const CREATE_POST = route("POST", "/api/posts");
+const UPDATE_POST = route("PUT", "/api/posts/:id");
+const PREVIEW_POST = route("GET", "/api/posts/:id/preview.json");
+const TEST_POST = route("POST", "/api/posts/:id/test");
+const SCHEDULE_POST = route("POST", "/api/posts/:id/schedule");
+const SEND_NOW = route("POST", "/api/posts/:id/send");
+const LIST_SENDS = route("GET", "/api/sends");
+const GET_SEND = route("GET", "/api/sends/:id");
+const RESCHEDULE_SEND = route("POST", "/api/sends/:id/reschedule");
+const CANCEL_SEND = route("POST", "/api/sends/:id/cancel");
+const LIST_SUBSCRIBERS = route("GET", "/api/subscribers");
+const GET_SUBSCRIBER = route("GET", "/api/subscribers/:id");
+const UNSUBSCRIBE = route("POST", "/api/subscribers/:id/unsubscribe");
+const PLAN_IMPORT = route("POST", "/api/imports/plan");
+const COMMIT_IMPORT = route("POST", "/api/imports");
+const WHOAMI = route("GET", "/api/whoami");
+const VERSION = route("GET", "/api/version");
+const SETTINGS = route("GET", "/api/settings");
+
+const READ: ToolDef["annotations"] = { readOnlyHint: true, openWorldHint: false };
+
+const PAGE_NOTE = `This tool reads ${TOOL_PAGE} unless told.`;
+const NEXT_NOTE = "Pass `next_offset` for the next page.";
+
+/** The curated tools, in the order `tools/list` lists them: reads, then writes. */
+export const TOOL_DEFS: ToolDef[] = [
+  {
+    name: "search_posts",
+    title: "Search posts",
+    description: `Find posts by subject and status, newest edit first, ${TOOL_PAGE} at a time. Each row has the post's id, subject, status, and its send's fire time; read one whole with get_post.`,
+    annotations: READ,
+    routes: [LIST_POSTS],
+    args: {
+      search: pick(LIST_POSTS, "query", "search"),
+      status: pick(LIST_POSTS, "query", "status"),
+      limit: pick(LIST_POSTS, "query", "limit", { note: PAGE_NOTE }),
+      offset: pick(LIST_POSTS, "query", "offset", { note: NEXT_NOTE }),
+    },
+    async run(api, args) {
+      const a = await api.call(LIST_POSTS, {
+        query: { ...only(args, ["search", "status", "offset"]), limit: args.limit ?? TOOL_PAGE },
+      });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as PostListResponse;
+      return data({
+        total: r.page.total,
+        next_offset: nextOffset(r.page),
+        posts: r.posts.map(postBrief),
+      });
+    },
+  },
+  {
+    name: "get_post",
+    title: "Get a post",
+    description:
+      "One post: its subject, status, where it is listed, its archive address, its send, what can be done to it now, its current revision (the `base_revision` save_draft needs), and its Markdown.",
+    annotations: READ,
+    routes: [GET_POST],
+    args: { id: pick(GET_POST, "path", "id") },
+    async run(api, args) {
+      const a = await api.call(GET_POST, { params: { id: args.id } });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as PostResponse;
+      return data({
+        post: postFull(r.post),
+        markdown: r.markdown,
+        editor: api.editor(`/edit/${encodeURIComponent(r.post.id)}`),
+      });
+    },
+  },
+  {
+    name: "preview_post",
+    title: "Preview a post's email",
+    description:
+      "The post's email as it would go out, from the one render path every test and send uses: its subject, its plain text, and what the render found wrong. Once scheduled it is the frozen copy that will fire. To see the designed email, the publisher opens `editor`.",
+    annotations: READ,
+    routes: [PREVIEW_POST],
+    args: { id: pick(PREVIEW_POST, "path", "id") },
+    async run(api, args) {
+      const a = await api.call(PREVIEW_POST, { params: { id: args.id } });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as PreviewResponse;
+      return data({
+        subject: r.subject,
+        frozen: r.frozen,
+        warnings: r.warnings,
+        text: r.text,
+        editor: api.editor(`/edit/${encodeURIComponent(String(args.id))}`),
+      });
+    },
+  },
+  {
+    name: "list_sends",
+    title: "List sends",
+    description: `Sends, soonest fire time first, ${TOOL_PAGE} at a time: each one's subject, status, fire time, audience, and anything wrong with it. Read one whole with get_send.`,
+    annotations: READ,
+    routes: [LIST_SENDS],
+    args: {
+      status: pick(LIST_SENDS, "query", "status"),
+      search: pick(LIST_SENDS, "query", "search"),
+      limit: pick(LIST_SENDS, "query", "limit", { note: PAGE_NOTE }),
+      offset: pick(LIST_SENDS, "query", "offset", { note: NEXT_NOTE }),
+    },
+    async run(api, args) {
+      const a = await api.call(LIST_SENDS, {
+        query: { ...only(args, ["status", "search", "offset"]), limit: args.limit ?? TOOL_PAGE },
+      });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as SendListResponse;
+      return data({
+        total: r.page.total,
+        next_offset: nextOffset(r.page),
+        sends: r.sends.map(sendBrief),
+      });
+    },
+  },
+  {
+    name: "get_send",
+    title: "Get a send",
+    description:
+      "One send: where it stands, its fire time, its audience, its delivery counts and outcomes, anything wrong with it in the app's own words, what can be done to it now, and who scheduled, moved, or canceled it.",
+    annotations: READ,
+    routes: [GET_SEND],
+    args: { id: pick(GET_SEND, "path", "id") },
+    async run(api, args) {
+      const a = await api.call(GET_SEND, { params: { id: args.id } });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as SendResponse;
+      return data({
+        send: sendFull(r.send),
+        outcomes: r.outcomes,
+        editor: api.editor(`/sent/${encodeURIComponent(r.send.id)}`),
+      });
+    },
+  },
+  {
+    name: "search_subscribers",
+    title: "Search subscribers",
+    description: `Find subscribers by address and status, ${TOOL_PAGE} at a time, with the whole list's counts. Each row says whether they receive posts and, if not, why.`,
+    annotations: READ,
+    routes: [LIST_SUBSCRIBERS],
+    args: {
+      search: pick(LIST_SUBSCRIBERS, "query", "search"),
+      status: pick(LIST_SUBSCRIBERS, "query", "status"),
+      suppressed: pick(LIST_SUBSCRIBERS, "query", "suppressed"),
+      limit: pick(LIST_SUBSCRIBERS, "query", "limit", { note: PAGE_NOTE }),
+      offset: pick(LIST_SUBSCRIBERS, "query", "offset", { note: NEXT_NOTE }),
+    },
+    async run(api, args) {
+      const a = await api.call(LIST_SUBSCRIBERS, {
+        query: {
+          ...only(args, ["search", "status", "suppressed", "offset"]),
+          limit: args.limit ?? TOOL_PAGE,
+        },
+      });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as SubscriberListResponse;
+      return data({
+        counts: r.counts,
+        total: r.page.total,
+        next_offset: nextOffset(r.page),
+        subscribers: r.subscribers.map(subscriberBrief),
+        workers_plan_advice: r.workers_plan_advice,
+      });
+    },
+  },
+  {
+    name: "get_subscriber",
+    title: "Get a subscriber",
+    description:
+      "One subscriber, by `id` or by exact `email`: whether they receive posts, how they joined, why they left, and their suppression.",
+    annotations: READ,
+    routes: [GET_SUBSCRIBER, LIST_SUBSCRIBERS],
+    args: {
+      id: pick(GET_SUBSCRIBER, "path", "id", { required: false, note: "Or give `email`." }),
+      email: pick(LIST_SUBSCRIBERS, "query", "email", { note: "Or give `id`." }),
+    },
+    async run(api, args) {
+      if ((args.id === undefined) === (args.email === undefined)) {
+        return text("Give one of `id` or `email`.", true);
+      }
+      const a =
+        args.id !== undefined
+          ? await api.call(GET_SUBSCRIBER, { params: { id: args.id } })
+          : await api.call(LIST_SUBSCRIBERS, { query: { email: args.email } });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const s = (a.body as SubscriberResponse).subscriber;
+      return data({
+        subscriber: {
+          ...subscriberBrief(s),
+          created_at: iso(s.created_at),
+          origin: s.origin,
+          opt_in: s.opt_in,
+          import_id: s.import_id,
+        },
+        editor: api.editor(`/subscribers/${encodeURIComponent(s.id)}`),
+      });
+    },
+  },
+  {
+    name: "get_publication",
+    title: "Get the publication",
+    description:
+      "Who you are signed in as, the running version, the publication's name and identity, the test recipients, where notifications go, the email provider and minimum lead, the scheduled sends, and the list's counts. Read it first.",
+    annotations: READ,
+    routes: [WHOAMI, VERSION, SETTINGS, LIST_SUBSCRIBERS],
+    args: {},
+    async run(api) {
+      const answers = await Promise.all([
+        api.call(WHOAMI),
+        api.call(VERSION),
+        api.call(SETTINGS),
+        api.call(LIST_SUBSCRIBERS, { query: { limit: 1 } }),
+      ]);
+      const failed = answers.find((a) => !a.ok);
+      if (failed) {
+        return refused(failed);
+      }
+      const [who, version, settings, list] = answers as [Answer, Answer, Answer, Answer];
+      const s = settings.body as SettingsResponse;
+      const d = s.deployment;
+      return data({
+        signed_in_as: (who.body as WhoamiResponse).principal,
+        version: (version.body as { version: string }).version,
+        publication: s.settings.publication,
+        test_recipients: s.settings.test_recipients,
+        notifications_to: s.settings.notifications.to,
+        deployment: {
+          app_origin: d.app_origin,
+          provider: d.provider,
+          from_address: d.from_address,
+          min_lead_minutes: d.min_lead_ms / 60_000,
+          free_plan_limits: d.free_plan_limits,
+        },
+        subscribers: (list.body as SubscriberListResponse).counts,
+        scheduled_sends: s.in_use.sends.slice(0, TOOL_PAGE).map(sendBrief),
+        editor: api.editor("/dashboard"),
+      });
+    },
+  },
+  {
+    name: "save_draft",
+    title: "Save a draft",
+    description:
+      "Create a draft (no `id`), or save a draft's new subject or Markdown (`id`, with the `base_revision` you read from get_post). A save made from an older revision than the post's is refused, with the newer text and who wrote it: re-apply your change to that text, or ask the publisher, and never save over it unread.",
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    routes: [CREATE_POST, UPDATE_POST],
+    args: {
+      id: pick(UPDATE_POST, "path", "id", { required: false, note: "Omit it to create a draft." }),
+      subject: pick(CREATE_POST, "body", "subject"),
+      markdown: pick(CREATE_POST, "body", "markdown"),
+      base_revision: pick(UPDATE_POST, "body", "base_revision", {
+        required: false,
+        note: "Needed with `id`.",
+      }),
+    },
+    async run(api, args) {
+      const body = only(args, ["subject", "markdown"]);
+      const a =
+        args.id === undefined
+          ? await api.call(CREATE_POST, { body: { ...body, ...only(args, ["base_revision"]) } })
+          : await api.call(UPDATE_POST, {
+              params: { id: args.id },
+              body: { ...body, ...only(args, ["base_revision"]) },
+            });
+      if (!a.ok) {
+        const stale = a.body as Partial<StaleRevisionError>;
+        if (stale.error === "stale_revision") {
+          return refused(a, [
+            `The post has a newer revision, ${stale.current_revision}, by ${stale.author ?? "someone"}${stale.author_client ? ` via ${stale.author_client}` : ""} at ${iso(stale.updated_at)}. Its Markdown:`,
+            "",
+            stale.markdown ?? "",
+          ]);
+        }
+        return refused(a);
+      }
+      const r = a.body as PostSavedResponse;
+      return data({
+        post: postFull(r.post),
+        revision_id: r.revision_id,
+        subject_slug_held: r.subject_slug_held,
+        editor: api.editor(`/edit/${encodeURIComponent(r.post.id)}`),
+      });
+    },
+  },
+  {
+    name: "send_test",
+    title: "Send a test email",
+    description:
+      "Email a test of the post to one address through the same path as a real send. Once the post is scheduled, the test is the frozen copy that will fire. Use the test recipients from get_publication unless the publisher names another.",
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    routes: [TEST_POST],
+    args: { id: pick(TEST_POST, "path", "id"), to: pick(TEST_POST, "body", "to") },
+    async run(api, args) {
+      const a = await api.call(TEST_POST, { params: { id: args.id }, body: only(args, ["to"]) });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as TestSendResponse;
+      const result = data({
+        sent: r.sent,
+        to: r.to,
+        subject: r.subject,
+        frozen: r.frozen,
+        warnings: r.warnings,
+        not_sent: r.not_sent,
+      });
+      // The route answers 200 whatever the provider did; a test that didn't go is the tool's error.
+      return r.sent ? result : { ...result, isError: true };
+    },
+  },
+  {
+    name: "schedule_send",
+    title: "Schedule a post",
+    description:
+      "Schedule the post's send at `fire_at`, or, with no `fire_at`, for the soonest it can go: one minimum lead out (the editor's Send now). Either way it waits out the review window, cancelable until it fires. Only when the publisher asks, after telling them whether the post goes in the public archive (`email_only`). Then send a test and tell them when it fires and how to cancel.",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    routes: [SCHEDULE_POST, SEND_NOW],
+    args: {
+      id: pick(SCHEDULE_POST, "path", "id"),
+      fire_at: pick(SCHEDULE_POST, "body", "fire_at", {
+        required: false,
+        note: "Omit it for the soonest.",
+      }),
+      email_only: pick(SCHEDULE_POST, "body", "email_only"),
+    },
+    async run(api, args) {
+      const settings = only(args, ["email_only"]);
+      const a =
+        args.fire_at === undefined
+          ? await api.call(SEND_NOW, { params: { id: args.id }, body: settings })
+          : await api.call(SCHEDULE_POST, {
+              params: { id: args.id },
+              body: { ...settings, fire_at: args.fire_at },
+            });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as ScheduleResponse & { idempotent?: true };
+      return data({
+        send: sendBrief(r.send),
+        warnings: r.warnings,
+        ...(r.idempotent ? { already_scheduled: true } : {}),
+        editor: api.editor(`/edit/${encodeURIComponent(r.send.post_id)}`),
+      });
+    },
+  },
+  {
+    name: "reschedule_send",
+    title: "Reschedule a send",
+    description:
+      "Move a scheduled send's fire time, within its review window and no sooner than the minimum lead. The email stays exactly as scheduled.",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    routes: [RESCHEDULE_SEND],
+    args: {
+      id: pick(RESCHEDULE_SEND, "path", "id"),
+      fire_at: pick(RESCHEDULE_SEND, "body", "fire_at"),
+    },
+    async run(api, args) {
+      const a = await api.call(RESCHEDULE_SEND, {
+        params: { id: args.id },
+        body: only(args, ["fire_at"]),
+      });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as SendActionResponse;
+      return data({ send: sendBrief(r.send), changed: r.changed });
+    },
+  },
+  {
+    name: "cancel_send",
+    title: "Cancel a send",
+    description:
+      "Cancel a scheduled send before its fire time, which unlocks the post for editing. Canceling one already canceled changes nothing.",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    routes: [CANCEL_SEND],
+    args: { id: pick(CANCEL_SEND, "path", "id") },
+    async run(api, args) {
+      const a = await api.call(CANCEL_SEND, { params: { id: args.id } });
+      if (!a.ok) {
+        return refused(a);
+      }
+      const r = a.body as SendActionResponse;
+      return data({ send: sendBrief(r.send), changed: r.changed });
+    },
+  },
+  {
+    name: "import_subscribers",
+    title: "Import subscribers",
+    description:
+      "Bring in a list. First call with the `file` alone to plan, which writes nothing and answers what each row would do, the `attestation` the import needs, and its `plan_hash`. Show the publisher the plan, then call again with the same file and the `plan_hash` to commit. When the plan asks for an attestation, show the publisher its exact words, and send `attestation` { version, accepted: true } only after they confirm them in this chat, never on your own. An import that would add people to a scheduled send can only be finished by the publisher in the dashboard.",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    routes: [PLAN_IMPORT, COMMIT_IMPORT],
+    args: {
+      file: pick(PLAN_IMPORT, "body", "file"),
+      plain_list_status: pick(PLAN_IMPORT, "body", "plain_list_status"),
+      plan_hash: pick(COMMIT_IMPORT, "body", "plan_hash", {
+        required: false,
+        note: "Omit it to plan; give the plan's to commit.",
+      }),
+      attestation: pick(COMMIT_IMPORT, "body", "attestation"),
+    },
+    async run(api, args) {
+      const file = only(args, ["file", "plain_list_status"]);
+      if (args.plan_hash === undefined) {
+        const a = await api.call(PLAN_IMPORT, { body: file });
+        if (!a.ok) {
+          return refused(a);
+        }
+        const p = a.body as ImportPlanResponse;
+        return data({
+          planned: true,
+          file: p.file,
+          counts: p.counts,
+          suppressions_added: p.suppressions_added,
+          sends_growing: p.sends_growing.map((s) => ({ ...s, fire_at: iso(s.fire_at) })),
+          attestation: p.attestation,
+          plan_hash: p.plan_hash,
+          rows_not_confirmed: p.rows.length,
+          rows: p.rows.slice(0, TOOL_PAGE),
+          workers_plan_advice: p.workers_plan_advice,
+        });
+      }
+      const a = await api.call(COMMIT_IMPORT, {
+        body: { ...file, ...only(args, ["plan_hash", "attestation"]) },
+      });
+      if (!a.ok) {
+        const body = isObject(a.body) ? a.body : {};
+        if (body.error === "attestation_required" && isObject(body.attestation)) {
+          const att = body.attestation;
+          return refused(a, [
+            `The words for the publisher to confirm: "${String(att.text)}"`,
+            `Ask them in this chat whether they accept these words. Only if they do, call again with attestation { version: ${String(att.version)}, accepted: true }.`,
+          ]);
+        }
+        if (body.error === "sends_acknowledgement_required" && Array.isArray(body.sends)) {
+          return refused(a, [
+            "It would add people to these scheduled sends:",
+            ...growingLines(body.sends as GrowingSend[]),
+            `Only the publisher can acknowledge that, in the dashboard, choosing the same file: ${api.editor("/subscribers/import")}`,
+          ]);
+        }
+        return refused(a);
+      }
+      const r = a.body as ImportCommitResponse;
+      return data({
+        import: r.import,
+        counts: r.counts,
+        suppressions_added: r.suppressions_added,
+        differed: r.differed.slice(0, TOOL_PAGE),
+        replayed: r.replayed,
+      });
+    },
+  },
+  {
+    name: "unsubscribe_subscriber",
+    title: "Unsubscribe a subscriber",
+    description:
+      "Unsubscribe someone who asked to leave, as their own unsubscribe link does. Only they undo it, by subscribing again. To stop mailing an address on the publisher's own judgment, they block it in the dashboard instead.",
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    routes: [UNSUBSCRIBE],
+    args: { id: pick(UNSUBSCRIBE, "path", "id") },
+    async run(api, args) {
+      const a = await api.call(UNSUBSCRIBE, { params: { id: args.id } });
+      if (!a.ok) {
+        return refused(a);
+      }
+      return data({ subscriber: subscriberBrief((a.body as SubscriberResponse).subscriber) });
+    },
+  },
+];
+
+/** The read escape hatch's name: any admin GET the curated tools don't shape, never a write. */
+export const API_READ_NAME = "kestrel_api_read";
+
+const API_READ_TITLE = "Read the Kestrel API";
+
+const API_READ_DESCRIPTION =
+  "Read any admin route of the Kestrel API that the other tools don't cover, by its path and query (`/api/sends/s_abc/deliveries?view=failures`), answered as the route answers it. GET only. Start with `/api/reference.md`, which lists every route, and `/api/reference/<resource>.md` for one resource's routes in full. The publisher's docs are at `/api/docs/<slug>.md`.";
+
+// --- generation, from the manifest's OpenAPI document ---
+
+/** A route's operation in the document, or null when the manifest has no such route. */
+export function operationOf(doc: OpenApiDocument, r: RouteRef) {
+  return doc.paths[openApiPath(r.path)]?.[r.method.toLowerCase()] ?? null;
+}
+
+/** A picked field's schema and whether its route requires it, or null when the route doesn't take it. */
+export function pickedField(
+  doc: OpenApiDocument,
+  p: ArgPick,
+): { schema: Schema; required: boolean } | null {
+  const op = operationOf(doc, p.route);
+  if (!op) {
+    return null;
+  }
+  if (p.in === "body") {
+    const body = op.requestBody?.content["application/json"]?.schema;
+    const schema = body?.properties?.[p.field];
+    return schema ? { schema, required: body?.required?.includes(p.field) ?? false } : null;
+  }
+  const param = op.parameters?.find((x) => x.in === p.in && x.name === p.field);
+  if (!param) {
+    return null;
+  }
+  return {
+    schema: {
+      ...param.schema,
+      description: param.description ?? `The \`${p.field}\` in the route's path.`,
+    },
+    required: param.required,
+  };
 }
 
 const COMPONENT_REF = "#/components/schemas/";
@@ -56,8 +807,7 @@ const COMPONENT_REF = "#/components/schemas/";
 function referencedObjects(schema: unknown, components: Record<string, Schema>): string[] {
   const found = new Set<string>();
   const walk = (node: unknown): void => {
-    const text = JSON.stringify(node);
-    for (const [, key] of text.matchAll(/"#\/components\/schemas\/(\w+)"/g)) {
+    for (const [, key] of JSON.stringify(node).matchAll(/"#\/components\/schemas\/(\w+)"/g)) {
       if (key && !found.has(key)) {
         found.add(key);
         walk(components[key]);
@@ -80,86 +830,114 @@ function standalone(schema: Schema, components: Record<string, Schema>): Record<
   return out;
 }
 
-/**
- * One route as a tool: its path parameters, query parameters, and body fields as one object of
- * arguments, its summary and its own refusals (each with the next move) as the description.
- * Throws when two of those share a name, since a call couldn't say which it meant.
- */
-function toolFor(r: ReferenceEntry, doc: OpenApiDocument): ToolRoute {
-  const op = doc.paths[openApiPath(r.path)]?.[r.method.toLowerCase()];
-  if (!op) {
-    throw new Error(`the OpenAPI document has no ${r.method} ${r.path}`);
-  }
+/** A tool's input schema, its fields read from the routes it picks them from. Throws on a field
+ *  a route no longer takes, so a manifest change can't leave a tool asking for it. */
+function inputSchema(def: ToolDef, doc: OpenApiDocument): McpTool["inputSchema"] {
   const properties: Record<string, Schema> = {};
   const required: string[] = [];
-  const add = (name: string, schema: Schema, needed: boolean): void => {
-    if (Object.hasOwn(properties, name)) {
-      throw new Error(`${r.method} ${r.path} takes two arguments named ${name}`);
+  for (const [name, p] of Object.entries(def.args)) {
+    const f = pickedField(doc, p);
+    if (!f) {
+      throw new Error(
+        `${def.name} picks the ${p.in} field ${p.field} of ${p.route.method} ${p.route.path}, which doesn't take it`,
+      );
     }
-    properties[name] = schema;
-    if (needed) {
+    properties[name] = p.note
+      ? { ...f.schema, description: `${f.schema.description ?? ""} ${p.note}`.trim() }
+      : f.schema;
+    if (p.required ?? f.required) {
       required.push(name);
     }
-  };
-  const pathParams: string[] = [];
-  const queryParams: string[] = [];
-  for (const p of op.parameters ?? []) {
-    if (p.in === "path") {
-      pathParams.push(p.name);
-      add(p.name, { type: "string", description: `The \`${p.name}\` in the route's path.` }, true);
-    } else if (p.in === "query") {
-      queryParams.push(p.name);
-      add(p.name, { ...p.schema, description: p.description }, p.required);
-    }
   }
-  const body = op.requestBody?.content["application/json"]?.schema;
-  for (const [name, schema] of Object.entries(body?.properties ?? {})) {
-    add(name, schema, body?.required?.includes(name) ?? false);
-  }
-
-  const refusals = Object.entries(op.responses)
-    .filter(([status]) => status !== "2XX" && status !== "default")
-    .map(([, answer]) => answer.description);
-  const description = [
-    op.description,
-    `Calls \`${r.method} ${concretePath(r.path)}\`.`,
-    ...(refusals.length ? [`Refusals of its own:\n\n${refusals.join("\n\n")}`] : []),
-  ].join("\n\n");
-  const readOnly = r.method === "GET";
   return {
-    tool: {
-      name: toolName(op.operationId),
-      title: r.title,
-      description,
-      inputSchema: {
-        ...standalone(
-          { type: "object", properties, ...(required.length ? { required } : {}) },
-          doc.components.schemas,
-        ),
-        type: "object",
-      },
-      annotations: {
-        title: r.title,
-        readOnlyHint: readOnly,
-        ...(readOnly ? {} : { destructiveHint: r.method !== "PUT" }),
-        ...(r.method === "PUT" || r.method === "DELETE" ? { idempotentHint: true } : {}),
-        openWorldHint: false,
-      },
-    },
-    method: r.method,
-    path: r.path,
-    pathParams,
-    queryParams,
-    takesBody: r.accepts?.includes("application/json") ?? false,
+    ...standalone(
+      { type: "object", properties, ...(required.length ? { required } : {}) },
+      doc.components.schemas,
+    ),
+    type: "object",
+    additionalProperties: false,
   };
 }
 
-/** Every tool the reference's routes make, in the reference's order. */
-export function toolsFrom(ref: ReferenceResponse, doc: OpenApiDocument): ToolRoute[] {
-  return ref.groups.flatMap((g) => g.routes.filter(isTool).map((r) => toolFor(r, doc)));
+/** The read escape hatch, its path checked against the manifest's admin GETs before it runs. */
+function apiRead(doc: OpenApiDocument): ToolRoute {
+  const reads = Object.entries(doc.paths).flatMap(([path, ops]) => {
+    const op = ops.get;
+    return op &&
+      op["x-kestrel-access"] === "admin" &&
+      !path.startsWith("/api/dev/") &&
+      path !== MCP_PATH
+      ? [new URLPattern({ pathname: path.replace(/\{(\w+)\}/g, ":$1") })]
+      : [];
+  });
+  const def: ToolDef = {
+    name: API_READ_NAME,
+    title: API_READ_TITLE,
+    description: API_READ_DESCRIPTION,
+    annotations: READ,
+    routes: [],
+    args: {},
+    async run(api, args) {
+      const raw = typeof args.path === "string" ? args.path : "";
+      const url = URL.parse(raw, "https://kestrel.invalid");
+      if (
+        !url ||
+        !raw.startsWith("/api/") ||
+        !reads.some((p) => p.test({ pathname: url.pathname }))
+      ) {
+        return text(
+          `${raw || "(no path)"} isn't a route this reads: it reads the admin GET routes under /api that \`/api/reference.md\` lists, never the dev routes or a write.`,
+          true,
+        );
+      }
+      const a = await api.call(route("GET", url.pathname), {
+        query: Object.fromEntries(url.searchParams),
+      });
+      return a.ok ? text(a.text === "" ? `Done (HTTP ${a.status}).` : a.text) : refused(a);
+    },
+  };
+  return {
+    def,
+    tool: {
+      name: API_READ_NAME,
+      title: API_READ_TITLE,
+      description: API_READ_DESCRIPTION,
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The route's path, with any query, such as `/api/reference.md`.",
+          },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+      annotations: { title: API_READ_TITLE, ...READ },
+    },
+  };
 }
 
-/** An argument as a query or path value: a list as a comma list, anything else as text. */
+/** The tools as `tools/list` lists them, read against the manifest's OpenAPI document. */
+export function curatedTools(doc: OpenApiDocument): ToolRoute[] {
+  const tools = TOOL_DEFS.map(
+    (def): ToolRoute => ({
+      def,
+      tool: {
+        name: def.name,
+        title: def.title,
+        description: def.description,
+        inputSchema: inputSchema(def, doc),
+        annotations: { title: def.title, ...def.annotations },
+      },
+    }),
+  );
+  return [...tools, apiRead(doc)];
+}
+
+// --- calling a route ---
+
+/** An argument as a path or query value: a list as a comma list, anything else as text. */
 function asText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -170,38 +948,26 @@ function asText(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** The credential headers a tool call carries on, from the request that reached the server. */
+/** The credential headers a tool's calls carry on, from the request that reached the server. */
 const CREDENTIAL_HEADERS = [ACCESS_JWT_HEADER, "Authorization"];
 
 /**
- * The request a tool call makes of its route: the arguments split into the path, the query, and
- * the body, as the tool's schema says, under the caller's own credential and Claude's name as
- * the client. An argument the route doesn't take goes where its door will refuse it by name: the
- * body of a route that takes one, the query of one that doesn't. Returns a refusal's words
- * instead when a path argument is missing, since the route can't be found without it.
+ * The request a tool makes of a route: the path filled, the query and body as given, under the
+ * caller's own credential and Claude's name as the client, whatever name the caller gave.
  */
-export function toolRequest(
-  t: ToolRoute,
-  args: Record<string, unknown>,
+export function routeRequest(
+  r: RouteRef,
+  parts: RequestParts,
   origin: string,
   from: Headers,
-): Request | string {
-  const rest = { ...args };
-  let path = concretePath(t.path);
-  for (const name of t.pathParams) {
-    const value = rest[name];
-    delete rest[name];
-    if (value === undefined || value === null || asText(value) === "") {
-      return `${name} is required: it is the \`${name}\` in the route's path.`;
-    }
-    const encoded = encodeURIComponent(asText(value));
+): Request {
+  let path = concretePath(r.path);
+  for (const [name, value] of Object.entries(parts.params ?? {})) {
+    const encoded = encodeURIComponent(value === undefined || value === null ? "" : asText(value));
     path = path.replace(new RegExp(`:${name}\\b`), () => encoded);
   }
   const url = new URL(path, origin);
-  const query = t.takesBody ? t.queryParams : Object.keys(rest);
-  for (const name of query) {
-    const value = rest[name];
-    delete rest[name];
+  for (const [name, value] of Object.entries(parts.query ?? {})) {
     if (value !== undefined && value !== null) {
       url.searchParams.set(name, asText(value));
     }
@@ -213,42 +979,37 @@ export function toolRequest(
       headers.set(name, value);
     }
   }
-  if (!t.takesBody) {
-    return new Request(url, { method: t.method, headers });
+  if (parts.body === undefined) {
+    return new Request(url, { method: r.method, headers });
   }
   headers.set("content-type", "application/json");
-  return new Request(url, { method: t.method, headers, body: JSON.stringify(rest) });
+  return new Request(url, { method: r.method, headers, body: JSON.stringify(parts.body) });
 }
 
-/**
- * A route's answer as a tool result: its body as it came, and a refusal marked an error and led
- * by its status, code, words, and the next move the reference gives it, so Claude reads what to
- * do from the refusal itself.
- */
-export async function toolResult(res: Response): Promise<ToolResult> {
-  const text = await res.text();
-  if (res.ok) {
-    return {
-      content: [{ type: "text", text: text === "" ? `Done (HTTP ${res.status}).` : text }],
-      isError: false,
-    };
-  }
-  let code: string | undefined;
-  let message: string | undefined;
+/** A route's response, read once. */
+export async function readAnswer(res: Response): Promise<Answer> {
+  const body = await res.text();
+  let parsed: unknown = null;
   try {
-    const body = JSON.parse(text) as { error?: unknown; message?: unknown };
-    code = typeof body.error === "string" ? body.error : undefined;
-    message = typeof body.message === "string" ? body.message : undefined;
+    parsed = body === "" ? null : JSON.parse(body);
   } catch {
-    // Not a refusal's JSON body: its text is all there is to say.
+    // Not JSON (a Markdown doc, say): its text is the answer.
   }
-  const move = code && Object.hasOwn(REFUSAL_MOVE, code) ? REFUSAL_MOVE[code as RefusalCode] : null;
-  const lead = [
-    `Refused: HTTP ${res.status}${code ? ` ${code}` : ""}.${message ? ` ${message}` : ""}`,
-    ...(move ? [`Next move: ${move}.`] : []),
-  ].join("\n");
-  return {
-    content: [{ type: "text", text: text === "" ? lead : `${lead}\n\n${text}` }],
-    isError: true,
-  };
+  return { status: res.status, ok: res.ok, text: body, body: parsed };
+}
+
+/** The arguments a call gave that its tool doesn't take, refused by name so none is dropped unread. */
+export function unknownArgs(t: ToolRoute, args: Record<string, unknown>): string | null {
+  const known = Object.keys((t.tool.inputSchema.properties ?? {}) as Record<string, unknown>);
+  const stray = Object.keys(args).filter((k) => !known.includes(k));
+  if (stray.length === 0) {
+    return null;
+  }
+  const names = (ks: string[]) => ks.map((k) => `\`${k}\``).join(", ");
+  return `${names(stray)} isn't an argument ${t.tool.name} takes; it takes ${known.length ? names(known) : "none"}.`;
+}
+
+/** A link into one of the editor's pages, as a notification spells one. */
+export function editorLink(origin: string, page: string): string {
+  return dashboardLink(origin, page);
 }
