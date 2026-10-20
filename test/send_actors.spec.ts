@@ -237,4 +237,50 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
       resolved_by: null,
     });
   });
+
+  it("keeps every act in the send's log, with when, and the time or resolution it set", async () => {
+    const id = await scheduled(EDITOR);
+    await call(CLAUDE_CODE, "POST", `/api/sends/${id}/reschedule`, { fire_at: inTwoHours() });
+    await call(SERVICE, "POST", `/api/sends/${id}/reschedule`, { fire_at: inAnHour() });
+    await call(EDITOR, "POST", `/api/sends/${id}/cancel`);
+    const { results } = await env.DB.prepare(
+      "SELECT act, at, actor, fire_at, resolution FROM send_acts WHERE send_id = ? ORDER BY id",
+    )
+      .bind(id)
+      .all<{ act: string; at: number; actor: string; fire_at: number | null }>();
+    const send = await view(id);
+    expect(results.map((r) => [r.act, JSON.parse(r.actor)])).toEqual([
+      ["schedule", EDITOR.actor],
+      ["move", CLAUDE_CODE.actor],
+      ["move", SERVICE.actor],
+      ["cancel", EDITOR.actor],
+    ]);
+    // The last move set the time the send was canceled at; a cancel sets none.
+    expect(results.map((r) => r.fire_at).slice(2)).toEqual([send.fire_at, null]);
+    expect(results[3]?.at).toBe(send.completed_at);
+    expect(results.every((r, i) => i === 0 || r.at >= (results[i - 1]?.at ?? 0))).toBe(true);
+  });
+
+  it("tells a Send now apart from a schedule in the log, and a Resolve by its resolution", async () => {
+    const res = await call(CLAUDE_CODE, "POST", `/api/posts/${await draft()}/send`);
+    const sent = (await readJson(res)).send;
+    const wedgedId = await wedged();
+    await call(SERVICE, "POST", `/api/sends/${wedgedId}/resolve`, { resolution: "accepted" });
+    const { results } = await env.DB.prepare(
+      "SELECT send_id, act, fire_at, resolution FROM send_acts ORDER BY id",
+    ).all();
+    expect(results).toEqual([
+      { send_id: sent.id, act: "send_now", fire_at: sent.fire_at, resolution: null },
+      { send_id: wedgedId, act: "resolve", fire_at: null, resolution: "accepted" },
+    ]);
+  });
+
+  it("deletes a deleted draft's log of acts with its canceled sends", async () => {
+    const post = await draft();
+    const res = await call(EDITOR, "POST", `/api/posts/${post}/schedule`, { fire_at: inAnHour() });
+    await call(EDITOR, "POST", `/api/sends/${(await readJson(res)).send.id}/cancel`);
+    expect((await call(EDITOR, "DELETE", `/api/posts/${post}`)).status).toBe(200);
+    const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM send_acts").first<{ n: number }>();
+    expect(left?.n).toBe(0);
+  });
 });

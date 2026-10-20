@@ -243,10 +243,6 @@ describe("buildSendView — derived phase", () => {
       c_complained: 0,
       c_skipped: 0,
       c_unsent: 0,
-      scheduled_by: null,
-      moved_by: null,
-      canceled_by: null,
-      resolved_by: null,
       rev: 0,
       ...over,
     };

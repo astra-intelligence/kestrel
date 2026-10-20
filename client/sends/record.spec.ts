@@ -16,6 +16,7 @@ import {
   jsonResponse,
   mount,
   resetShell,
+  type SendRowFixture,
   sendSummary,
   settingsResponse,
   stubClipboard,
@@ -25,7 +26,7 @@ import {
 import { renderSentRecord } from "./record";
 
 // A send that went out to 10: 8 delivered, 1 bounced, 1 never handed off.
-const send = (over: Partial<SendSummary> = {}): SendSummary =>
+const send = (over: Partial<SendRowFixture> = {}): SendRowFixture =>
   sendSummary({
     status: "sent",
     subject: "Owls",
@@ -91,7 +92,7 @@ describe("sent record", () => {
 
   // A sent send on the fake server: its read, the feed, and its outcomes all come from its
   // counters, and `receipt` moves them the way a delivery webhook does.
-  const sentSend = (over: Partial<SendSummary> = {}) => {
+  const sentSend = (over: Partial<SendRowFixture> = {}) => {
     const server = sendServer([send(over)]);
     return {
       routes: server.routes,

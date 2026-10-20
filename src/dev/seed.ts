@@ -1281,7 +1281,7 @@ export async function seedDatabase(
         subject: result.subject,
         recipient_count: audience.length,
         scheduled_at: at,
-        scheduled_by: publisher,
+        scheduled_by: { email: publisher, act: "schedule" },
         started_at: null,
         completed_at: null,
       });
@@ -1307,7 +1307,7 @@ export async function seedDatabase(
         subject: result.subject,
         recipient_count: demoPost.sentTo.length,
         scheduled_at: fireAt - 6 * 60 * 1000, // Send now: the minimum lead, then the minute
-        scheduled_by: publisher,
+        scheduled_by: { email: publisher, act: "send_now" },
         started_at: fireAt,
         completed_at: sentAt,
       });
@@ -1342,7 +1342,7 @@ export async function seedDatabase(
       subject: result.subject,
       recipient_count: sentAudience.length,
       scheduled_at: scheduledAt,
-      scheduled_by: publisher,
+      scheduled_by: { email: publisher, act: "schedule" },
       started_at: fireAt,
       completed_at: completedAt,
     });

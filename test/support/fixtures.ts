@@ -24,6 +24,7 @@ const TABLES = [
   "deliveries",
   "notifications",
   "send_tombstones",
+  "send_acts",
   "sends",
   "images",
   "post_revisions",

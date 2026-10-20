@@ -284,15 +284,6 @@ export interface Send {
   c_complained: number;
   c_skipped: number;
   c_unsent: number;
-  /** Who scheduled the send, by Schedule or Send now (SPEC §6, §11), as a stored actor (JSON);
-   *  null for a send scheduled before it was recorded. Each `*_by` keeps the latest such act. */
-  scheduled_by: string | null;
-  /** Who last moved its fire time; null if no one has. */
-  moved_by: string | null;
-  /** Who canceled it; null unless it was canceled. */
-  canceled_by: string | null;
-  /** Who last resolved it while it was wedged (SPEC §12); null if no one has. */
-  resolved_by: string | null;
   /**
    * Where the send's last visible change sits in one app-wide sequence (SPEC §8): any
    * change a reader could see (a cancel, a move, a re-make, a counter move, a receipt)
@@ -307,6 +298,19 @@ export type SendSummary = Omit<
   Send,
   "rendered_html" | "rendered_text" | "web_link" | "render_warnings"
 >;
+
+/**
+ * Who last took each act on a send, read beside its row from its log of acts (SPEC §6, §11), as
+ * the stored actor (JSON): who scheduled it (by Schedule or Send now), last moved it, canceled
+ * it, and last resolved it while it was wedged; null for an act no one has taken, or none
+ * recorded.
+ */
+export interface SendActorsRow {
+  scheduled_by: string | null;
+  moved_by: string | null;
+  canceled_by: string | null;
+  resolved_by: string | null;
+}
 
 /**
  * How long a send may hand off no one, with nothing else to explain why, before it is

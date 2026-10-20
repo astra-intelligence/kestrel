@@ -100,7 +100,7 @@ async function scheduleOnce(c: RequestContext): Promise<Response> {
   // A draft has no started send, so its address can still change.
   const settings = await resolveSettings(c.env.DB, post, fields);
   const by = actorOf(unwrap(c.principal, "principal"));
-  const send = await freeze(c.env, c.config, post, fireAt, settings, by);
+  const send = await freeze(c.env, c.config, post, fireAt, settings, { act: "schedule", by });
   return json(await frozenAnswer(c, send), 201);
 }
 
@@ -131,7 +131,7 @@ async function sendNowOnce(c: RequestContext): Promise<Response> {
   const by = actorOf(unwrap(c.principal, "principal"));
   let send: SendRow;
   try {
-    send = await freeze(c.env, c.config, post, fireAt, settings, by);
+    send = await freeze(c.env, c.config, post, fireAt, settings, { act: "send_now", by });
   } catch (err) {
     // A concurrent send-now (the editor and Claude at once) passed the check above too and froze first.
     // The repeat gets the same answer as one that came after it (SPEC §6); a schedule

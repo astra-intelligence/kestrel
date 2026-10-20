@@ -11,7 +11,7 @@ import type { OptIn, OutcomeCounts } from "../../shared/imports";
 import type { UnsubscribeCause } from "../../shared/subscribers";
 import { EDITOR_CLIENT } from "../../shared/who_acted";
 import type { PostStatus } from "./posts";
-import { actorJson, NEXT_REV, type SendStatus, tombstoneSendsStmt } from "./sends";
+import { NEXT_REV, recordActStmt, type SendStatus, sendExists, tombstoneSendsStmt } from "./sends";
 import type { SubscriberStatus } from "./subscribers";
 
 export interface SeedSubscriber {
@@ -101,8 +101,8 @@ export interface SeedSend {
   subject: string;
   recipient_count: number;
   scheduled_at: number;
-  /** The person who scheduled it, in the editor. */
-  scheduled_by: string;
+  /** Who scheduled it, a person in the editor, and how: a schedule or Send now. */
+  scheduled_by: { email: string; act: "schedule" | "send_now" };
   started_at: number | null;
   completed_at: number | null;
 }
@@ -144,6 +144,7 @@ export async function resetAll(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM deliveries"),
     db.prepare("DELETE FROM notifications"),
+    db.prepare("DELETE FROM send_acts"),
     tombstoneSendsStmt(db, "1"),
     db.prepare("DELETE FROM sends"),
     db.prepare("DELETE FROM images"),
@@ -281,11 +282,11 @@ export async function insertImage(db: D1Database, row: SeedImage): Promise<void>
 }
 
 export async function insertSend(db: D1Database, row: SeedSend): Promise<void> {
-  await db
+  const insert = db
     .prepare(
       `INSERT INTO sends
-         (id, post_id, status, fire_at, rendered_html, rendered_text, subject, recipient_count, locked_until, scheduled_at, scheduled_by, started_at, completed_at, audience_resolved_at, web_link, rev)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'unlisted', ${NEXT_REV})`,
+         (id, post_id, status, fire_at, rendered_html, rendered_text, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, web_link, rev)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'unlisted', ${NEXT_REV})`,
     )
     .bind(
       row.id,
@@ -297,14 +298,27 @@ export async function insertSend(db: D1Database, row: SeedSend): Promise<void> {
       row.subject,
       row.recipient_count,
       row.scheduled_at,
-      actorJson({ kind: "human", email: row.scheduled_by, client: EDITOR_CLIENT }),
       row.started_at,
       row.completed_at,
       // A seeded send that has started carries its deliveries already: its audience is
       // fixed, so a run never resolves it again.
       row.started_at,
-    )
-    .run();
+    );
+  const by = { kind: "human" as const, email: row.scheduled_by.email, client: EDITOR_CLIENT };
+  await db.batch([
+    insert,
+    recordActStmt(
+      db,
+      {
+        sendId: row.id,
+        act: row.scheduled_by.act,
+        at: row.scheduled_at,
+        by,
+        fireAt: row.fire_at,
+      },
+      sendExists(row.id),
+    ),
+  ]);
 }
 
 export async function insertDeliveries(db: D1Database, rows: SeedDelivery[]): Promise<void> {
