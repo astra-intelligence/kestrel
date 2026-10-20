@@ -636,6 +636,32 @@ describe("editor view", () => {
     }
   });
 
+  it("names who scheduled the send under its time, and who moved it when that happens elsewhere (SPEC §11)", async () => {
+    const linked = scheduledPost(Date.now() + 3_600_000);
+    linked.sends.edit("s1", {
+      scheduled_by: JSON.stringify({ kind: "human", email: "you@example.com", client: "editor" }),
+    });
+    await open(linked.routes);
+    expect($("#schedBy").hidden).toBe(false);
+    expect($("#schedBy").textContent).toBe("Scheduled by you@example.com");
+
+    linked.sends.edit("s1", {
+      fire_at: Date.now() + 2 * 3_600_000,
+      moved_by: JSON.stringify({ kind: "human", email: "you@example.com", client: "claude-code" }),
+    });
+    await vi.advanceTimersByTimeAsync(60_000); // within one idle read
+    expect($("#schedBy").textContent).toBe(
+      "Scheduled by you@example.com · moved by you@example.com via Claude Code",
+    );
+    expect(fake.unhandled).toHaveLength(0);
+  });
+
+  it("names no one under the time of a send none is recorded on", async () => {
+    await open(scheduledPost(Date.now() + 3_600_000).routes);
+    expect($("#schedBy").hidden).toBe(true);
+    expect($("#schedBy").textContent).toBe("");
+  });
+
   it("shows a move, a re-make, and a cancel made elsewhere, in place", async () => {
     const linked = scheduledPost(Date.now() + 3_600_000);
     await open(linked.routes);

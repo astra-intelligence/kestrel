@@ -27,17 +27,23 @@ export function isClientName(value: string): boolean {
   return value.length <= CLIENT_NAME_MAX && new RegExp(CLIENT_NAME_PATTERN).test(value);
 }
 
+/**
+ * Who acted (SPEC §11), as the API reports it wherever a change is recorded on one object: a
+ * person by their email, or a service token by its name, plus the client a person came through.
+ */
+export interface Actor {
+  kind: "human" | "service";
+  /** A person's email; absent on a service token. */
+  email?: string;
+  /** A service token's Client ID, when the token names one; absent on a person. */
+  token_id?: string;
+  /** The client a person's request came through, as it named itself; null when it named
+   *  none, and on a service token, which already names the program. */
+  client: string | null;
+}
+
 /** GET /api/whoami: who this request signed in as, and how. */
 export interface WhoamiResponse {
-  principal: {
-    kind: "human" | "service";
-    /** A person's email; absent on a service token. */
-    email?: string;
-    /** A service token's Client ID, when the token names one; absent on a person. */
-    token_id?: string;
-    /** The client a person's request came through, as it named itself; null when it named
-     *  none, and on a service token, which already names the program. */
-    client: string | null;
-  };
+  principal: Actor;
   auth: { mode: "access" | "dev" };
 }

@@ -24,6 +24,7 @@ export const SHIPPED_MIGRATIONS: readonly string[] = [
   "0011_sends_render_warnings.sql",
   "0012_unsubscribe_cause.sql",
   "0013_who_acted_client.sql",
+  "0014_send_actors.sql",
 ];
 
 /**

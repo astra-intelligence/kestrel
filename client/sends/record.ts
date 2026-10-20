@@ -26,6 +26,7 @@ import { type Html, html, setHtml } from "../ui/html";
 import { icon } from "../ui/icons";
 import { type ListState, renderPager, th, wireSort } from "../ui/list_controls";
 import { busy, type Modal, modal, renderError, toast } from "../ui/widgets";
+import { sendActedBy } from "../who_acted";
 import { openResolveModal } from "./dialogs";
 import { deliveryOutcome } from "./outcome";
 import { can, clampPct, conditionOf, fmtDuration, has, nextRetry } from "./progress";
@@ -262,6 +263,12 @@ function watchBodyHtml(prog: SendView): Html {
 function heldFromStart(send: SendView): boolean {
   return send.status === "sending" && send.provider.halt !== null && !send.audience.fixed;
 }
+/** Who acted on the send, under its meta line (DESIGN §3): nothing when none is recorded. */
+function actedByHtml(send: SendView): Html | null {
+  const by = sendActedBy(send);
+  return by === null ? null : html`<div class="rec-meta rec-by">${by}</div>`;
+}
+
 function watchMetaHtml(send: SendView): Html {
   if (heldFromStart(send)) {
     return html`Due ${fmt(send.fire_at)} · held before handing anyone off · about ${send.audience.count.toLocaleString()} recipients`;
@@ -280,6 +287,7 @@ function watchHtml(send: SendView): Html {
       <div class="rec-head">
         <div class="watch-title"><h1>${send.subject || html`<em>untitled</em>`}</h1><span id="watchPill">${phasePill(prog.phase)}</span></div>
         <div class="rec-meta" id="watchMeta">${watchMetaHtml(send)}</div>
+        <div id="watchBy">${actedByHtml(send)}</div>
       </div>
       <div id="watchBody">${watchBodyHtml(prog)}</div>
       <p class="rec-note muted">This view updates live while the send is in flight. Delivery receipts keep arriving after dispatch finishes, and the record stays accurate as they settle.</p>
@@ -308,6 +316,10 @@ function paintWatch(root: HTMLElement, prog: SendView): void {
   const meta = root.querySelector("#watchMeta");
   if (meta) {
     setHtml(meta, watchMetaHtml(prog));
+  }
+  const by = root.querySelector("#watchBy");
+  if (by) {
+    setHtml(by, html`${actedByHtml(prog)}`);
   }
   const body = root.querySelector("#watchBody");
   if (body) {
@@ -512,6 +524,7 @@ function renderFrozenRecord(
     <div class="rec-head rec-head-page">
       <div class="watch-title"><h1>${send.subject || html`<em>untitled</em>`}</h1><span id="recPill">${phasePill(send.phase)}</span></div>
       <div class="rec-meta">Sent ${fmt(sentAt)} · ${total.toLocaleString()} recipients</div>
+      ${actedByHtml(send)}
     </div>
     <section class="card rec-post" aria-labelledby="recPostTitle">
       <h2 class="rec-part-title" id="recPostTitle">The post</h2>
@@ -895,6 +908,7 @@ function renderCanceled(send: SendView, root: HTMLElement): void {
       <div class="rec-head">
         <div class="watch-title"><h1>${send.subject || html`<em>untitled</em>`}</h1><span id="recPill">${phasePill(send.phase)}</span></div>
         <div class="rec-meta">Canceled ${fmt(send.completed_at)} · was scheduled for ${fmt(send.fire_at)}</div>
+        ${actedByHtml(send)}
       </div>
       <p class="rec-note muted">This send was canceled before it fired, so no one was mailed.</p>
     </div>`,

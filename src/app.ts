@@ -50,7 +50,7 @@ import { unwrap } from "./lib/unwrap";
 import { buildReferenceResponse, referenceIndexMarkdown, resourceMarkdown } from "./reference";
 import { sendBrief } from "./reference/objects";
 import { openApiDocument } from "./reference/openapi";
-import { type BodyField, param, type RouteDef, type RouteRefusal, Router } from "./router";
+import { actorOf, type BodyField, param, type RouteDef, type RouteRefusal, Router } from "./router";
 import * as archiveRoutes from "./routes/archive";
 import * as devRoutes from "./routes/dev";
 import * as docsRoutes from "./routes/docs";
@@ -220,10 +220,13 @@ export function createRouter({
   ];
   const notDraft: RouteRefusal = { code: "post_not_draft", details: ["post"] };
   // A send in a route's example: its state, since the whole view is described once.
+  // Who acted on a send in the examples: the publisher, through Claude Code (SPEC §11).
+  const viaClaude = { kind: "human", email: "you@example.com", client: "claude-code" } as const;
   const scheduledBrief = sendBrief({
     status: "scheduled",
     phase: "scheduled",
     fire_at: 1768554000000,
+    scheduled_by: viaClaude,
     actions: [
       { name: "cancel", method: "POST", path: "/api/sends/s_xyz789/cancel" },
       { name: "reschedule", method: "POST", path: "/api/sends/s_xyz789/reschedule" },
@@ -303,10 +306,10 @@ export function createRouter({
         ],
       },
       handler: (c) => {
-        const { kind, email, tokenId, client, via } = unwrap(c.principal, "principal");
+        const principal = unwrap(c.principal, "principal");
         const body: WhoamiResponse = {
-          principal: { kind, email, token_id: tokenId, client: client ?? null },
-          auth: { mode: via },
+          principal: actorOf(principal),
+          auth: { mode: principal.via },
         };
         return json(body);
       },
@@ -1149,7 +1152,7 @@ export function createRouter({
       description:
         "Freezes the current draft, with the template and identity as they stand, and soft-locks the post until the send is canceled or fires; a later template or identity change re-makes the frozen email once the publisher confirms it. The minimum lead is " +
         lead +
-        "; it is checked on the time as requested, which is then rounded up to the next whole minute. `email_only`, `slug`, and `slug_auto` set the post's settings as it is scheduled, checked before anything is frozen; none is part of the email.",
+        "; it is checked on the time as requested, which is then rounded up to the next whole minute. `email_only`, `slug`, and `slug_auto` set the post's settings as it is scheduled, checked before anything is frozen; none is part of the email. The send records who scheduled it as `scheduled_by`.",
       example: {
         request: { fire_at: "2026-01-16T09:00:00Z" },
         response: { send: scheduledBrief, cursor: "57.1768467610000", warnings: [] },
@@ -1168,7 +1171,7 @@ export function createRouter({
       title: "Send a post now",
       summary:
         "Send now: freeze and schedule one minimum lead out, on the minute, cancelable until then. Idempotent per post.",
-      description: `The same freeze as scheduling, \`fire_at\` now plus the minimum lead (${formatLead(minLeadMs)}, as Schedule a post describes), rounded up to the next whole minute. For nearly all that window the send is inside the lead, so a template or identity save that would re-make it is refused until it fires. The body is optional. A second call for a post already in its window answers with that send and changes nothing, its settings included.`,
+      description: `The same freeze as scheduling, \`fire_at\` now plus the minimum lead (${formatLead(minLeadMs)}, as Schedule a post describes), rounded up to the next whole minute. For nearly all that window the send is inside the lead, so a template or identity save that would re-make it is refused until it fires. The body is optional. A second call for a post already in its window answers with that send and changes nothing, its settings included. The send records who sent it as \`scheduled_by\`, as a schedule does; a repeat records no one.`,
       example: {
         request: { email_only: true },
         response: { send: scheduledBrief, cursor: "57.1768467610000", warnings: [] },
@@ -1452,10 +1455,16 @@ export function createRouter({
       title: "Cancel a send",
       summary: "Cancel a scheduled send during its review window; unlocks the post.",
       description:
-        "The review window closes at the fire time. A send canceled already answers `changed: false`, so a retried cancel is safe.",
+        "The review window closes at the fire time. A cancel records who canceled it as `canceled_by`. A send canceled already answers `changed: false`, so a retried cancel is safe, and keeps who canceled it.",
       example: {
         response: {
-          send: sendBrief({ status: "canceled", phase: "canceled", rev: 58 }),
+          send: sendBrief({
+            status: "canceled",
+            phase: "canceled",
+            rev: 58,
+            scheduled_by: viaClaude,
+            canceled_by: { kind: "human", email: "you@example.com", client: "editor" },
+          }),
           cursor: "58.1768467620000",
           changed: true,
         },
@@ -1478,11 +1487,11 @@ export function createRouter({
       resource: "sends",
       title: "Reschedule a send",
       summary: "Move a scheduled send's fire time without re-freezing the render.",
-      description: `Moves only \`fire_at\`, within the review window: the frozen email is untouched and a re-made send keeps its \`remade_at\`. For a content change, cancel, edit, and schedule again. The same minimum lead as scheduling (${formatLead(minLeadMs)}, as Schedule a post describes), and the time is rounded up to the next whole minute as when scheduling. A move to the time it already has answers \`changed: false\` before the lead is checked. \`email_only\`, \`slug\`, or \`slug_auto\` is a 400: those are the post's, at \`PUT /api/posts/:id/settings\`. The editor's "Edit schedule" is this route and that one together, so a publisher who asks to edit the schedule may mean the time, the post's settings, or both.`,
+      description: `Moves only \`fire_at\`, within the review window: the frozen email is untouched and a re-made send keeps its \`remade_at\`. For a content change, cancel, edit, and schedule again. The same minimum lead as scheduling (${formatLead(minLeadMs)}, as Schedule a post describes), and the time is rounded up to the next whole minute as when scheduling. A move that lands records who moved it as \`moved_by\`; a move to the time it already has answers \`changed: false\` before the lead is checked, and records no one. \`email_only\`, \`slug\`, or \`slug_auto\` is a 400: those are the post's, at \`PUT /api/posts/:id/settings\`. The editor's "Edit schedule" is this route and that one together, so a publisher who asks to edit the schedule may mean the time, the post's settings, or both.`,
       example: {
         request: { fire_at: "2026-01-16T09:00:00Z" },
         response: {
-          send: { ...scheduledBrief, rev: 58 },
+          send: { ...scheduledBrief, rev: 58, moved_by: viaClaude },
           cursor: "58.1768467620000",
           changed: true,
         },
@@ -1505,11 +1514,16 @@ export function createRouter({
       title: "Resolve a wedged send",
       summary: "Resolve a send wedged on ambiguous (dispatched) deliveries.",
       description:
-        "A request that got no answer leaves its recipients `dispatched`, which the loop never re-sends, so the send can't finish. This settles them as `resolution` says and completes the send, never re-mailing an accepted recipient. Offered in `actions` while the send is wedged; no run touches a wedged send, so it settles the recipients the send showed.",
+        "A request that got no answer leaves its recipients `dispatched`, which the loop never re-sends, so the send can't finish. This settles them as `resolution` says and completes the send, never re-mailing an accepted recipient. Offered in `actions` while the send is wedged; no run touches a wedged send, so it settles the recipients the send showed. The send records who resolved it as `resolved_by`.",
       example: {
         request: { resolution: "unsent" },
         response: {
-          send: sendBrief({ status: "sent", phase: "settling", rev: 58 }),
+          send: sendBrief({
+            status: "sent",
+            phase: "settling",
+            rev: 58,
+            resolved_by: { kind: "human", email: "you@example.com", client: "editor" },
+          }),
           cursor: "58.1768467620000",
           resolved: 12,
           completed: true,

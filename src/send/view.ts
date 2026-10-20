@@ -16,7 +16,7 @@
 
 import { unlistedPostUrl } from "../../shared/archive_url";
 import type { SendHalt, SendPhase, SendSummary, SendView } from "../../shared/sends";
-import { countsOf, type SendCounts, type SendStatus } from "../db/sends";
+import { countsOf, readActor, type SendCounts, type SendStatus } from "../db/sends";
 import { type Config, onFreePlanLimits } from "../env";
 import { archiveAnswers } from "../lib/archive_address";
 import { archiveUrl } from "../render/render";
@@ -283,6 +283,10 @@ export function buildSendView(
     completed_at: send.completed_at,
     remade_at: send.remade_at,
     tested_at: send.tested_at,
+    scheduled_by: readActor(send.scheduled_by),
+    moved_by: readActor(send.moved_by),
+    canceled_by: readActor(send.canceled_by),
+    resolved_by: readActor(send.resolved_by),
     audience: {
       count: total,
       fixed: send.audience_resolved_at !== null,

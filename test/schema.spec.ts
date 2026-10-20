@@ -676,3 +676,42 @@ describe("schema (0013_who_acted_client)", () => {
     await expect(insert("x".repeat(33))).rejects.toThrow(/CHECK/);
   });
 });
+
+describe("schema (0014_send_actors)", () => {
+  it("reads a send made before it as acted on by no one recorded (SPEC §6, §11)", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO posts (id, slug, created_at, updated_at) VALUES ('a', 'one', 0, 0)",
+      ),
+      env.DB.prepare(
+        "INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, scheduled_at) VALUES ('s1', 'a', 'canceled', 0, '', '', '', 0)",
+      ),
+    ]);
+    expect(
+      await env.DB.prepare(
+        "SELECT scheduled_by, moved_by, canceled_by, resolved_by FROM sends WHERE id = 's1'",
+      ).first(),
+    ).toEqual({ scheduled_by: null, moved_by: null, canceled_by: null, resolved_by: null });
+  });
+
+  it("keeps each act's actor a person or a service token, as JSON", async () => {
+    await env.DB.prepare(
+      "INSERT INTO posts (id, slug, created_at, updated_at) VALUES ('a', 'one', 0, 0)",
+    ).run();
+    const insert = (id: string, by: string) =>
+      env.DB.prepare(
+        "INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, scheduled_at, scheduled_by) VALUES (?, 'a', 'canceled', 0, '', '', '', 0, ?)",
+      )
+        .bind(id, by)
+        .run();
+    await insert("s1", '{"kind":"human","email":"you@example.com","client":"editor"}');
+    await insert("s2", '{"kind":"service","token_id":"t.access","client":null}');
+    await expect(insert("s3", "you@example.com")).rejects.toThrow(/CHECK/);
+    await expect(insert("s4", '{"kind":"claude"}')).rejects.toThrow(/CHECK/);
+    for (const col of ["moved_by", "canceled_by", "resolved_by"]) {
+      await expect(
+        env.DB.prepare(`UPDATE sends SET ${col} = 'service' WHERE id = 's1'`).run(),
+      ).rejects.toThrow(/CHECK/);
+    }
+  });
+});

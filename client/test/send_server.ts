@@ -17,6 +17,7 @@ import {
   type SendSummary,
   type SendView,
 } from "../../shared/sends";
+import type { Actor } from "../../shared/who_acted";
 import { type FakeApi, type FakeRequest, type FakeRoute, jsonResponse } from "./support";
 
 /** What a scripted send carries beyond its row: what the server would derive for it. */
@@ -41,6 +42,11 @@ export interface SendExtras {
 /** A send as a post refers to it (`Post.send`): its id, status, fire time, and rev. */
 export function sendRef({ id, status, fire_at, rev }: SendView): SendRef {
   return { id, status, fire_at, rev };
+}
+
+/** A stored actor (JSON) as the API carries it. */
+function actor(stored: string | null): Actor | null {
+  return stored === null ? null : (JSON.parse(stored) as Actor);
 }
 
 /**
@@ -75,6 +81,10 @@ export function sendView(row: SendSummary, over: Partial<SendView> = {}): SendVi
     completed_at: row.completed_at,
     remade_at: row.remade_at,
     tested_at: row.tested_at,
+    scheduled_by: actor(row.scheduled_by),
+    moved_by: actor(row.moved_by),
+    canceled_by: actor(row.canceled_by),
+    resolved_by: actor(row.resolved_by),
     audience: {
       count: row.recipient_count,
       fixed: row.audience_resolved_at !== null,

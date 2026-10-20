@@ -21,7 +21,7 @@ import { runSend } from "../src/send/loop";
 import { resolveStuckSend } from "../src/send/resolve";
 import { freeze } from "../src/send/schedule";
 import { SES_DEPLOY } from "./support/deploy";
-import { resetDatabase, seedConfirmed } from "./support/fixtures";
+import { person, resetDatabase, seedConfirmed } from "./support/fixtures";
 import { allowErrorLogs } from "./support/log";
 
 const config = () => getConfig(env);
@@ -75,13 +75,13 @@ describe("resolve a wedged send", () => {
     const lease = (await sends.acquireLease(env.DB, send.id, Date.now(), LEASE_TTL_MS))!;
 
     await expect(
-      resolveStuckSend(env, send.id, "unsent", "tester@example.com"),
+      resolveStuckSend(env, send.id, "unsent", person("tester@example.com")),
     ).rejects.toMatchObject({ status: 409, code: "run_in_progress" });
     expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ dispatched: 1 });
 
     // Once the run lets go (leaving the row in flight: the send is wedged), Resolve settles it.
     await sends.releaseLease(env.DB, send.id, lease);
-    const res = await resolveStuckSend(env, send.id, "unsent", "tester@example.com");
+    const res = await resolveStuckSend(env, send.id, "unsent", person("tester@example.com"));
     expect(res.resolved).toBe(1);
     expect(res.completed).toBe(true);
   });
@@ -90,7 +90,7 @@ describe("resolve a wedged send", () => {
     const send = await sendingSend();
     await insertDelivery(send.id, "amb@example.com", "dispatched");
 
-    const res = await resolveStuckSend(env, send.id, "unsent", "tester@example.com");
+    const res = await resolveStuckSend(env, send.id, "unsent", person("tester@example.com"));
 
     expect(res.resolved).toBe(1);
     expect(res.completed).toBe(true);
@@ -106,7 +106,7 @@ describe("resolve a wedged send", () => {
     const send = await sendingSend();
     await insertDelivery(send.id, "amb@example.com", "dispatched");
 
-    const res = await resolveStuckSend(env, send.id, "accepted", "tester@example.com");
+    const res = await resolveStuckSend(env, send.id, "accepted", person("tester@example.com"));
 
     expect(res.resolved).toBe(1);
     expect(res.completed).toBe(true);
@@ -120,7 +120,7 @@ describe("resolve a wedged send", () => {
     await insertDelivery(send.id, "done@example.com", "accepted", "ses-msg-done");
     await insertDelivery(send.id, "amb@example.com", "dispatched");
 
-    const res = await resolveStuckSend(env, send.id, "unsent", "tester@example.com");
+    const res = await resolveStuckSend(env, send.id, "unsent", person("tester@example.com"));
 
     expect(res.resolved).toBe(1); // only the dispatched row
     expect(res.completed).toBe(true);
@@ -138,7 +138,7 @@ describe("resolve a wedged send", () => {
     const send = await sendingSend();
     await insertDelivery(send.id, "amb@example.com", "dispatched");
 
-    await resolveStuckSend(env, send.id, "unsent", "tester@example.com");
+    await resolveStuckSend(env, send.id, "unsent", person("tester@example.com"));
 
     const row = await env.DB.prepare(
       "SELECT error FROM deliveries WHERE email = 'amb@example.com'",
@@ -152,7 +152,7 @@ describe("resolve a wedged send", () => {
     await insertDelivery(send.id, "amb@example.com", "dispatched");
     await insertDelivery(send.id, "todo@example.com", "pending");
 
-    await expect(resolveStuckSend(env, send.id, "unsent", "t")).rejects.toMatchObject({
+    await expect(resolveStuckSend(env, send.id, "unsent", person("t"))).rejects.toMatchObject({
       status: 409,
       code: "not_wedged",
     });
@@ -163,7 +163,7 @@ describe("resolve a wedged send", () => {
     const send = await sendingSend();
     await insertDelivery(send.id, "ok@example.com", "accepted", "ses-msg-ok");
 
-    const err = await resolveStuckSend(env, send.id, "unsent", "t").catch((e) => e);
+    const err = await resolveStuckSend(env, send.id, "unsent", person("t")).catch((e) => e);
     expect(err).toMatchObject({ status: 409, code: "not_wedged" });
     expect(err.details.send).toMatchObject({ id: send.id, status: "sending", actions: [] });
   });
@@ -172,7 +172,7 @@ describe("resolve a wedged send", () => {
     const { post } = await posts.createPost(env.DB, { subject: "S", markdown: "# H\n\nb" }, "t");
     const send = await freeze(env, config(), post, Date.now() + 3_600_000); // still scheduled
 
-    await expect(resolveStuckSend(env, send.id, "unsent", "t")).rejects.toMatchObject({
+    await expect(resolveStuckSend(env, send.id, "unsent", person("t"))).rejects.toMatchObject({
       code: "not_wedged",
       message: "This send hasn’t started, so there’s nothing to resolve.",
     });
@@ -183,9 +183,9 @@ describe("resolve a wedged send", () => {
     await insertDelivery(send.id, "a1@example.com", "dispatched");
     await insertDelivery(send.id, "a2@example.com", "dispatched");
 
-    const first = await resolveStuckSend(env, send.id, "unsent", "t");
+    const first = await resolveStuckSend(env, send.id, "unsent", person("t"));
     expect(first.resolved).toBe(2);
-    await expect(resolveStuckSend(env, send.id, "accepted", "t")).rejects.toMatchObject({
+    await expect(resolveStuckSend(env, send.id, "accepted", person("t"))).rejects.toMatchObject({
       status: 409,
       code: "not_wedged",
       message: "This send has finished, so there’s nothing to resolve.",
@@ -199,17 +199,17 @@ describe("resolve a wedged send", () => {
     const spy = vi.spyOn(sends, "acquireLease").mockImplementationOnce(async (db, id, now, ttl) => {
       // The other tab's Resolve lands between this one's checks and its lease.
       spy.mockRestore();
-      await resolveStuckSend(env, send.id, "accepted", "other tab");
+      await resolveStuckSend(env, send.id, "accepted", person("other tab"));
       return real(db, id, now, ttl);
     });
-    await expect(resolveStuckSend(env, send.id, "unsent", "t")).rejects.toMatchObject({
+    await expect(resolveStuckSend(env, send.id, "unsent", person("t"))).rejects.toMatchObject({
       status: 409,
       code: "not_wedged",
     });
   });
 
   it("rejects resolving a missing send", async () => {
-    await expect(resolveStuckSend(env, "nope", "unsent", "t")).rejects.toMatchObject({
+    await expect(resolveStuckSend(env, "nope", "unsent", person("t"))).rejects.toMatchObject({
       status: 404,
       code: "not_found",
     });
@@ -244,7 +244,7 @@ describe("a real SES transport error wedges the send, and resolve unwedges it", 
     expect(await sends.countDeliveries(env.DB, send.id, "dispatched")).toBe(1);
 
     // The operator adjudicates: assume it never left; the send completes.
-    const res = await resolveStuckSend(sesEnv(), send.id, "unsent", "tester@example.com");
+    const res = await resolveStuckSend(sesEnv(), send.id, "unsent", person("tester@example.com"));
     expect(res.completed).toBe(true);
     expect((await sends.getSend(env.DB, send.id))!.status).toBe("sent");
     expect(await sends.deliveryRollup(env.DB, send.id)).toMatchObject({ unsent: 1 });

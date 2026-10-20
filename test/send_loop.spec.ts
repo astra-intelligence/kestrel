@@ -51,12 +51,14 @@ describe("the freeze reads the template it froze with", () => {
       warnings: [],
     };
     const stale = await sends
-      .insertScheduledSendStmt(env.DB, row, Date.now(), (version ?? 0) - 1)
+      .insertScheduledSendStmt(env.DB, row, Date.now(), (version ?? 0) - 1, null)
       .run();
     expect(stale.meta.changes ?? 0).toBe(0);
     expect(await sends.getSend(env.DB, "s-guard")).toBeNull();
 
-    const fresh = await sends.insertScheduledSendStmt(env.DB, row, Date.now(), version ?? 0).run();
+    const fresh = await sends
+      .insertScheduledSendStmt(env.DB, row, Date.now(), version ?? 0, null)
+      .run();
     expect(fresh.meta.changes ?? 0).toBe(1);
     expect((await sends.getSend(env.DB, "s-guard"))?.status).toBe("scheduled");
   });

@@ -8,7 +8,7 @@ import { HttpError, json, notFound } from "../lib/errors";
 import { unwrap } from "../lib/unwrap";
 import { requireConnectedProvider } from "../providers";
 import type { RequestContext } from "../router";
-import { param } from "../router";
+import { actorOf, param } from "../router";
 import { viewWithCursor } from "../send/describe";
 import { acceptFireAt, activeSendExists, freeze } from "../send/schedule";
 import { carryingPost } from "../services/post_view";
@@ -99,7 +99,8 @@ async function scheduleOnce(c: RequestContext): Promise<Response> {
   const fireAt = parseFutureFireAt(body.fire_at, c.config.minLeadMs);
   // A draft has no started send, so its address can still change.
   const settings = await resolveSettings(c.env.DB, post, fields);
-  const send = await freeze(c.env, c.config, post, fireAt, settings);
+  const by = actorOf(unwrap(c.principal, "principal"));
+  const send = await freeze(c.env, c.config, post, fireAt, settings, by);
   return json(await frozenAnswer(c, send), 201);
 }
 
@@ -127,9 +128,10 @@ async function sendNowOnce(c: RequestContext): Promise<Response> {
   const now = Date.now();
   const fireAt = acceptFireAt(now + c.config.minLeadMs, c.config.minLeadMs, { now });
   const settings = await resolveSettings(c.env.DB, post, fields);
+  const by = actorOf(unwrap(c.principal, "principal"));
   let send: SendRow;
   try {
-    send = await freeze(c.env, c.config, post, fireAt, settings);
+    send = await freeze(c.env, c.config, post, fireAt, settings, by);
   } catch (err) {
     // A concurrent send-now (the editor and Claude at once) passed the check above too and froze first.
     // The repeat gets the same answer as one that came after it (SPEC §6); a schedule

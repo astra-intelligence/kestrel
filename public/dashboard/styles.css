@@ -2202,6 +2202,10 @@ body.web-mode .content {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* Who acted on the send, a line under when it was sent (SPEC §11). */
+.rec-by {
+  margin-top: 2px;
+}
 /* Names the living layer of the record: the outcome tiles below keep moving as receipts
    arrive, while the audience at fire and the published post are fixed (SPEC §8). */
 .rec-tiles-cap {
@@ -3451,6 +3455,13 @@ textarea.is-invalid {
   font-weight: 500;
 }
 .sched-remade-mark {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--status-scheduled-fg);
+}
+/* Who scheduled the send and who last moved it (SPEC §11), under the time, in the banner's
+   violet: a fact about the send, not a note asking for a look. */
+.sched-by {
   margin-top: 4px;
   font-size: 12.5px;
   color: var(--status-scheduled-fg);

@@ -51,7 +51,7 @@ import { highlightMarkdown } from "../ui/highlight";
 import { type Html, html, setHtml } from "../ui/html";
 import { type IconName, icon } from "../ui/icons";
 import { busy, fieldError, modal, renderError, toast } from "../ui/widgets";
-import { whoActed } from "../who_acted";
+import { sendActedBy, whoActed } from "../who_acted";
 import { activeSend, postAction } from "./actions";
 import { createAutosave } from "./autosave";
 import { DirtyTracker } from "./dirty";
@@ -232,7 +232,7 @@ export async function renderEditor(
         <button type="button" class="ghost" id="settingsBtn">${icon("settings")}<span>Post settings</span></button>
       </div>
     </div>
-    ${locked && scheduled ? html`<div class="banner banner-scheduled banner-split"><div class="banner-top"><div class="sched-main"><span id="schedWhen"></span>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-remade" id="schedUntested" hidden><span id="schedUntestedMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Edit schedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div><div class="banner-bottom sched-dest"><span class="sched-dest-icon" id="schedDestIcon">${destinationIcon(pub)}</span><span id="schedDest">${destinationHtml(pub)}</span></div></div>` : null}
+    ${locked && scheduled ? html`<div class="banner banner-scheduled banner-split"><div class="banner-top"><div class="sched-main"><span id="schedWhen"></span><div class="sched-by" id="schedBy" hidden></div>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-remade" id="schedUntested" hidden><span id="schedUntestedMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Edit schedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div><div class="banner-bottom sched-dest"><span class="sched-dest-icon" id="schedDestIcon">${destinationIcon(pub)}</span><span id="schedDest">${destinationHtml(pub)}</span></div></div>` : null}
     <div id="freshnessBanner" class="banner banner-conflict" role="alert" hidden></div>
     <div class="editor-form">
       <label for="f-subject">Subject</label>
@@ -1039,7 +1039,12 @@ export async function renderEditor(
     const remadeEl = $("#schedRemade");
     const untestedEl = $("#schedUntested");
     const dailyWritesEl = $("#schedDailyWrites");
+    const byEl = $("#schedBy");
     const paintConditions = () => {
+      // Who scheduled it and who last moved it (SPEC §11), once the send's own read says.
+      const by = sendActedBy(current);
+      byEl.hidden = by === null;
+      byEl.textContent = by ?? "";
       const remade = conditionOf(current, "remade");
       remadeEl.hidden = !remade;
       $("#schedRemadeMsg").textContent = remade?.message ?? "";
@@ -1562,10 +1567,15 @@ export async function renderEditor(
   return handle;
 }
 
-/** What the scheduled banner reads of its send. `phase` and `actions` are absent only until
- *  the send's own read answers (the post's reference to it carries neither). */
+/** What the scheduled banner reads of its send. `phase`, `actions`, and who acted on it are
+ *  absent only until the send's own read answers (the post's reference to it carries none). */
 type BannerSend = Pick<SendView, "id" | "fire_at" | "rev" | "conditions"> &
-  Partial<Pick<SendView, "phase" | "actions">>;
+  Partial<
+    Pick<
+      SendView,
+      "phase" | "actions" | "scheduled_by" | "moved_by" | "canceled_by" | "resolved_by"
+    >
+  >;
 
 /**
  * Whether the send has moved on from scheduled, found on the editor's own read of it: once

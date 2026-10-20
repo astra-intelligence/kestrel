@@ -138,12 +138,12 @@ describe("a send's rev", () => {
 
   it("does not move on a compare-and-swap that matches no row", async () => {
     const send = await frozenSend(Date.now() + 3_600_000);
-    await sends.cancelStmt(env.DB, send.id, Date.now()).run();
+    await sends.cancelStmt(env.DB, send.id, Date.now(), null).run();
     const canceled = await rev(send.id);
     const sequence = await seq();
     // A reschedule's CAS on a send that is no longer scheduled changes zero rows.
     const res = await sends
-      .rescheduleStmt(env.DB, send.id, Date.now() + 7_200_000, Date.now())
+      .rescheduleStmt(env.DB, send.id, Date.now() + 7_200_000, Date.now(), null)
       .run();
     expect(res.meta.changes).toBe(0);
     expect(await rev(send.id)).toBe(canceled);
@@ -153,7 +153,7 @@ describe("a send's rev", () => {
   it("takes a number for a delete, so it never falls back and the removal is itself a change", async () => {
     const kept = await frozenSend(Date.now() + 3_600_000, { subject: "kept" });
     const gone = await frozenSend(Date.now() + 3_600_000, { subject: "gone" });
-    await sends.cancelStmt(env.DB, gone.id, Date.now()).run();
+    await sends.cancelStmt(env.DB, gone.id, Date.now(), null).run();
     await env.DB.prepare("UPDATE posts SET status = 'draft' WHERE id = ?").bind(gone.post_id).run();
     const top = await rev(gone.id);
     expect(top).toBe(await seq());
@@ -165,7 +165,7 @@ describe("a send's rev", () => {
     const removed = await seq();
     expect(removed).toBeGreaterThan(top);
     // The next change is numbered past the deleted send's, which a cursor may already hold.
-    await sends.cancelStmt(env.DB, kept.id, Date.now()).run();
+    await sends.cancelStmt(env.DB, kept.id, Date.now(), null).run();
     expect(await rev(kept.id)).toBeGreaterThan(removed);
   });
 });
@@ -244,7 +244,7 @@ describe("GET /api/sends", () => {
     expect(cursor!.at).toBeLessThanOrEqual(Date.now());
     expect(body.sends[0].rev).toBeLessThanOrEqual(cursor!.seq);
 
-    await sends.cancelStmt(env.DB, a.id, Date.now()).run();
+    await sends.cancelStmt(env.DB, a.id, Date.now(), null).run();
     expect(await rev(a.id)).toBeGreaterThan(cursor!.seq);
   });
 
@@ -261,7 +261,7 @@ describe("GET /api/sends", () => {
     const scheduled = await frozenSend(Date.now() + 3_600_000, { subject: "scheduled" });
     const due = await frozenSend(Date.now() - 1000, { subject: "due" });
     const canceled = await frozenSend(Date.now() + 3_600_000, { subject: "canceled" });
-    await sends.cancelStmt(env.DB, canceled.id, Date.now()).run();
+    await sends.cancelStmt(env.DB, canceled.id, Date.now(), null).run();
     const settling = await frozenSend(Date.now() - 1000, { subject: "settling" });
     await runSend(env, settling.id);
     const retrying = await frozenSend(Date.now() - 1000, { subject: "retrying" });

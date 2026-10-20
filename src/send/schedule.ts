@@ -15,6 +15,7 @@
  */
 
 import { tooSoonMessage } from "../../shared/sends";
+import type { Actor } from "../../shared/who_acted";
 import { listImages } from "../db/images";
 import type { PostRow } from "../db/posts";
 import {
@@ -122,13 +123,15 @@ const ACTIVE_SEND_EXISTS =
 /** Create a scheduled Send from the post's current content and lock the post. `postSettings`, when
  *  given, sets the post's listing and slug in the same batch (SPEC §4, §5), already resolved
  *  by the caller: they are not part of the render, so they land beside the lock rather than in
- *  the frozen copy, and a refused freeze changes neither. */
+ *  the frozen copy, and a refused freeze changes neither. `by` is recorded as who scheduled it
+ *  (SPEC §11), on the send's own row; null records no one, as a fixture or the demo does. */
 export async function freeze(
   env: AppEnv,
   config: Config,
   post: PostRow,
   fireAt: number,
   postSettings: PublishingInput = {},
+  by: Actor | null = null,
 ): Promise<SendRow> {
   const active = await getActiveSendForPost(env.DB, post.id);
   if (active) {
@@ -180,6 +183,7 @@ export async function freeze(
           { ...rendered, id, post_id: post.id, fire_at: fireAt, recipient_count: audience },
           now,
           settingsVersion,
+          by,
         ),
         setPostStatusStmt(
           env.DB,
@@ -270,13 +274,15 @@ async function windowClosed(env: AppEnv, send: SendRow, what: string) {
  *
  * A move to the time the send already has (on the minute, as it is stored) changes nothing
  * and answers `changed: false` before the minimum lead is checked, so a retried move is safe;
- * any other time passes `acceptFireAt`: at least `minLeadMs` out, stored on the minute.
+ * any other time passes `acceptFireAt`: at least `minLeadMs` out, stored on the minute. A move
+ * that lands records `by` as who moved it (SPEC §11); one that changes nothing records no one.
  */
 export async function reschedule(
   env: AppEnv,
   sendId: string,
   fireAt: number,
   minLeadMs: number,
+  by: Actor | null = null,
 ): Promise<ActionResult> {
   const send = await readForAction(env, sendId);
   const now = Date.now();
@@ -294,10 +300,10 @@ export async function reschedule(
     return { send, changed: false };
   }
   const target = acceptFireAt(fireAt, minLeadMs, { now });
-  const res = await rescheduleStmt(env.DB, sendId, target, now).run();
+  const res = await rescheduleStmt(env.DB, sendId, target, now, by).run();
   if ((res.meta.changes ?? 0) === 0) {
     // It changed between the read and the write: answer for what it is now.
-    return reschedule(env, sendId, fireAt, minLeadMs);
+    return reschedule(env, sendId, fireAt, minLeadMs, by);
   }
   log.info("send.rescheduled", {
     sendId,
@@ -310,8 +316,13 @@ export async function reschedule(
 
 /** Cancel a pending Send and unlock its post, in one batch so the two land together:
  *  a post left `scheduled` with no active send would be locked out of the editor.
- *  Only inside the review window; a send canceled already answers `changed: false`. */
-export async function cancel(env: AppEnv, sendId: string): Promise<ActionResult> {
+ *  Only inside the review window; a send canceled already answers `changed: false`, and keeps
+ *  who canceled it. `by` is recorded as who canceled it (SPEC §11). */
+export async function cancel(
+  env: AppEnv,
+  sendId: string,
+  by: Actor | null = null,
+): Promise<ActionResult> {
   const send = await readForAction(env, sendId);
   if (send.status === "canceled") {
     return { send, changed: false };
@@ -321,7 +332,7 @@ export async function cancel(env: AppEnv, sendId: string): Promise<ActionResult>
     throw await windowClosed(env, send, "canceled");
   }
   const [res] = await env.DB.batch([
-    cancelStmt(env.DB, sendId, now),
+    cancelStmt(env.DB, sendId, now, by),
     setPostStatusStmt(
       env.DB,
       send.post_id,
@@ -333,7 +344,7 @@ export async function cancel(env: AppEnv, sendId: string): Promise<ActionResult>
   ]);
   if ((res?.meta.changes ?? 0) === 0) {
     // It changed between the read and the write: answer for what it is now.
-    return cancel(env, sendId);
+    return cancel(env, sendId, by);
   }
   log.info("send.canceled", { sendId, postId: send.post_id });
   return { send: unwrap(await getSend(env.DB, sendId), "send"), changed: true };

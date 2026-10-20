@@ -23,7 +23,7 @@ import { POST_PAGE_SECURITY_HEADERS } from "../lib/page_headers";
 import { MISSED_THRESHOLD_MS, STUCK_THRESHOLD_MS } from "../lib/time";
 import { unwrap } from "../lib/unwrap";
 import type { RequestContext } from "../router";
-import { param } from "../router";
+import { actorOf, param } from "../router";
 import { bySeverity, sendConditions } from "../send/conditions";
 import { viewWithCursor } from "../send/describe";
 import { feedPace, readAgainAt, SETTLE_FOLLOW_MS } from "../send/feed";
@@ -340,7 +340,7 @@ async function answerWith(c: RequestContext, id: string) {
 
 export async function cancel(c: RequestContext): Promise<Response> {
   const id = param(c, "id");
-  const { changed } = await cancelSend(c.env, id);
+  const { changed } = await cancelSend(c.env, id, actorOf(unwrap(c.principal, "principal")));
   const body: SendActionResponse = { ...(await answerWith(c, id)), changed };
   return json(body);
 }
@@ -357,7 +357,13 @@ export async function reschedule(c: RequestContext): Promise<Response> {
   rejectSettingsFields(body);
   const fireAt = parseFireAt(body.fire_at);
   const id = param(c, "id");
-  const { changed } = await rescheduleSend(c.env, id, fireAt, c.config.minLeadMs);
+  const { changed } = await rescheduleSend(
+    c.env,
+    id,
+    fireAt,
+    c.config.minLeadMs,
+    actorOf(unwrap(c.principal, "principal")),
+  );
   const response: SendActionResponse = { ...(await answerWith(c, id)), changed };
   return json(response);
 }
@@ -382,10 +388,9 @@ function rejectSettingsFields(body: JsonObject): void {
 export async function resolve(c: RequestContext): Promise<Response> {
   const request = await readJsonObject(c);
   const outcome = oneOf(request, "resolution", ["unsent", "accepted"]);
-  const principal = unwrap(c.principal, "principal");
-  const actor = principal.email ?? (principal.tokenId ? `service ${principal.tokenId}` : "service");
+  const by = actorOf(unwrap(c.principal, "principal"));
   const id = param(c, "id");
-  const { resolved, completed } = await resolveStuckSend(c.env, id, outcome, actor);
+  const { resolved, completed } = await resolveStuckSend(c.env, id, outcome, by);
   const body: ResolveResponse = { ...(await answerWith(c, id)), resolved, completed };
   return json(body);
 }

@@ -28,6 +28,7 @@ import type {
   RouteExample,
   RouteReturns,
 } from "../shared/reference";
+import type { Actor } from "../shared/who_acted";
 import { requireAuth } from "./auth/middleware";
 import type { AppEnv, Config } from "./env";
 import { getConfig } from "./env";
@@ -60,6 +61,15 @@ export interface Principal {
   /** How this request authenticated: a Cloudflare Access assertion, or the local dev token.
    *  What `auth.mode` reports, so it says how the caller got in rather than what is configured. */
   via: "access" | "dev";
+}
+
+/** Who acted, as a record keeps it and the API reports it (SPEC §11): the principal's person
+ *  or token, and a person's client, with nothing absent written as a key. */
+export function actorOf(p: Principal): Actor {
+  if (p.kind === "human") {
+    return { kind: "human", ...(p.email ? { email: p.email } : {}), client: p.client ?? null };
+  }
+  return { kind: "service", ...(p.tokenId ? { token_id: p.tokenId } : {}), client: null };
 }
 
 export interface RequestContext {

@@ -82,6 +82,10 @@ const SEND_EXAMPLE = {
   completed_at: null,
   remade_at: null,
   tested_at: 1768390000000,
+  scheduled_by: { kind: "human", email: "you@example.com", client: "claude-code" },
+  moved_by: { kind: "human", email: "you@example.com", client: "editor" },
+  canceled_by: null,
+  resolved_by: null,
   audience: { count: 1200, fixed: true, fixed_at: 1768467601000 },
   counts: {
     pending: 700,
@@ -421,6 +425,28 @@ const SEND_FIELDS: ReferenceField[] = [
     name: "tested_at",
     type: "number | null",
     description: "When its frozen copy was last tested while scheduled.",
+  },
+  {
+    name: "scheduled_by",
+    type: "{ kind, email, token_id, client } | null",
+    description:
+      "Who scheduled it, by a schedule or Send now, in the shape `GET /api/whoami` answers: `kind` `human` with their `email`, or `service`, a service token, with its Client ID as `token_id` when it names one; `client` is the client a person came through as it named itself in `Kestrel-Client` (`editor`, `claude-code`), null when it named none and on a service token. Null for a send scheduled before who acted was recorded.",
+  },
+  {
+    name: "moved_by",
+    type: "{ kind, email, token_id, client } | null",
+    description:
+      "Who last moved its fire time (a reschedule that changed it), in the same shape; null if no one has.",
+  },
+  {
+    name: "canceled_by",
+    type: "{ kind, email, token_id, client } | null",
+    description: "Who canceled it, in the same shape; null unless it was canceled.",
+  },
+  {
+    name: "resolved_by",
+    type: "{ kind, email, token_id, client } | null",
+    description: "Who last resolved it while it was wedged, in the same shape; null if no one has.",
   },
   {
     name: "audience",

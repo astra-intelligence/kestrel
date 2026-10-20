@@ -9,7 +9,7 @@ import { runSend } from "../src/send/loop";
 import { resolveStuckSend } from "../src/send/resolve";
 import { applyDeliveryEvents } from "../src/services/webhook_events";
 import { condition, has } from "./support/conditions";
-import { frozenSend, resetDatabase, seedConfirmed } from "./support/fixtures";
+import { frozenSend, person, resetDatabase, seedConfirmed } from "./support/fixtures";
 import { AUTH, base } from "./support/http";
 import { viewOf } from "./support/view";
 
@@ -243,6 +243,10 @@ describe("buildSendView — derived phase", () => {
       c_complained: 0,
       c_skipped: 0,
       c_unsent: 0,
+      scheduled_by: null,
+      moved_by: null,
+      canceled_by: null,
+      resolved_by: null,
       rev: 0,
       ...over,
     };
@@ -391,7 +395,7 @@ describe("resolve keeps counters consistent", () => {
     await sends.recomputeSendCounters(env.DB, send.id); // baseline the cache to the manufactured state
     expect((await sends.getSend(env.DB, send.id))!.c_in_flight).toBe(1);
 
-    await resolveStuckSend(env, send.id, "unsent", "tester@example.com");
+    await resolveStuckSend(env, send.id, "unsent", person("tester@example.com"));
     const row = await expectCountersMatchAggregate(send.id);
     expect(row.status).toBe("sent");
     expect(row.c_unsent).toBe(1);
@@ -558,6 +562,7 @@ describe("resolve counts only the rows it moves", () => {
       "unsent",
       "test",
       Date.now(),
+      null,
     );
 
     expect(resolved).toBe(2);

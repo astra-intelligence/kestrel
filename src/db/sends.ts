@@ -18,6 +18,7 @@ import type {
 } from "../../shared/sends";
 import { SEND_OWN_HALT_CAUSES } from "../../shared/sends";
 import { isErasedPlaceholder } from "../../shared/subscribers";
+import type { Actor } from "../../shared/who_acted";
 import { type ListParams, type ListSpec, orderByClause } from "../lib/list";
 import { log } from "../lib/log";
 import { unwrap } from "../lib/unwrap";
@@ -28,6 +29,16 @@ export type { SendStatus };
 export type SendRow = Send;
 
 export type { SendCounts };
+
+/** An actor as a send's `*_by` column stores it (JSON), or null for no one recorded. */
+export function actorJson(actor: Actor | null): string | null {
+  return actor ? JSON.stringify(actor) : null;
+}
+
+/** A send's `*_by` column read back as the actor it stores, or null for no one recorded. */
+export function readActor(stored: string | null): Actor | null {
+  return stored === null ? null : (JSON.parse(stored) as Actor);
+}
 
 /** Read the counter columns off a send row into the API-facing `SendCounts` shape. */
 export function countsOf(send: SendSummary): SendCounts {
@@ -324,7 +335,7 @@ export const SEND_LIST_SPEC: ListSpec = {
 // but carries the denormalized counters, so a list row is enough for the Sent-page
 // active row and the dashboard active-send widget without a second per-send read.
 const SEND_LIST_COLS =
-  "id, post_id, status, fire_at, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, remade_at, tested_at, halt_reason, halt_cause, halt_error, halted_at, halt_retries, halt_retry_at, progress_at, c_pending, c_in_flight, c_accepted, c_delivered, c_bounced, c_complained, c_skipped, c_unsent, rev";
+  "id, post_id, status, fire_at, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, remade_at, tested_at, halt_reason, halt_cause, halt_error, halted_at, halt_retries, halt_retry_at, progress_at, c_pending, c_in_flight, c_accepted, c_delivered, c_bounced, c_complained, c_skipped, c_unsent, scheduled_by, moved_by, canceled_by, resolved_by, rev";
 
 // A view's columns: the list projection, which address its email carries, and what its post
 // says about its two addresses (the slug for the archive link, and the unlisted token) and its
@@ -986,12 +997,13 @@ export function insertScheduledSendStmt(
   send: FrozenRender & { id: string; post_id: string; fire_at: number; recipient_count: number },
   now: number,
   settingsVersion: number,
+  by: Actor | null,
 ): D1PreparedStatement {
   const guard = settingsVersionIs(settingsVersion);
   return db
     .prepare(
-      `INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, render_warnings, recipient_count, scheduled_at, web_link, rev)
-       SELECT ?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, 'unlisted', ${NEXT_REV}
+      `INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, render_warnings, recipient_count, scheduled_at, scheduled_by, web_link, rev)
+       SELECT ?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, 'unlisted', ${NEXT_REV}
         WHERE ${guard.sql}`,
     )
     .bind(
@@ -1004,6 +1016,7 @@ export function insertScheduledSendStmt(
       JSON.stringify(send.warnings),
       send.recipient_count,
       now,
+      actorJson(by),
       ...guard.binds,
     );
 }
@@ -1022,22 +1035,30 @@ export function rescheduleStmt(
   sendId: string,
   fireAt: number,
   now: number,
+  by: Actor | null,
 ): D1PreparedStatement {
   const guard = inWindowAt(now);
   return db
-    .prepare(`UPDATE sends SET fire_at = ?, rev = ${NEXT_REV} WHERE id = ? AND ${guard.sql}`)
-    .bind(fireAt, sendId, ...guard.binds);
+    .prepare(
+      `UPDATE sends SET fire_at = ?, moved_by = ?, rev = ${NEXT_REV} WHERE id = ? AND ${guard.sql}`,
+    )
+    .bind(fireAt, actorJson(by), sendId, ...guard.binds);
 }
 
 /** Cancel a scheduled send inside its review window, the same CAS as `rescheduleStmt`: a
  *  send due, sending, sent, or canceled changes zero rows. */
-export function cancelStmt(db: D1Database, sendId: string, now: number): D1PreparedStatement {
+export function cancelStmt(
+  db: D1Database,
+  sendId: string,
+  now: number,
+  by: Actor | null,
+): D1PreparedStatement {
   const guard = inWindowAt(now);
   return db
     .prepare(
-      `UPDATE sends SET status = 'canceled', completed_at = ?, rev = ${NEXT_REV} WHERE id = ? AND ${guard.sql}`,
+      `UPDATE sends SET status = 'canceled', completed_at = ?, canceled_by = ?, rev = ${NEXT_REV} WHERE id = ? AND ${guard.sql}`,
     )
-    .bind(now, sendId, ...guard.binds);
+    .bind(now, actorJson(by), sendId, ...guard.binds);
 }
 
 /** Record that the scheduled send's frozen copy was tested (SPEC §8), which settles a
@@ -1763,7 +1784,8 @@ export async function openDeliveryCount(db: D1Database, sendId: string): Promise
  * the reason into `error` as an inspectable audit trail. It touches ONLY
  * `dispatched` rows, so an already-`accepted` recipient is never disturbed, and it
  * never re-mails anyone (nothing here calls the provider). Only while `lease` holds the
- * send, so no run is waiting on those rows' answers. Returns rows resolved.
+ * send, so no run is waiting on those rows' answers. Records `by` as who resolved it.
+ * Returns rows resolved.
  */
 export async function resolveDispatched(
   db: D1Database,
@@ -1772,6 +1794,7 @@ export async function resolveDispatched(
   outcome: "unsent" | "accepted",
   note: string,
   now: number,
+  by: Actor | null,
 ): Promise<number> {
   const guard = holdsLease(sendId, lease);
   const to: CounterCol = outcome === "unsent" ? "c_unsent" : "c_accepted";
@@ -1782,10 +1805,10 @@ export async function resolveDispatched(
     db
       .prepare(
         `UPDATE sends SET c_in_flight = c_in_flight - (${DISPATCHED_NO_EVENT}),
-                ${to} = ${to} + (${DISPATCHED_NO_EVENT}), rev = ${NEXT_REV}
+                ${to} = ${to} + (${DISPATCHED_NO_EVENT}), resolved_by = ?, rev = ${NEXT_REV}
           WHERE id = ? AND lease_token = ?`,
       )
-      .bind(sendId, sendId, sendId, lease),
+      .bind(sendId, sendId, actorJson(by), sendId, lease),
     db
       .prepare(
         `UPDATE deliveries SET status = ?, error = ?, dispatch_key = NULL, keyed_at = NULL, updated_at = ?

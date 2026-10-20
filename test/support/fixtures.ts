@@ -9,6 +9,7 @@
  */
 
 import { env } from "cloudflare:workers";
+import type { Actor } from "../../shared/who_acted";
 import * as posts from "../../src/db/posts";
 import type { SendRow } from "../../src/db/sends";
 import { BRANDING_LOGO_KEY } from "../../src/db/settings";
@@ -36,6 +37,11 @@ const TABLES = [
 /** Empty every table, so a test starts from the schema alone whatever ran before it. */
 export async function resetDatabase(): Promise<void> {
   await env.DB.batch(TABLES.map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+}
+
+/** A person in the editor, as who acted on a change (SPEC §11). */
+export function person(email: string): Actor {
+  return { kind: "human", email, client: "editor" };
 }
 
 /** `n` distinct addresses: `r000@example.com`, `r001@example.com`, and on. */
