@@ -181,6 +181,14 @@ export interface RouteDef {
   handler: Handler;
   /** Extra middleware beyond the access-derived gate. Rare; composed after the gate. */
   middleware?: Middleware[];
+  /**
+   * Origins of programs, not browsers, that call this route and name themselves in `Origin`
+   * (Claude's connector, from Anthropic's servers): a request from one that carries no
+   * `Sec-Fetch-Site` isn't taken for another site's page. A browser on any origin is still
+   * judged by `Sec-Fetch-Site`, so no page gains a way in. Only on a route whose caller is a
+   * program by design, such as the MCP server.
+   */
+  programOrigins?: readonly string[];
 }
 
 const UNSAFE_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -198,15 +206,25 @@ const OWN_FETCH_SITES: ReadonlySet<string> = new Set(["same-origin", "none"]);
  * it but does send `Origin` on a POST, so that decides instead: an origin other than the
  * request's own (or `null`, an opaque one) is foreign. The request's own origin, not
  * `APP_ORIGIN`, so an instance reachable on two hostnames never refuses its own editor.
- * With neither header it is not a browser, and passes.
+ * With neither header it is not a browser, and passes. Nor is a request with no `Sec-Fetch-Site`
+ * from one of the route's `programOrigins`: a program that names itself there, as Claude's
+ * connector does from Anthropic's servers. Every current browser sends `Sec-Fetch-Site`, so that
+ * check still judges a page anywhere; an older one on that origin could only send what the body
+ * type check (`refuseForeignWrite`) already refuses, since a page can't send `application/json`
+ * to another origin without a preflight the app never grants.
  */
-function isForeignBrowserRequest(c: RequestContext): boolean {
+function isForeignBrowserRequest(c: RequestContext, programOrigins: readonly string[]): boolean {
   const site = c.req.headers.get("sec-fetch-site");
   if (site !== null) {
     return !OWN_FETCH_SITES.has(site.toLowerCase());
   }
   const origin = c.req.headers.get("origin");
-  return origin !== null && origin !== c.url.origin;
+  // A program may spell its origin with a trailing slash (`https://claude.ai/`), which no browser does.
+  return (
+    origin !== null &&
+    origin !== c.url.origin &&
+    !programOrigins.includes(origin.replace(/\/$/, ""))
+  );
 }
 
 /** Whether a request's body is empty or only whitespace, read from a clone so the body stays unread. */
@@ -226,9 +244,12 @@ async function isEmptyBody(req: Request): Promise<boolean> {
  * body, an empty body declared `application/json` passes too, since HTTP helpers send that
  * type by habit and it is the one type no page elsewhere can send without a preflight.
  */
-function refuseForeignWrite(accepts: readonly string[]): Middleware {
+function refuseForeignWrite(
+  accepts: readonly string[],
+  programOrigins: readonly string[],
+): Middleware {
   return async (c) => {
-    if (isForeignBrowserRequest(c)) {
+    if (isForeignBrowserRequest(c, programOrigins)) {
       throw new HttpError(
         "cross_site_request",
         "a page on another site can't act on the admin API",
@@ -258,7 +279,7 @@ function gateFor(def: RouteDef): Middleware[] {
     return [];
   }
   return UNSAFE_METHODS.has(def.method)
-    ? [requireAuth, refuseForeignWrite(def.accepts ?? [])]
+    ? [requireAuth, refuseForeignWrite(def.accepts ?? [], def.programOrigins ?? [])]
     : [requireAuth];
 }
 

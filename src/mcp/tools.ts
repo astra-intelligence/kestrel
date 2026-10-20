@@ -52,6 +52,14 @@ import { REFUSAL_MOVE, type RefusalCode } from "../reference/refusals";
 /** The path the MCP server answers at, which no tool calls. */
 export const MCP_PATH = "/api/mcp";
 
+/**
+ * The origins Claude's connector names in `Origin` when it calls from Anthropic's servers, with no
+ * `Sec-Fetch-Site`, since it isn't a browser: the MCP route takes them as a program's, not a page's
+ * (`RouteDef.programOrigins`). claude.ai's has been seen as `https://claude.ai/`; claude.com is
+ * Anthropic's other host for the same apps.
+ */
+export const CLAUDE_ORIGINS: readonly string[] = ["https://claude.ai", "https://claude.com"];
+
 /** The page size a tool's list reads when the call names none: a chat reads a page, not a list. */
 export const TOOL_PAGE = 25;
 
@@ -68,12 +76,17 @@ export interface RouteRef {
 
 const route = (method: Method, path: string): RouteRef => ({ method, path });
 
-/** A tool's argument: a field picked from one of its routes, by where the route takes it. */
-export interface ArgPick {
-  route: RouteRef;
+/** A field of a route's request, by where the route takes it. */
+export interface FieldRef {
   in: "path" | "query" | "body";
   /** The field's name on the route: a path parameter, a query parameter, or a top-level body field. */
   field: string;
+}
+
+/** A tool's argument: a field picked from its routes, naming every route it is sent to. Its
+ *  schema and words are the first route's; each of the routes must take it. */
+export interface ArgPick extends FieldRef {
+  routes: RouteRef[];
   /** Whether the tool needs it; absent, the route's own word decides. */
   required?: boolean;
   /** What the tool adds to the route's own description of the field, such as when it is needed. */
@@ -81,12 +94,12 @@ export interface ArgPick {
 }
 
 function pick(
-  r: RouteRef,
+  to: RouteRef | RouteRef[],
   where: ArgPick["in"],
   field: string,
   more: Pick<ArgPick, "required" | "note"> = {},
 ): ArgPick {
-  return { route: r, in: where, field, ...more };
+  return { routes: Array.isArray(to) ? to : [to], in: where, field, ...more };
 }
 
 /** A route's answer, read once: its status, its body as text, and that text parsed as JSON. */
@@ -107,6 +120,8 @@ export interface RequestParts {
 /** What a tool may do: call one of its declared routes, and link into the editor. */
 export interface Api {
   call(r: RouteRef, parts?: RequestParts): Promise<Answer>;
+  /** GET exactly this path and query: the read escape hatch's alone, checked before it asks. */
+  read(path: URL): Promise<Answer & { type: string }>;
   /** A link to one of the editor's pages (`/edit/<id>`), which opens after a sign-in too. */
   editor(page: string): string;
 }
@@ -119,8 +134,10 @@ export interface ToolDef {
   annotations: Omit<ToolAnnotations, "title">;
   /** Every route the tool calls; a call to any other is a bug, refused at once. */
   routes: RouteRef[];
-  /** Its arguments by name, each picked from one of `routes`. */
+  /** Its arguments by name, each picked from `routes`. */
   args: Record<string, ArgPick>;
+  /** The fields it sets itself rather than from an argument (a list's page size), by route. */
+  fixed?: (FieldRef & { route: RouteRef })[];
   run(api: Api, args: Record<string, unknown>): Promise<ToolResult>;
 }
 
@@ -133,15 +150,32 @@ export interface ToolRoute {
 // --- answers ---
 
 function text(value: string, isError = false): ToolResult {
-  const cut =
-    value.length > TOOL_TEXT_MAX
-      ? `${value.slice(0, TOOL_TEXT_MAX)}\n\n[Cut at ${TOOL_TEXT_MAX} characters: ask for a smaller page.]`
-      : value;
-  return { content: [{ type: "text", text: cut }], isError };
+  return { content: [{ type: "text", text: value }], isError };
 }
 
+/** What a tool says of an answer too long for a chat, in place of it: never half of it. */
+function tooLong(length: number): ToolResult {
+  return text(
+    `The answer is ${length.toLocaleString("en-US")} characters, over the ${TOOL_TEXT_MAX.toLocaleString("en-US")} a tool answers. Ask for less: a smaller \`limit\`, a \`search\` or \`status\` to narrow it, or one item by its id.`,
+    true,
+  );
+}
+
+/** A JSON answer, whole, or the note to narrow it when it is too long, so no answer is cut JSON. */
 function data(value: unknown): ToolResult {
-  return text(JSON.stringify(value));
+  const json = JSON.stringify(value);
+  return json.length > TOOL_TEXT_MAX ? tooLong(json.length) : text(json);
+}
+
+/** A Markdown answer, cut at a line when too long, with a note saying where to read on. */
+function markdown(value: string): ToolResult {
+  if (value.length <= TOOL_TEXT_MAX) {
+    return text(value);
+  }
+  const cut = value.slice(0, value.lastIndexOf("\n", TOOL_TEXT_MAX));
+  return text(
+    `${cut}\n\n[Cut here, at ${cut.length.toLocaleString("en-US")} of ${value.length.toLocaleString("en-US")} characters: read a resource's own page, such as \`/api/reference/<resource>.md\`, for the rest.]`,
+  );
 }
 
 /** An epoch time as the ISO time a reader and Claude both read; null stays null. */
@@ -493,6 +527,7 @@ export const TOOL_DEFS: ToolDef[] = [
     annotations: READ,
     routes: [WHOAMI, VERSION, SETTINGS, LIST_SUBSCRIBERS],
     args: {},
+    fixed: [{ route: LIST_SUBSCRIBERS, in: "query", field: "limit" }],
     async run(api) {
       const answers = await Promise.all([
         api.call(WHOAMI),
@@ -535,8 +570,8 @@ export const TOOL_DEFS: ToolDef[] = [
     routes: [CREATE_POST, UPDATE_POST],
     args: {
       id: pick(UPDATE_POST, "path", "id", { required: false, note: "Omit it to create a draft." }),
-      subject: pick(CREATE_POST, "body", "subject"),
-      markdown: pick(CREATE_POST, "body", "markdown"),
+      subject: pick([CREATE_POST, UPDATE_POST], "body", "subject"),
+      markdown: pick([CREATE_POST, UPDATE_POST], "body", "markdown"),
       base_revision: pick(UPDATE_POST, "body", "base_revision", {
         required: false,
         note: "Needed with `id`.",
@@ -544,9 +579,12 @@ export const TOOL_DEFS: ToolDef[] = [
     },
     async run(api, args) {
       const body = only(args, ["subject", "markdown"]);
+      if (args.id === undefined && args.base_revision !== undefined) {
+        return text("`base_revision` goes with `id`: a new draft is based on nothing.", true);
+      }
       const a =
         args.id === undefined
-          ? await api.call(CREATE_POST, { body: { ...body, ...only(args, ["base_revision"]) } })
+          ? await api.call(CREATE_POST, { body })
           : await api.call(UPDATE_POST, {
               params: { id: args.id },
               body: { ...body, ...only(args, ["base_revision"]) },
@@ -605,12 +643,12 @@ export const TOOL_DEFS: ToolDef[] = [
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     routes: [SCHEDULE_POST, SEND_NOW],
     args: {
-      id: pick(SCHEDULE_POST, "path", "id"),
+      id: pick([SCHEDULE_POST, SEND_NOW], "path", "id"),
       fire_at: pick(SCHEDULE_POST, "body", "fire_at", {
         required: false,
         note: "Omit it for the soonest.",
       }),
-      email_only: pick(SCHEDULE_POST, "body", "email_only"),
+      email_only: pick([SCHEDULE_POST, SEND_NOW], "body", "email_only"),
     },
     async run(api, args) {
       const settings = only(args, ["email_only"]);
@@ -681,8 +719,8 @@ export const TOOL_DEFS: ToolDef[] = [
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     routes: [PLAN_IMPORT, COMMIT_IMPORT],
     args: {
-      file: pick(PLAN_IMPORT, "body", "file"),
-      plain_list_status: pick(PLAN_IMPORT, "body", "plain_list_status"),
+      file: pick([PLAN_IMPORT, COMMIT_IMPORT], "body", "file"),
+      plain_list_status: pick([PLAN_IMPORT, COMMIT_IMPORT], "body", "plain_list_status"),
       plan_hash: pick(COMMIT_IMPORT, "body", "plan_hash", {
         required: false,
         note: "Omit it to plan; give the plan's to commit.",
@@ -765,7 +803,25 @@ export const API_READ_NAME = "kestrel_api_read";
 const API_READ_TITLE = "Read the Kestrel API";
 
 const API_READ_DESCRIPTION =
-  "Read any admin route of the Kestrel API that the other tools don't cover, by its path and query (`/api/sends/s_abc/deliveries?view=failures`), answered as the route answers it. GET only. Start with `/api/reference.md`, which lists every route, and `/api/reference/<resource>.md` for one resource's routes in full. The publisher's docs are at `/api/docs/<slug>.md`.";
+  "Read any admin route of the Kestrel API that the other tools don't cover, by its path and query (`/api/sends/s_abc/deliveries?view=failures`), answered as the route answers it. GET only, and only a route that answers JSON or Markdown; never a bulk export. Start with `/api/reference.md`, which lists every route, and `/api/reference/<resource>.md` for one resource's routes in full. The publisher's docs are at `/api/docs/<slug>.md`.";
+
+/**
+ * Whether the escape hatch may read a path: not a dev route or this server, and not a bulk
+ * export, which hands over the whole list (every address) rather than a page a chat reads. The
+ * exports are named here, since nothing in the manifest marks a read as one; the answer's own type
+ * is checked too, so a CSV or a page is refused whatever its path.
+ */
+function isReadable(path: string): boolean {
+  return (
+    !path.startsWith("/api/dev/") &&
+    path !== MCP_PATH &&
+    !BULK_EXPORTS.includes(path) &&
+    !/\.(csv|txt)$/.test(path)
+  );
+}
+
+/** The reads that answer a whole list rather than a page of it. */
+const BULK_EXPORTS: readonly string[] = ["/api/subscribers/export"];
 
 // --- generation, from the manifest's OpenAPI document ---
 
@@ -774,12 +830,13 @@ export function operationOf(doc: OpenApiDocument, r: RouteRef) {
   return doc.paths[openApiPath(r.path)]?.[r.method.toLowerCase()] ?? null;
 }
 
-/** A picked field's schema and whether its route requires it, or null when the route doesn't take it. */
-export function pickedField(
+/** A field's schema and whether the route requires it, or null when the route doesn't take it. */
+export function routeField(
   doc: OpenApiDocument,
-  p: ArgPick,
+  r: RouteRef,
+  p: FieldRef,
 ): { schema: Schema; required: boolean } | null {
-  const op = operationOf(doc, p.route);
+  const op = operationOf(doc, r);
   if (!op) {
     return null;
   }
@@ -835,12 +892,29 @@ function standalone(schema: Schema, components: Record<string, Schema>): Record<
 function inputSchema(def: ToolDef, doc: OpenApiDocument): McpTool["inputSchema"] {
   const properties: Record<string, Schema> = {};
   const required: string[] = [];
-  for (const [name, p] of Object.entries(def.args)) {
-    const f = pickedField(doc, p);
-    if (!f) {
+  for (const r of def.routes) {
+    if (!operationOf(doc, r)) {
       throw new Error(
-        `${def.name} picks the ${p.in} field ${p.field} of ${p.route.method} ${p.route.path}, which doesn't take it`,
+        `${def.name} calls ${r.method} ${r.path}, which the manifest doesn't register`,
       );
+    }
+  }
+  const fields = [
+    ...Object.values(def.args).flatMap((p) => p.routes.map((route) => ({ ...p, route }))),
+    ...(def.fixed ?? []),
+  ];
+  for (const f of fields) {
+    if (!routeField(doc, f.route, f)) {
+      throw new Error(
+        `${def.name} sends the ${f.in} field ${f.field} to ${f.route.method} ${f.route.path}, which doesn't take it`,
+      );
+    }
+  }
+  for (const [name, p] of Object.entries(def.args)) {
+    const [first] = p.routes;
+    const f = first ? routeField(doc, first, p) : null;
+    if (!f) {
+      throw new Error(`${def.name} picks ${name} from no route`);
     }
     properties[name] = p.note
       ? { ...f.schema, description: `${f.schema.description ?? ""} ${p.note}`.trim() }
@@ -863,10 +937,7 @@ function inputSchema(def: ToolDef, doc: OpenApiDocument): McpTool["inputSchema"]
 function apiRead(doc: OpenApiDocument): ToolRoute {
   const reads = Object.entries(doc.paths).flatMap(([path, ops]) => {
     const op = ops.get;
-    return op &&
-      op["x-kestrel-access"] === "admin" &&
-      !path.startsWith("/api/dev/") &&
-      path !== MCP_PATH
+    return op && op["x-kestrel-access"] === "admin" && isReadable(path)
       ? [new URLPattern({ pathname: path.replace(/\{(\w+)\}/g, ":$1") })]
       : [];
   });
@@ -879,21 +950,34 @@ function apiRead(doc: OpenApiDocument): ToolRoute {
     args: {},
     async run(api, args) {
       const raw = typeof args.path === "string" ? args.path : "";
+      // Resolved once, and what is checked is what is asked: `..` and its escapes are already
+      // gone from `url.pathname`, the same path the router will match.
       const url = URL.parse(raw, "https://kestrel.invalid");
       if (
-        !url ||
+        url?.origin !== "https://kestrel.invalid" ||
         !raw.startsWith("/api/") ||
+        !isReadable(url.pathname) ||
         !reads.some((p) => p.test({ pathname: url.pathname }))
       ) {
         return text(
-          `${raw || "(no path)"} isn't a route this reads: it reads the admin GET routes under /api that \`/api/reference.md\` lists, never the dev routes or a write.`,
+          `${raw || "(no path)"} isn't a route this reads: it reads the admin GET routes under /api that \`/api/reference.md\` lists, never a dev route, a bulk export, or a write.`,
           true,
         );
       }
-      const a = await api.call(route("GET", url.pathname), {
-        query: Object.fromEntries(url.searchParams),
-      });
-      return a.ok ? text(a.text === "" ? `Done (HTTP ${a.status}).` : a.text) : refused(a);
+      const a = await api.read(url);
+      if (!a.ok) {
+        return refused(a);
+      }
+      if (a.type === "application/json") {
+        return a.text.length > TOOL_TEXT_MAX ? tooLong(a.text.length) : text(a.text);
+      }
+      if (a.type === "text/markdown") {
+        return markdown(a.text);
+      }
+      return text(
+        `${url.pathname} answers ${a.type || "no type"}, which a chat can't read: open it in the dashboard instead.`,
+        true,
+      );
     },
   };
   return {
@@ -972,6 +1056,16 @@ export function routeRequest(
       url.searchParams.set(name, asText(value));
     }
   }
+  const headers = callerHeaders(from);
+  if (parts.body === undefined) {
+    return new Request(url, { method: r.method, headers });
+  }
+  headers.set("content-type", "application/json");
+  return new Request(url, { method: r.method, headers, body: JSON.stringify(parts.body) });
+}
+
+/** The headers every call carries: the caller's own credential, and Claude's name as the client. */
+function callerHeaders(from: Headers): Headers {
   const headers = new Headers({ [CLIENT_HEADER]: CLAUDE_CLIENT });
   for (const name of CREDENTIAL_HEADERS) {
     const value = from.get(name);
@@ -979,11 +1073,14 @@ export function routeRequest(
       headers.set(name, value);
     }
   }
-  if (parts.body === undefined) {
-    return new Request(url, { method: r.method, headers });
-  }
-  headers.set("content-type", "application/json");
-  return new Request(url, { method: r.method, headers, body: JSON.stringify(parts.body) });
+  return headers;
+}
+
+/** A GET of exactly `path`'s path and query, on the caller's behalf: the escape hatch's request. */
+export function pathRequest(path: URL, origin: string, from: Headers): Request {
+  return new Request(new URL(`${path.pathname}${path.search}`, origin), {
+    headers: callerHeaders(from),
+  });
 }
 
 /** A route's response, read once. */
@@ -996,6 +1093,11 @@ export async function readAnswer(res: Response): Promise<Answer> {
     // Not JSON (a Markdown doc, say): its text is the answer.
   }
   return { status: res.status, ok: res.ok, text: body, body: parsed };
+}
+
+/** The bare media type a response declares, `""` when it declares none. */
+export function mediaType(res: Response): string {
+  return (res.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
 }
 
 /** The arguments a call gave that its tool doesn't take, refused by name so none is dropped unread. */
@@ -1012,4 +1114,25 @@ export function unknownArgs(t: ToolRoute, args: Record<string, unknown>): string
 /** A link into one of the editor's pages, as a notification spells one. */
 export function editorLink(origin: string, page: string): string {
   return dashboardLink(origin, page);
+}
+
+/** Whether a tool declares `field` for route `r`: an argument picked for it, or one it sets itself. */
+export function declares(def: ToolDef, r: RouteRef, f: FieldRef): boolean {
+  const same = (x: RouteRef) => x.method === r.method && x.path === r.path;
+  return (
+    Object.values(def.args).some(
+      (p) => p.in === f.in && p.field === f.field && p.routes.some(same),
+    ) || (def.fixed ?? []).some((x) => x.in === f.in && x.field === f.field && same(x.route))
+  );
+}
+
+/** The first field a call sends to `r` that its tool doesn't declare for it, or null. */
+export function undeclaredField(def: ToolDef, r: RouteRef, parts: RequestParts): string | null {
+  const sent: FieldRef[] = [
+    ...Object.keys(parts.params ?? {}).map((field) => ({ in: "path" as const, field })),
+    ...Object.keys(parts.query ?? {}).map((field) => ({ in: "query" as const, field })),
+    ...Object.keys(parts.body ?? {}).map((field) => ({ in: "body" as const, field })),
+  ];
+  const stray = sent.find((f) => !declares(def, r, f));
+  return stray ? `${stray.in} ${stray.field}` : null;
 }

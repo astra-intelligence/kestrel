@@ -3,18 +3,22 @@
 // Only the parts a stateless server of tools and read-only resources uses. The Worker answers in
 // these shapes; a spec reads them back, so the two are held to one definition.
 
-/** The protocol revisions served, newest first: the ones opened by an `initialize` handshake.
- *  A client asking for another is answered with the newest, as the protocol's negotiation says. */
-export const MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
+/** The protocol revisions served, newest first: the ones opened by an `initialize` handshake
+ *  that take one message a request. 2025-03-26 also took batches, which this server doesn't, so
+ *  it isn't claimed. A client asking for another is answered with the newest, as the protocol's
+ *  negotiation says. */
+export const MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18"] as const;
 
 /** The header a client names its protocol version in, on every request after `initialize`. */
 export const MCP_VERSION_HEADER = "MCP-Protocol-Version";
 
 /** JSON-RPC's error codes, as MCP uses them. */
 export const JSON_RPC_ERRORS = {
+  parseError: -32700,
   invalidRequest: -32600,
   methodNotFound: -32601,
   invalidParams: -32602,
+  internalError: -32603,
 } as const;
 
 /** A request's or a response's id: a string or a number, never null. */

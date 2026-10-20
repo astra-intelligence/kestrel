@@ -132,6 +132,25 @@ export async function readJsonObject(
   return parsed;
 }
 
+/**
+ * Read the request body as JSON of any shape, for a protocol whose own envelope says what is
+ * wrong with a message (the MCP server's JSON-RPC): `undefined` when the body is empty, `null`
+ * when it isn't JSON, else the value, whatever it is. A body that is present must still say it
+ * is `application/json` (a 415 otherwise), as every JSON body here must.
+ */
+export async function readJsonValue(
+  c: RequestContext,
+): Promise<{ value: unknown } | null | undefined> {
+  const read = await bodyRead(c.req);
+  if (read.text.trim() === "") {
+    return undefined;
+  }
+  if (mediaTypeOf(c.req) !== "application/json") {
+    throw unsupportedMediaType("a JSON body must be sent with Content-Type: application/json");
+  }
+  return parsedJson(read) ?? null;
+}
+
 // A nested reader passes its parent's path, so the name a refusal carries is the full
 // one (`publication.name`), the same the client would use to find the input.
 function path(key: string, at?: string): string {

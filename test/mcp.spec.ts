@@ -5,12 +5,21 @@ import type { McpTool } from "../shared/mcp";
 import { createRouter } from "../src/app";
 import { type AppEnv, getConfig } from "../src/env";
 import { MCP_INSTRUCTIONS } from "../src/mcp/instructions";
-import { curatedTools, operationOf, pickedField, TOOL_DEFS, TOOL_PAGE } from "../src/mcp/tools";
+import {
+  curatedTools,
+  operationOf,
+  routeField,
+  TOOL_DEFS,
+  TOOL_PAGE,
+  type ToolDef,
+  undeclaredField,
+} from "../src/mcp/tools";
 import { buildReferenceResponse } from "../src/reference";
 import { openApiDocument } from "../src/reference/openapi";
 import { accessDeployment } from "./support/access";
 import { resetDatabase } from "./support/fixtures";
 import { adminAuth, base, JSON_AUTH, readJson } from "./support/http";
+import { allowErrorLogs } from "./support/log";
 import { fetchWith } from "./support/worker_env";
 
 // The MCP server (SPEC §11): Claude Desktop and claude.ai reach the instance as a connector,
@@ -134,24 +143,56 @@ describe("the tools are a curated set over the API's routes (SPEC §11)", () => 
     }
   });
 
-  it("picks every argument from a field one of its own routes takes", () => {
+  it("sends every field only to routes that take it, each named on the pick or the tool", () => {
     const doc = manifestDocument();
     for (const def of TOOL_DEFS) {
-      for (const [name, p] of Object.entries(def.args)) {
-        expect(def.routes, `${def.name}.${name}`).toContainEqual(p.route);
-        expect(pickedField(doc, p), `${def.name}.${name}`).not.toBeNull();
+      const fields = [
+        ...Object.entries(def.args).flatMap(([name, p]) =>
+          p.routes.map((route) => ({ name, route, f: p })),
+        ),
+        ...(def.fixed ?? []).map((f) => ({ name: f.field, route: f.route, f })),
+      ];
+      for (const { name, route, f } of fields) {
+        const where = `${def.name}.${name} to ${route.method} ${route.path}`;
+        expect(def.routes, where).toContainEqual(route);
+        expect(routeField(doc, route, f), where).not.toBeNull();
       }
     }
   });
 
-  it("refuses to build a tool whose route, or whose picked field, left the manifest", () => {
+  it("refuses to build a tool when a route, or a field it sends any route, left the manifest", () => {
     const gone = manifestDocument();
     delete gone.paths["/api/sends/{id}/cancel"];
-    expect(() => curatedTools(gone)).toThrow(/cancel_send picks the path field id/);
+    expect(() => curatedTools(gone)).toThrow(
+      "cancel_send calls POST /api/sends/:id/cancel, which the manifest doesn't register",
+    );
+    // A field sent to a second route counts as much as the one it was picked from.
     const field = manifestDocument();
-    const op = operationOf(field, { method: "POST", path: "/api/posts/:id/test" });
-    delete op?.requestBody?.content["application/json"]?.schema.properties?.to;
-    expect(() => curatedTools(field)).toThrow(/send_test picks the body field to/);
+    const put = operationOf(field, { method: "PUT", path: "/api/posts/:id" });
+    delete put?.requestBody?.content["application/json"]?.schema.properties?.markdown;
+    expect(() => curatedTools(field)).toThrow(
+      "save_draft sends the body field markdown to PUT /api/posts/:id, which doesn't take it",
+    );
+    const fixed = manifestDocument();
+    const list = operationOf(fixed, { method: "GET", path: "/api/subscribers" });
+    if (list?.parameters) {
+      list.parameters = list.parameters.filter((x) => x.name !== "limit");
+    }
+    // The first tool to send it is refused; get_publication sets it itself, and is held the same way.
+    expect(() => curatedTools(fixed)).toThrow(
+      /sends the query field limit to GET \/api\/subscribers/,
+    );
+  });
+
+  it("stops a call that sends a route a field its tool doesn't declare for it", () => {
+    const def = TOOL_DEFS.find((d) => d.name === "schedule_send") as ToolDef;
+    const send = { method: "POST", path: "/api/posts/:id/send" } as const;
+    expect(
+      undeclaredField(def, send, { params: { id: "p" }, body: { email_only: true } }),
+    ).toBeNull();
+    expect(undeclaredField(def, send, { params: { id: "p" }, body: { fire_at: "x" } })).toBe(
+      "body fire_at",
+    );
   });
 
   it("reads each argument's schema and words from its route", async () => {
@@ -405,6 +446,30 @@ describe("a tool call runs its routes as the person, via Claude (SPEC §11, Who 
       expect(r.isError, path).toBe(true);
       expect(r.text).toContain("isn't a route this reads");
     }
+    // What is checked is what is asked: a climb out of a path is resolved before either.
+    for (const path of [
+      "/api/posts/../dev/outbox",
+      "/api/posts/%2e%2e/dev/outbox",
+      "/api/posts/%2E%2E/%2e%2e/api/dev/outbox",
+      "/api/subscribers/export",
+      `/api/sends/s_x/deliveries.csv`,
+      "/api/imports/template.csv",
+    ]) {
+      const r = await callTool("kestrel_api_read", { path });
+      expect(r.isError, path).toBe(true);
+      expect(r.text, path).toContain("isn't a route this reads");
+    }
+    const parens = await callTool("kestrel_api_read", { path: "/api/posts/(.*)" });
+    expect(parens.text).toMatch(/^Refused: HTTP 404 not_found\./);
+    const page = await callTool("kestrel_api_read", { path: `/api/posts/${post.id}/preview` });
+    expect(page.text).toBe(
+      `/api/posts/${post.id}/preview answers text/html, which a chat can't read: open it in the dashboard instead.`,
+    );
+    const huge = await callTool("kestrel_api_read", { path: "/api/reference" });
+    expect(huge.isError).toBe(true);
+    expect(huge.text).toMatch(
+      /^The answer is [\d,]+ characters, over the 60,000 a tool answers\. Ask for less/,
+    );
     const bad = await callTool("kestrel_api_read", { path: "/api/posts?colour=red" });
     expect(bad.text).toContain(
       "Refused: HTTP 400 bad_request. colour isn’t a query parameter this takes",
@@ -451,13 +516,61 @@ describe("the server's door (SPEC §11)", () => {
     expect((await callOk("search_posts", {})).posts).toEqual([]);
   });
 
-  it("refuses a request another site's page sent", async () => {
-    const res = await rpc(
+  it("refuses a request another site's page sent, and takes Claude's servers naming their origin", async () => {
+    const auth = await adminAuth(PERSON);
+    const evil = await rpc("tools/list", {}, { ...auth, Origin: "https://evil.example" });
+    expect(evil.status).toBe(403);
+    for (const origin of ["https://claude.ai/", "https://claude.ai", "https://claude.com"]) {
+      expect((await rpc("tools/list", {}, { ...auth, Origin: origin })).status, origin).toBe(200);
+    }
+    // A browser on claude.ai says so in Sec-Fetch-Site, and is a page elsewhere like any other.
+    const page = await rpc(
       "tools/list",
       {},
-      { ...(await adminAuth(PERSON)), Origin: "https://evil.example" },
+      {
+        ...auth,
+        Origin: "https://claude.ai",
+        "Sec-Fetch-Site": "cross-site",
+      },
     );
-    expect(res.status).toBe(403);
+    expect(page.status).toBe(403);
+    // Only this route takes Claude's origin: every other write keeps the browser guard.
+    const post = await SELF.fetch(`${base}/api/posts`, {
+      method: "POST",
+      headers: { ...JSON_AUTH, Origin: "https://claude.ai" },
+      body: "{}",
+    });
+    expect(post.status).toBe(403);
+  });
+
+  it("answers malformed JSON, a batch, or a body that isn't a message as JSON-RPC errors", async () => {
+    const send = (body: string) =>
+      SELF.fetch(`${base}/api/mcp`, {
+        method: "POST",
+        headers: { ...JSON_AUTH },
+        body,
+      });
+    const parse = await send("{not json");
+    expect(parse.status).toBe(400);
+    expect(await readJson(parse)).toEqual({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32700, message: "the body is not valid JSON" },
+    });
+    const batch = await send(JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "ping" }]));
+    expect(batch.status).toBe(400);
+    expect((await readJson(batch)).error.code).toBe(-32600);
+    const bare = await send("42");
+    expect((await readJson(bare)).error.code).toBe(-32600);
+  });
+
+  it("turns an error inside a tool into the tool's error, never a 500", async () => {
+    allowErrorLogs("request.error");
+    const def = TOOL_DEFS.find((d) => d.name === "get_post") as ToolDef;
+    vi.spyOn(def, "run").mockRejectedValue(new Error("boom"));
+    const r = await callTool("get_post", { id: "p_x" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/^The tool stopped on an error inside Kestrel/);
   });
 
   it("takes a notification with no answer, and opens no stream", async () => {
@@ -480,6 +593,11 @@ describe("the server's door (SPEC §11)", () => {
     expect((await readJson(res)).error.code).toBe(-32600);
     const init = await rpc("initialize", { protocolVersion: "2026-07-28" }, headers);
     expect((await readJson(init)).result.protocolVersion).toBe("2025-11-25");
+    // 2025-03-26 takes batches, which this server doesn't, so it isn't one it speaks.
+    const old = await rpc("initialize", { protocolVersion: "2025-03-26" }, await adminAuth(PERSON));
+    expect((await readJson(old)).result.protocolVersion).toBe("2025-11-25");
+    const oldHeader = { ...(await adminAuth(PERSON)), "MCP-Protocol-Version": "2025-03-26" };
+    expect((await rpc("tools/list", {}, oldHeader)).status).toBe(400);
   });
 
   it("answers an unknown method or tool as JSON-RPC errors", async () => {

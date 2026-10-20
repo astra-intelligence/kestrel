@@ -23,8 +23,8 @@ import {
 } from "../../shared/mcp";
 import type { ReferenceResponse } from "../../shared/reference";
 import { buildInfo } from "../build";
-import { readJsonObject } from "../lib/body";
-import { json } from "../lib/errors";
+import { readJsonValue } from "../lib/body";
+import { HttpError, json, logUncaught } from "../lib/errors";
 import { log } from "../lib/log";
 import { openApiDocument } from "../reference/openapi";
 import type { RequestContext, Router } from "../router";
@@ -34,14 +34,17 @@ import {
   type Api,
   curatedTools,
   editorLink,
+  mediaType,
+  pathRequest,
   type RouteRef,
   readAnswer,
   routeRequest,
   type ToolRoute,
+  undeclaredField,
   unknownArgs,
 } from "./tools";
 
-export { MCP_PATH } from "./tools";
+export { CLAUDE_ORIGINS, MCP_PATH } from "./tools";
 
 // The tools a router's manifest makes, built once per router: the manifest is fixed once built.
 const toolsByRouter = new WeakMap<Router, ToolRoute[]>();
@@ -92,7 +95,51 @@ export async function handle(
   router: Router,
   tools: readonly ToolRoute[],
 ): Promise<Response> {
-  const msg = await readJsonObject(c);
+  const read = await readJsonValue(c);
+  if (read === null) {
+    return error(null, JSON_RPC_ERRORS.parseError, "the body is not valid JSON", 400);
+  }
+  const msg = read?.value;
+  if (Array.isArray(msg)) {
+    return error(
+      null,
+      JSON_RPC_ERRORS.invalidRequest,
+      "a batch isn't taken: send one JSON-RPC message a request",
+      400,
+    );
+  }
+  if (!isObject(msg)) {
+    return error(
+      null,
+      JSON_RPC_ERRORS.invalidRequest,
+      "the body must be one JSON-RPC message",
+      400,
+    );
+  }
+  const id = typeof msg.id === "string" || typeof msg.id === "number" ? msg.id : null;
+  try {
+    return await dispatch(c, router, tools, msg);
+  } catch (err) {
+    if (err instanceof HttpError) {
+      throw err;
+    }
+    // Whatever failed, the client gets the protocol's answer for it, never a bare 500.
+    logUncaught(err);
+    return error(
+      id,
+      JSON_RPC_ERRORS.internalError,
+      "Kestrel couldn't answer that: the server log says why.",
+    );
+  }
+}
+
+/** One JSON-RPC message, answered. */
+async function dispatch(
+  c: RequestContext,
+  router: Router,
+  tools: readonly ToolRoute[],
+  msg: Record<string, unknown>,
+): Promise<Response> {
   const version = c.req.headers.get(MCP_VERSION_HEADER);
   if (msg.method !== "initialize" && version !== null && !SUPPORTED.includes(version)) {
     return error(
@@ -225,11 +272,37 @@ async function call(
       if (!allows(t, r)) {
         throw new Error(`${t.def.name} calls ${r.method} ${r.path}, which it doesn't declare`);
       }
+      const stray = undeclaredField(t.def, r, parts);
+      if (stray) {
+        throw new Error(`${t.def.name} sends ${stray} to ${r.method} ${r.path}, undeclared`);
+      }
       return through(c, router, r, parts);
+    },
+    async read(path) {
+      if (t.def.name !== API_READ_NAME) {
+        throw new Error(`${t.def.name} reads a path, which only ${API_READ_NAME} may`);
+      }
+      const res = await router.handle(pathRequest(path, c.url.origin, c.req.headers), c.env, c.ctx);
+      const type = mediaType(res);
+      return { ...(await readAnswer(res)), type };
     },
     editor: (page) => editorLink(c.config.appOrigin, page),
   };
-  const out = await t.def.run(api, given);
+  let out: ToolResult;
+  try {
+    out = await t.def.run(api, given);
+  } catch (err) {
+    logUncaught(err);
+    out = {
+      content: [
+        {
+          type: "text",
+          text: "The tool stopped on an error inside Kestrel; the server log says why. Read again before trying again: a change it made before it stopped stands.",
+        },
+      ],
+      isError: true,
+    };
+  }
   log.info("mcp.call", { tool: t.tool.name, error: out.isError });
   return out;
 }
