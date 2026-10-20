@@ -79,16 +79,23 @@ export function isYouInEditor(actor: Actor, you: Actor | null): boolean {
 }
 
 /**
- * Who acted on a send, as the scheduled banner shows it (DESIGN §4, §10): the whole line when
- * any act on it was taken by someone other than you in the editor (Claude Code, a script, a
- * service token, or another person), and nothing when every act was yours in the editor, which
- * you already know.
+ * Who last acted on a scheduled send, as its banner shows it (DESIGN §4, §10): the latest act,
+ * a move when there was one and otherwise the schedule ("Moved by you@example.com via Claude
+ * Code"), and only when someone other than you in the editor took it (Claude Code, a script, a
+ * service token, or another person). Nothing when you did, which you already know, or when none
+ * is recorded. The whole record is the post's history.
  */
-export function sendActedByOthers(
-  send: Partial<Pick<SendView, "scheduled_by" | "moved_by" | "canceled_by" | "resolved_by">>,
+export function bannerActedBy(
+  send: Partial<Pick<SendView, "scheduled_by" | "moved_by">>,
   you: Actor | null,
 ): string | null {
-  const actors = [send.scheduled_by, send.moved_by, send.canceled_by, send.resolved_by];
-  const others = actors.some((a) => a && !isYouInEditor(a, you));
-  return others ? sendActedBy(send) : null;
+  const latest = send.moved_by
+    ? { verb: "Moved", actor: send.moved_by }
+    : send.scheduled_by
+      ? { verb: "Scheduled", actor: send.scheduled_by }
+      : null;
+  if (!latest || isYouInEditor(latest.actor, you)) {
+    return null;
+  }
+  return `${latest.verb} by ${actorLabel(latest.actor)}`;
 }

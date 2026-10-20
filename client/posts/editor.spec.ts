@@ -655,7 +655,7 @@ describe("editor view", () => {
     expect(fake.unhandled).toHaveLength(0);
   });
 
-  it("names every act on the banner once one came through another client, and follows it (SPEC §11)", async () => {
+  it("names the latest act on the banner once it came through another client, and follows it (SPEC §11)", async () => {
     signedIn();
     const linked = scheduledPost(Date.now() + 3_600_000);
     linked.sends.edit("s1", { scheduled_by: JSON.stringify(YOU) });
@@ -665,9 +665,7 @@ describe("editor view", () => {
     linked.sends.edit("s1", { fire_at: Date.now() + 2 * 3_600_000, moved_by: VIA_CLAUDE });
     await vi.advanceTimersByTimeAsync(60_000); // within one idle read
     expect($("#schedBy").hidden).toBe(false);
-    expect($("#schedBy").textContent).toBe(
-      "Scheduled by you@example.com · moved by you@example.com via Claude Code",
-    );
+    expect($("#schedBy").textContent).toBe("Moved by you@example.com via Claude Code");
     expect(fake.unhandled).toHaveLength(0);
   });
 

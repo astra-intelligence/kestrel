@@ -52,7 +52,7 @@ import { highlightMarkdown } from "../ui/highlight";
 import { type Html, html, setHtml } from "../ui/html";
 import { type IconName, icon } from "../ui/icons";
 import { busy, fieldError, modal, renderError, toast } from "../ui/widgets";
-import { sendActedByOthers, whoActed } from "../who_acted";
+import { bannerActedBy, whoActed } from "../who_acted";
 import { activeSend, postAction } from "./actions";
 import { createAutosave } from "./autosave";
 import { DirtyTracker } from "./dirty";
@@ -1055,9 +1055,9 @@ export async function renderEditor(
     const dailyWritesEl = $("#schedDailyWrites");
     const byEl = $("#schedBy");
     const paintConditions = () => {
-      // Who acted on it (SPEC §11), once the send's own read says, and only when someone other
-      // than you in the editor did (DESIGN §4): the send that needs noticing.
-      const by = sendActedByOthers(current, you);
+      // Who last acted on it (SPEC §11), once the send's own read says, and only when someone
+      // other than you in the editor did (DESIGN §4): the send that needs noticing.
+      const by = bannerActedBy(current, you);
       byEl.hidden = by === null;
       byEl.textContent = by ?? "";
       const remade = conditionOf(current, "remade");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actorLabel, sendActedBy, sendActedByOthers, whoActed } from "./who_acted";
+import { actorLabel, bannerActedBy, sendActedBy, whoActed } from "./who_acted";
 
 describe("whoActed (SPEC §11, Who acted)", () => {
   it("shows a person in the editor alone", () => {
@@ -68,27 +68,32 @@ describe("sendActedBy (SPEC §6, §11)", () => {
   });
 });
 
-describe("sendActedByOthers (DESIGN §4, §10)", () => {
+describe("bannerActedBy (DESIGN §4, §10)", () => {
   const you = { kind: "human", email: "you@example.com", client: "editor" } as const;
+  const viaClaude = { ...you, client: "claude-code" } as const;
 
-  it("says nothing when every act was yours in the editor", () => {
-    expect(sendActedByOthers({ scheduled_by: you, moved_by: you }, you)).toBeNull();
-    expect(sendActedByOthers({}, you)).toBeNull();
-  });
-
-  it("names every act once one was anyone else's, you through another client included", () => {
-    expect(
-      sendActedByOthers({ scheduled_by: you, moved_by: { ...you, client: "claude-code" } }, you),
-    ).toBe("Scheduled by you@example.com · moved by you@example.com via Claude Code");
-    expect(sendActedByOthers({ scheduled_by: { ...you, email: "them@example.com" } }, you)).toBe(
-      "Scheduled by them@example.com",
+  it("names the latest act alone: a move when there was one, else the schedule", () => {
+    expect(bannerActedBy({ scheduled_by: you, moved_by: viaClaude }, you)).toBe(
+      "Moved by you@example.com via Claude Code",
+    );
+    expect(bannerActedBy({ scheduled_by: viaClaude, moved_by: null }, you)).toBe(
+      "Scheduled by you@example.com via Claude Code",
     );
     expect(
-      sendActedByOthers({ scheduled_by: { kind: "service", token_id: "t", client: null } }, you),
+      bannerActedBy({ scheduled_by: { kind: "service", token_id: "t", client: null } }, you),
     ).toBe("Scheduled by the service token t");
+    expect(bannerActedBy({ scheduled_by: { ...you, email: "them@example.com" } }, you)).toBe(
+      "Scheduled by them@example.com",
+    );
   });
 
-  it("names every act when no one is signed in to compare with", () => {
-    expect(sendActedByOthers({ scheduled_by: you }, null)).toBe("Scheduled by you@example.com");
+  it("says nothing when the latest act was yours in the editor, or none is recorded", () => {
+    expect(bannerActedBy({ scheduled_by: viaClaude, moved_by: you }, you)).toBeNull();
+    expect(bannerActedBy({ scheduled_by: you }, you)).toBeNull();
+    expect(bannerActedBy({}, you)).toBeNull();
+  });
+
+  it("names the latest act when no one is signed in to compare with", () => {
+    expect(bannerActedBy({ scheduled_by: you }, null)).toBe("Scheduled by you@example.com");
   });
 });
