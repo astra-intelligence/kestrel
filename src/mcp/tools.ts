@@ -168,11 +168,13 @@ function data(value: unknown): ToolResult {
 }
 
 /** A Markdown answer, cut at a line when too long, with a note saying where to read on. */
-function markdown(value: string): ToolResult {
+export function markdown(value: string): ToolResult {
   if (value.length <= TOOL_TEXT_MAX) {
     return text(value);
   }
-  const cut = value.slice(0, value.lastIndexOf("\n", TOOL_TEXT_MAX));
+  // At the last line break before the limit, or at the limit itself when there is none.
+  const line = value.lastIndexOf("\n", TOOL_TEXT_MAX);
+  const cut = value.slice(0, line > 0 ? line : TOOL_TEXT_MAX);
   return text(
     `${cut}\n\n[Cut here, at ${cut.length.toLocaleString("en-US")} of ${value.length.toLocaleString("en-US")} characters: read a resource's own page, such as \`/api/reference/<resource>.md\`, for the rest.]`,
   );
@@ -806,22 +808,13 @@ const API_READ_DESCRIPTION =
   "Read any admin route of the Kestrel API that the other tools don't cover, by its path and query (`/api/sends/s_abc/deliveries?view=failures`), answered as the route answers it. GET only, and only a route that answers JSON or Markdown; never a bulk export. Start with `/api/reference.md`, which lists every route, and `/api/reference/<resource>.md` for one resource's routes in full. The publisher's docs are at `/api/docs/<slug>.md`.";
 
 /**
- * Whether the escape hatch may read a path: not a dev route or this server, and not a bulk
- * export, which hands over the whole list (every address) rather than a page a chat reads. The
- * exports are named here, since nothing in the manifest marks a read as one; the answer's own type
- * is checked too, so a CSV or a page is refused whatever its path.
+ * Whether the escape hatch may read a path at all: not a dev route or this server. A bulk route
+ * (`x-kestrel-bulk`, an export or a CSV) is never among its reads either, and the answer's own
+ * type is checked after, so a page or a file is refused whatever its path.
  */
 function isReadable(path: string): boolean {
-  return (
-    !path.startsWith("/api/dev/") &&
-    path !== MCP_PATH &&
-    !BULK_EXPORTS.includes(path) &&
-    !/\.(csv|txt)$/.test(path)
-  );
+  return !path.startsWith("/api/dev/") && path !== MCP_PATH;
 }
-
-/** The reads that answer a whole list rather than a page of it. */
-const BULK_EXPORTS: readonly string[] = ["/api/subscribers/export"];
 
 // --- generation, from the manifest's OpenAPI document ---
 
@@ -935,12 +928,24 @@ function inputSchema(def: ToolDef, doc: OpenApiDocument): McpTool["inputSchema"]
 
 /** The read escape hatch, its path checked against the manifest's admin GETs before it runs. */
 function apiRead(doc: OpenApiDocument): ToolRoute {
-  const reads = Object.entries(doc.paths).flatMap(([path, ops]) => {
+  // Every GET route, and whether this may read it. A path two routes match (`/api/subscribers/
+  // export` and `/api/subscribers/:id`) is read only when both may be, so no route order decides.
+  const gets = Object.entries(doc.paths).flatMap(([path, ops]) => {
     const op = ops.get;
-    return op && op["x-kestrel-access"] === "admin" && isReadable(path)
-      ? [new URLPattern({ pathname: path.replace(/\{(\w+)\}/g, ":$1") })]
+    return op
+      ? [
+          {
+            pattern: new URLPattern({ pathname: path.replace(/\{(\w+)\}/g, ":$1") }),
+            readable:
+              op["x-kestrel-access"] === "admin" && !op["x-kestrel-bulk"] && isReadable(path),
+          },
+        ]
       : [];
   });
+  const mayRead = (pathname: string): boolean => {
+    const matched = gets.filter((g) => g.pattern.test({ pathname }));
+    return matched.length > 0 && matched.every((g) => g.readable);
+  };
   const def: ToolDef = {
     name: API_READ_NAME,
     title: API_READ_TITLE,
@@ -957,7 +962,7 @@ function apiRead(doc: OpenApiDocument): ToolRoute {
         url?.origin !== "https://kestrel.invalid" ||
         !raw.startsWith("/api/") ||
         !isReadable(url.pathname) ||
-        !reads.some((p) => p.test({ pathname: url.pathname }))
+        !mayRead(url.pathname)
       ) {
         return text(
           `${raw || "(no path)"} isn't a route this reads: it reads the admin GET routes under /api that \`/api/reference.md\` lists, never a dev route, a bulk export, or a write.`,

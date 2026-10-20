@@ -1,17 +1,22 @@
-import { SELF } from "cloudflare:test";
+import { createExecutionContext, SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpTool } from "../shared/mcp";
 import { createRouter } from "../src/app";
 import { type AppEnv, getConfig } from "../src/env";
+import { HttpError } from "../src/lib/errors";
 import { MCP_INSTRUCTIONS } from "../src/mcp/instructions";
+import { handle } from "../src/mcp/server";
 import {
   curatedTools,
+  markdown,
   operationOf,
   routeField,
   TOOL_DEFS,
   TOOL_PAGE,
+  TOOL_TEXT_MAX,
   type ToolDef,
+  type ToolRoute,
   undeclaredField,
 } from "../src/mcp/tools";
 import { buildReferenceResponse } from "../src/reference";
@@ -487,6 +492,46 @@ describe("a tool call runs its routes as the person, via Claude (SPEC §11, Who 
   });
 });
 
+describe("what a tool answers stays small and whole", () => {
+  it("cuts a long Markdown answer at a line, or at the limit when no line ends before it", () => {
+    const lines = `${"a".repeat(100)}\n`.repeat(1000);
+    const atLine = markdown(lines).content[0]?.text ?? "";
+    expect(
+      atLine.startsWith(`${lines.slice(0, lines.lastIndexOf("\n", TOOL_TEXT_MAX))}\n\n[Cut here`),
+    ).toBe(true);
+    const oneParagraph = "b".repeat(TOOL_TEXT_MAX + 5000);
+    const hard = markdown(oneParagraph).content[0]?.text ?? "";
+    expect(
+      hard.startsWith(`${"b".repeat(TOOL_TEXT_MAX)}\n\n[Cut here, at 60,000 of 65,000 characters`),
+    ).toBe(true);
+    expect(markdown("short").content[0]?.text).toBe("short");
+  });
+
+  it("marks every export and every CSV or text route as bulk, and never reads one", async () => {
+    const routes = buildReferenceResponse(
+      createRouter(getConfig(env as AppEnv)).routes.map((r) => r.def),
+    ).groups.flatMap((g) => g.routes);
+    const bulkShaped = routes.filter(
+      (r) => r.access === "admin" && r.method === "GET" && /export|\.(csv|txt)$/.test(r.path),
+    );
+    expect(bulkShaped.map((r) => r.path)).toEqual(
+      expect.arrayContaining(["/api/subscribers/export", "/api/sends/:id/deliveries.csv"]),
+    );
+    for (const r of bulkShaped) {
+      expect(r.bulk, r.path).toBe(true);
+    }
+    const doc = manifestDocument();
+    expect(
+      operationOf(doc, { method: "GET", path: "/api/subscribers/export" })?.["x-kestrel-bulk"],
+    ).toBe(true);
+    for (const r of bulkShaped) {
+      const path = r.path.replace(":id", "s_x");
+      const read = await callTool("kestrel_api_read", { path });
+      expect(read.text, path).toContain("isn't a route this reads");
+    }
+  });
+});
+
 describe("the publisher's docs are resources", () => {
   it("lists the publishing pages, and reads one as Markdown", async () => {
     const auth = await adminAuth(PERSON);
@@ -562,6 +607,46 @@ describe("the server's door (SPEC §11)", () => {
     expect((await readJson(batch)).error.code).toBe(-32600);
     const bare = await send("42");
     expect((await readJson(bare)).error.code).toBe(-32600);
+  });
+
+  it("answers a server-side refusal inside the server as JSON-RPC's internal error, and keeps a request's own", async () => {
+    allowErrorLogs("request.error");
+    const failing = (err: Error): ToolRoute[] => [
+      Object.defineProperty({ def: TOOL_DEFS[0] as ToolDef }, "tool", {
+        get() {
+          throw err;
+        },
+      }) as ToolRoute,
+    ];
+    const context = async () => {
+      const req = new Request(`${base}/api/mcp`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 7, method: "tools/list" }),
+      });
+      const e = env as AppEnv;
+      return {
+        req,
+        env: e,
+        ctx: createExecutionContext(),
+        url: new URL(req.url),
+        params: {},
+        config: getConfig(e),
+      };
+    };
+    const router = createRouter(getConfig(env as AppEnv));
+    for (const err of [new HttpError("settings_corrupt"), new Error("boom")]) {
+      const res = await handle(await context(), router, failing(err));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        jsonrpc: "2.0",
+        id: 7,
+        error: { code: -32603, message: "Kestrel couldn't answer that: the server log says why." },
+      });
+    }
+    await expect(
+      handle(await context(), router, failing(new HttpError("bad_request"))),
+    ).rejects.toThrow(HttpError);
   });
 
   it("turns an error inside a tool into the tool's error, never a 500", async () => {

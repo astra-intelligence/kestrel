@@ -189,6 +189,12 @@ export interface RouteDef {
    * program by design, such as the MCP server.
    */
   programOrigins?: readonly string[];
+  /**
+   * The route answers a whole list or a file (an export, a CSV) rather than a page of it, so it
+   * is never handed to a chat: the MCP server's read escape hatch refuses it. A spec holds every
+   * export and CSV or text route to carrying it.
+   */
+  bulk?: true;
 }
 
 const UNSAFE_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);

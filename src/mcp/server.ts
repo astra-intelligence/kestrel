@@ -120,7 +120,9 @@ export async function handle(
   try {
     return await dispatch(c, router, tools, msg);
   } catch (err) {
-    if (err instanceof HttpError) {
+    // A refusal about the request (a body type it can't take) keeps its own answer; anything
+    // that failed on the server's side, a 5xx refusal included, is the protocol's internal error.
+    if (err instanceof HttpError && err.status < 500) {
       throw err;
     }
     // Whatever failed, the client gets the protocol's answer for it, never a bare 500.

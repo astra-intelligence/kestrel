@@ -1510,6 +1510,7 @@ export function createRouter({
     {
       method: "GET",
       path: "/api/sends/:id/deliveries.csv",
+      bulk: true,
       access: "admin",
       resource: "sends",
       title: "Export a send's deliveries",
@@ -1729,6 +1730,7 @@ export function createRouter({
       // Before `/api/subscribers/:id`, which would otherwise take `export` as an id.
       method: "GET",
       path: "/api/subscribers/export",
+      bulk: true,
       access: "admin",
       resource: "subscribers",
       title: "Export the list",
@@ -1984,6 +1986,7 @@ export function createRouter({
     {
       method: "GET",
       path: "/api/imports/template.csv",
+      bulk: true,
       access: "admin",
       resource: "imports",
       title: "Get the CSV template",
@@ -1994,6 +1997,7 @@ export function createRouter({
     {
       method: "GET",
       path: "/api/imports/template.txt",
+      bulk: true,
       access: "admin",
       resource: "imports",
       title: "Get the plain-list template",
