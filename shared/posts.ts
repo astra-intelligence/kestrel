@@ -215,7 +215,7 @@ export type HistoryKind =
   | "edited"
   | "scheduled"
   | "sent_now"
-  | "moved"
+  | "rescheduled"
   | "canceled"
   | "resolved";
 
@@ -229,7 +229,7 @@ export interface HistoryEntry {
   revision: number | null;
   /** The send acted on, for an act on a send; null for a revision. */
   send_id: string | null;
-  /** The fire time a schedule, Send now, or move set; null otherwise. */
+  /** The fire time a schedule, Send now, or reschedule set; null otherwise. */
   fire_at: number | null;
   /** The resolution a Resolve chose; null otherwise. */
   resolution: "unsent" | "accepted" | null;

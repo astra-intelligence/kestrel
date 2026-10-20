@@ -348,7 +348,7 @@ const VIEW_COLS = [
   postCol("unlisted_token", "post_unlisted_token"),
   postCol("email_only", "post_email_only"),
   lastActor("'schedule', 'send_now'", "scheduled_by"),
-  lastActor("'move'", "moved_by"),
+  lastActor("'reschedule'", "rescheduled_by"),
   lastActor("'cancel'", "canceled_by"),
   lastActor("'resolve'", "resolved_by"),
 ].join(", ");
@@ -1058,7 +1058,7 @@ export function cancelStmt(db: D1Database, sendId: string, now: number): D1Prepa
 // --- the log of acts (SPEC §6, §11) ---------------------------------------------
 
 /** An act on a send that its log records. */
-export type SendAct = "schedule" | "send_now" | "move" | "cancel" | "resolve";
+export type SendAct = "schedule" | "send_now" | "reschedule" | "cancel" | "resolve";
 
 /** One act as the log records it: who took it, and what it set where it sets something. */
 export interface SendActInput {
@@ -1066,7 +1066,7 @@ export interface SendActInput {
   act: SendAct;
   at: number;
   by: Actor;
-  /** The fire time a schedule, Send now, or move set. */
+  /** The fire time a schedule, Send now, or reschedule set. */
   fireAt?: number;
   /** The resolution a Resolve chose. */
   resolution?: "unsent" | "accepted";
@@ -1146,8 +1146,8 @@ export function sendExists(sendId: string): { sql: string; binds: unknown[] } {
   return { sql: "EXISTS (SELECT 1 FROM sends WHERE id = ?)", binds: [sendId] };
 }
 
-/** A move landed: the send is still scheduled, at the time the move set. */
-export function movedTo(sendId: string, fireAt: number): { sql: string; binds: unknown[] } {
+/** A reschedule landed: the send is still scheduled, at the time it set. */
+export function rescheduledTo(sendId: string, fireAt: number): { sql: string; binds: unknown[] } {
   return {
     sql: "EXISTS (SELECT 1 FROM sends WHERE id = ? AND status = 'scheduled' AND fire_at = ?)",
     binds: [sendId, fireAt],

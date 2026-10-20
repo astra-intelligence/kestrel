@@ -46,7 +46,7 @@ export function actorLabel(actor: Actor): string {
 // A send's acts in the order they happen, each with the words that lead its actor.
 const SEND_ACTS = [
   ["scheduled_by", "scheduled"],
-  ["moved_by", "rescheduled"],
+  ["rescheduled_by", "rescheduled"],
   ["canceled_by", "canceled"],
   ["resolved_by", "resolved"],
 ] as const;
@@ -57,7 +57,7 @@ const SEND_ACTS = [
  * none is recorded, as for a send made before who acted was, or none is known yet.
  */
 export function sendActedBy(
-  send: Partial<Pick<SendView, "scheduled_by" | "moved_by" | "canceled_by" | "resolved_by">>,
+  send: Partial<Pick<SendView, "scheduled_by" | "rescheduled_by" | "canceled_by" | "resolved_by">>,
 ): string | null {
   const parts = SEND_ACTS.flatMap(([field, verb]) => {
     const actor = send[field];
@@ -86,11 +86,11 @@ export function isYouInEditor(actor: Actor, you: Actor | null): boolean {
  * is recorded. The whole record is the post's history.
  */
 export function bannerActedBy(
-  send: Partial<Pick<SendView, "scheduled_by" | "moved_by">>,
+  send: Partial<Pick<SendView, "scheduled_by" | "rescheduled_by">>,
   you: Actor | null,
 ): string | null {
-  const latest = send.moved_by
-    ? { verb: "Rescheduled", actor: send.moved_by }
+  const latest = send.rescheduled_by
+    ? { verb: "Rescheduled", actor: send.rescheduled_by }
     : send.scheduled_by
       ? { verb: "Scheduled", actor: send.scheduled_by }
       : null;

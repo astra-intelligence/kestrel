@@ -268,7 +268,7 @@ export async function listRevisions(c: RequestContext): Promise<Response> {
 const ACT_KIND: Record<SendAct, HistoryKind> = {
   schedule: "scheduled",
   send_now: "sent_now",
-  move: "moved",
+  reschedule: "rescheduled",
   cancel: "canceled",
   resolve: "resolved",
 };

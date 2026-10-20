@@ -33,7 +33,7 @@ function what(e: HistoryEntry): string {
       return `Scheduled for ${fmt(e.fire_at)}`;
     case "sent_now":
       return `Send now, for ${fmt(e.fire_at)}`;
-    case "moved":
+    case "rescheduled":
       return `Rescheduled for ${fmt(e.fire_at)}`;
     case "canceled":
       return "Canceled the schedule";
@@ -47,7 +47,7 @@ const ICON: Record<HistoryEntry["kind"], IconName> = {
   edited: "editable",
   scheduled: "calendar",
   sent_now: "send",
-  moved: "calendar",
+  rescheduled: "calendar",
   canceled: "calendar-x",
   resolved: "circle-check",
 };

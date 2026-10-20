@@ -63,7 +63,7 @@ describe("a post's history (SPEC §6, §11)", () => {
     expect(incomplete).toBe(false);
     expect(entries.map((e) => [e.kind, e.actor, e.revision, e.send_id])).toEqual([
       ["canceled", { kind: "human", email: "you@example.com", client: "editor" }, null, sendId],
-      ["moved", { kind: "service", token_id: DEV_TOKEN_ID, client: null }, null, sendId],
+      ["rescheduled", { kind: "service", token_id: DEV_TOKEN_ID, client: null }, null, sendId],
       [
         "scheduled",
         { kind: "human", email: "you@example.com", client: "claude-code" },

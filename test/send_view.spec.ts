@@ -60,7 +60,7 @@ const VIEW_KEYS = [
   "post_id",
   "provider",
   "canceled_by",
-  "moved_by",
+  "rescheduled_by",
   "remade_at",
   "resolved_by",
   "rev",

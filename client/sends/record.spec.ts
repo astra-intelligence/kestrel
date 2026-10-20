@@ -554,7 +554,7 @@ describe("sent record", () => {
           c_bounced: 0,
           c_unsent: 0,
           scheduled_by: by({ kind: "human", email: "you@example.com", client: "editor" }),
-          moved_by: VIA_CLAUDE,
+          rescheduled_by: VIA_CLAUDE,
           canceled_by: by({ kind: "human", email: "you@example.com", client: null }),
         }).routes,
       );

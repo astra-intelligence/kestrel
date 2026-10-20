@@ -278,7 +278,7 @@ export function sendSummary(over: Partial<SendRowFixture> = {}): SendRowFixture 
     c_skipped: 0,
     c_unsent: 0,
     scheduled_by: null,
-    moved_by: null,
+    rescheduled_by: null,
     canceled_by: null,
     resolved_by: null,
     rev: 1,

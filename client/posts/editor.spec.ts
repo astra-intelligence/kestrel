@@ -648,7 +648,10 @@ describe("editor view", () => {
   it("names no one on the banner when every act on the send was yours in the editor (DESIGN §4)", async () => {
     signedIn();
     const linked = scheduledPost(Date.now() + 3_600_000);
-    linked.sends.edit("s1", { scheduled_by: JSON.stringify(YOU), moved_by: JSON.stringify(YOU) });
+    linked.sends.edit("s1", {
+      scheduled_by: JSON.stringify(YOU),
+      rescheduled_by: JSON.stringify(YOU),
+    });
     await open(linked.routes);
     expect($("#schedBy").hidden).toBe(true);
     expect($(".banner-scheduled").textContent).not.toMatch(/Scheduled by/);
@@ -662,7 +665,7 @@ describe("editor view", () => {
     await open(linked.routes);
     expect($("#schedBy").hidden).toBe(true);
 
-    linked.sends.edit("s1", { fire_at: Date.now() + 2 * 3_600_000, moved_by: VIA_CLAUDE });
+    linked.sends.edit("s1", { fire_at: Date.now() + 2 * 3_600_000, rescheduled_by: VIA_CLAUDE });
     await vi.advanceTimersByTimeAsync(60_000); // within one idle read
     expect($("#schedBy").hidden).toBe(false);
     expect($("#schedBy").textContent).toBe("Rescheduled by you@example.com via Claude Code");

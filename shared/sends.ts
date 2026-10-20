@@ -307,7 +307,7 @@ export type SendSummary = Omit<
  */
 export interface SendActorsRow {
   scheduled_by: string | null;
-  moved_by: string | null;
+  rescheduled_by: string | null;
   canceled_by: string | null;
   resolved_by: string | null;
 }
@@ -436,7 +436,7 @@ export interface SendView {
    * was wedged. Null for an act no one has taken, and for one taken before it was recorded.
    */
   scheduled_by: Actor | null;
-  moved_by: Actor | null;
+  rescheduled_by: Actor | null;
   canceled_by: Actor | null;
   resolved_by: Actor | null;
   /**

@@ -708,7 +708,7 @@ describe("schema (0014_send_acts)", () => {
 
   it("keeps a fire time on exactly the acts that set one, and a resolution on a Resolve (SPEC §6)", async () => {
     await aSend();
-    for (const act of ["schedule", "send_now", "move"]) {
+    for (const act of ["schedule", "send_now", "reschedule"]) {
       await insert(act, PERSON, 1, null);
       await expect(insert(act, PERSON, null, null)).rejects.toThrow(/CHECK/);
     }

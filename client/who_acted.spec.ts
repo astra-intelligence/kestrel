@@ -50,7 +50,7 @@ describe("sendActedBy (SPEC §6, §11)", () => {
     expect(
       sendActedBy({
         scheduled_by: { kind: "service", token_id: "ci.access", client: null },
-        moved_by: { kind: "human", email: "you@example.com", client: "claude-code" },
+        rescheduled_by: { kind: "human", email: "you@example.com", client: "claude-code" },
         canceled_by: you,
         resolved_by: null,
       }),
@@ -60,11 +60,16 @@ describe("sendActedBy (SPEC §6, §11)", () => {
   });
 
   it("leads with the first act recorded, and says nothing when none is", () => {
-    expect(sendActedBy({ scheduled_by: null, moved_by: you })).toBe(
+    expect(sendActedBy({ scheduled_by: null, rescheduled_by: you })).toBe(
       "Rescheduled by you@example.com",
     );
     expect(
-      sendActedBy({ scheduled_by: null, moved_by: null, canceled_by: null, resolved_by: null }),
+      sendActedBy({
+        scheduled_by: null,
+        rescheduled_by: null,
+        canceled_by: null,
+        resolved_by: null,
+      }),
     ).toBeNull();
     expect(sendActedBy({})).toBeNull();
   });
@@ -75,10 +80,10 @@ describe("bannerActedBy (DESIGN §4, §10)", () => {
   const viaClaude = { ...you, client: "claude-code" } as const;
 
   it("names the latest act alone: a move when there was one, else the schedule", () => {
-    expect(bannerActedBy({ scheduled_by: you, moved_by: viaClaude }, you)).toBe(
+    expect(bannerActedBy({ scheduled_by: you, rescheduled_by: viaClaude }, you)).toBe(
       "Rescheduled by you@example.com via Claude Code",
     );
-    expect(bannerActedBy({ scheduled_by: viaClaude, moved_by: null }, you)).toBe(
+    expect(bannerActedBy({ scheduled_by: viaClaude, rescheduled_by: null }, you)).toBe(
       "Scheduled by you@example.com via Claude Code",
     );
     expect(
@@ -90,7 +95,7 @@ describe("bannerActedBy (DESIGN §4, §10)", () => {
   });
 
   it("says nothing when the latest act was yours in the editor, or none is recorded", () => {
-    expect(bannerActedBy({ scheduled_by: viaClaude, moved_by: you }, you)).toBeNull();
+    expect(bannerActedBy({ scheduled_by: viaClaude, rescheduled_by: you }, you)).toBeNull();
     expect(bannerActedBy({ scheduled_by: you }, you)).toBeNull();
     expect(bannerActedBy({}, you)).toBeNull();
   });
