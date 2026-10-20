@@ -29,6 +29,7 @@
  */
 
 import type { SendStatus, WedgedResolution } from "../../shared/sends";
+import type { Actor } from "../../shared/who_acted";
 import * as sends from "../db/sends";
 import type { AppEnv } from "../env";
 import { notFound, refusal } from "../lib/errors";
@@ -59,13 +60,14 @@ export interface ResolveResult {
  * `not_wedged` when it is not wedged (`isWedged`: nothing to resolve, or a run still to
  * look at it). It names no count or `rev` the caller read: once a send is wedged no run
  * touches it, so its ambiguous set holds until a Resolve settles it, and a second Resolve
- * finds it no longer wedged.
+ * finds it no longer wedged. `by` is recorded on the send as who resolved it (SPEC §11), and
+ * named in each settled row's note.
  */
 export async function resolveStuckSend(
   env: AppEnv,
   sendId: string,
   outcome: WedgedResolution,
-  actor: string,
+  by: Actor,
 ): Promise<ResolveResult> {
   const send = await sends.getSend(env.DB, sendId);
   if (!send) {
@@ -104,9 +106,9 @@ export async function resolveStuckSend(
   }
   const note =
     outcome === "unsent"
-      ? `operator adjudication: assumed NOT delivered (${actor})`
-      : `operator adjudication: assumed delivered (${actor})`;
-  const resolved = await sends.resolveDispatched(env.DB, sendId, lease, outcome, note, now);
+      ? `operator adjudication: assumed NOT delivered (${noteName(by)})`
+      : `operator adjudication: assumed delivered (${noteName(by)})`;
+  const resolved = await sends.resolveDispatched(env.DB, sendId, lease, outcome, note, now, by);
 
   // Run the loop's completion gate: finish only when nothing is left in flight, so a
   // send that still has pending rows just continues when the sweep next resumes it: the
@@ -122,4 +124,10 @@ export async function resolveStuckSend(
   }
 
   return { resolved, completed };
+}
+
+/** Who resolved, as each settled row's note names them: a person's email, or a service token by
+ *  its name. */
+function noteName(by: Actor): string {
+  return by.email ?? (by.token_id ? `service ${by.token_id}` : "service");
 }

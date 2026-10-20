@@ -15,8 +15,8 @@
  */
 
 import { unlistedPostUrl } from "../../shared/archive_url";
-import type { SendHalt, SendPhase, SendSummary, SendView } from "../../shared/sends";
-import { countsOf, type SendCounts, type SendStatus } from "../db/sends";
+import type { SendActorsRow, SendHalt, SendPhase, SendSummary, SendView } from "../../shared/sends";
+import { countsOf, readActor, type SendCounts, type SendStatus } from "../db/sends";
 import { type Config, onFreePlanLimits } from "../env";
 import { archiveAnswers } from "../lib/archive_address";
 import { archiveUrl } from "../render/render";
@@ -177,12 +177,13 @@ export function tickEstimate(
 
 /** A stored send as a view reads it: the row without its frozen bodies, which address its
  *  email carries, and its post's two addresses and listing (SPEC §5). */
-export type SendViewRow = SendSummary & {
-  web_link: "unlisted" | "archive";
-  post_slug: string | null;
-  post_unlisted_token: string | null;
-  post_email_only: number | null;
-};
+export type SendViewRow = SendSummary &
+  SendActorsRow & {
+    web_link: "unlisted" | "archive";
+    post_slug: string | null;
+    post_unlisted_token: string | null;
+    post_email_only: number | null;
+  };
 
 /**
  * Build the view of a send (the frozen bodies play no part). `hasRetries` is the cheap
@@ -283,6 +284,10 @@ export function buildSendView(
     completed_at: send.completed_at,
     remade_at: send.remade_at,
     tested_at: send.tested_at,
+    scheduled_by: readActor(send.scheduled_by),
+    rescheduled_by: readActor(send.rescheduled_by),
+    canceled_by: readActor(send.canceled_by),
+    resolved_by: readActor(send.resolved_by),
     audience: {
       count: total,
       fixed: send.audience_resolved_at !== null,

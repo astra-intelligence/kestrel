@@ -12,12 +12,14 @@ import type {
   HaltCause,
   HaltReason,
   Send,
+  SendActorsRow,
   SendCounts,
   SendStatus,
   SendSummary,
 } from "../../shared/sends";
 import { SEND_OWN_HALT_CAUSES } from "../../shared/sends";
 import { isErasedPlaceholder } from "../../shared/subscribers";
+import type { Actor } from "../../shared/who_acted";
 import { type ListParams, type ListSpec, orderByClause } from "../lib/list";
 import { log } from "../lib/log";
 import { unwrap } from "../lib/unwrap";
@@ -28,6 +30,11 @@ export type { SendStatus };
 export type SendRow = Send;
 
 export type { SendCounts };
+
+/** An actor read back from the log of acts (JSON), or null for no one recorded. */
+export function readActor(stored: string | null): Actor | null {
+  return stored === null ? null : (JSON.parse(stored) as Actor);
+}
 
 /** Read the counter columns off a send row into the API-facing `SendCounts` shape. */
 export function countsOf(send: SendSummary): SendCounts {
@@ -326,28 +333,36 @@ export const SEND_LIST_SPEC: ListSpec = {
 const SEND_LIST_COLS =
   "id, post_id, status, fire_at, subject, recipient_count, locked_until, scheduled_at, started_at, completed_at, audience_resolved_at, remade_at, tested_at, halt_reason, halt_cause, halt_error, halted_at, halt_retries, halt_retry_at, progress_at, c_pending, c_in_flight, c_accepted, c_delivered, c_bounced, c_complained, c_skipped, c_unsent, rev";
 
-// A view's columns: the list projection, which address its email carries, and what its post
+// A view's columns: the list projection, which address its email carries, what its post
 // says about its two addresses (the slug for the archive link, and the unlisted token) and its
-// listing (SPEC §5).
+// listing (SPEC §5), and who last took each act on it, from its log (SPEC §6), one indexed
+// lookup each.
 const postCol = (col: string, as: string) =>
   `(SELECT p.${col} FROM posts p WHERE p.id = sends.post_id) AS ${as}`;
+const lastActor = (acts: string, as: string) =>
+  `(SELECT a.actor FROM send_acts a WHERE a.send_id = sends.id AND a.act IN (${acts}) ORDER BY a.id DESC LIMIT 1) AS ${as}`;
 const VIEW_COLS = [
   SEND_LIST_COLS,
   "web_link",
   postCol("slug", "post_slug"),
   postCol("unlisted_token", "post_unlisted_token"),
   postCol("email_only", "post_email_only"),
+  lastActor("'schedule', 'send_now'", "scheduled_by"),
+  lastActor("'reschedule'", "rescheduled_by"),
+  lastActor("'cancel'", "canceled_by"),
+  lastActor("'resolve'", "resolved_by"),
 ].join(", ");
 
 /** A stored send as a view is built from it: the list projection, the address its email
- *  carries, and its post's addresses and listing (0 or 1 for a flag; each null only for a
- *  send whose post is gone). */
-export type SendViewSource = SendSummary & {
-  web_link: Send["web_link"];
-  post_slug: string | null;
-  post_unlisted_token: string | null;
-  post_email_only: number | null;
-};
+ *  carries, its post's addresses and listing (0 or 1 for a flag; each null only for a send
+ *  whose post is gone), and who last took each act on it. */
+export type SendViewSource = SendSummary &
+  SendActorsRow & {
+    web_link: Send["web_link"];
+    post_slug: string | null;
+    post_unlisted_token: string | null;
+    post_email_only: number | null;
+  };
 
 /** One send as a view reads it, with the retry probe its phase needs; null when it is gone. */
 export async function getSendViewRow(
@@ -1038,6 +1053,70 @@ export function cancelStmt(db: D1Database, sendId: string, now: number): D1Prepa
       `UPDATE sends SET status = 'canceled', completed_at = ?, rev = ${NEXT_REV} WHERE id = ? AND ${guard.sql}`,
     )
     .bind(now, sendId, ...guard.binds);
+}
+
+// --- the log of acts (SPEC §6, §11) ---------------------------------------------
+
+/** An act on a send that its log records. */
+export type SendAct = "schedule" | "send_now" | "reschedule" | "cancel" | "resolve";
+
+/** One act as the log records it: who took it, and what it set where it sets something. */
+export interface SendActInput {
+  sendId: string;
+  act: SendAct;
+  at: number;
+  by: Actor;
+  /** The fire time a schedule, Send now, or move set. */
+  fireAt?: number;
+  /** The resolution a Resolve chose. */
+  resolution?: "unsent" | "accepted";
+}
+
+/**
+ * Record an act in the send's log, landing only when `landed` holds: it runs in the same batch
+ * as the change it records, after it, and `landed` says whether that change took, so a refused
+ * or lost change records no act.
+ */
+export function recordActStmt(
+  db: D1Database,
+  act: SendActInput,
+  landed: { sql: string; binds: unknown[] },
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO send_acts (send_id, act, at, actor, fire_at, resolution)
+       SELECT ?, ?, ?, ?, ?, ? WHERE ${landed.sql}`,
+    )
+    .bind(
+      act.sendId,
+      act.act,
+      act.at,
+      JSON.stringify(act.by),
+      act.fireAt ?? null,
+      act.resolution ?? null,
+      ...landed.binds,
+    );
+}
+
+/** The send exists: a freeze's insert landed. */
+export function sendExists(sendId: string): { sql: string; binds: unknown[] } {
+  return { sql: "EXISTS (SELECT 1 FROM sends WHERE id = ?)", binds: [sendId] };
+}
+
+/** A reschedule landed: the send is still scheduled, at the time it set. */
+export function rescheduledTo(sendId: string, fireAt: number): { sql: string; binds: unknown[] } {
+  return {
+    sql: "EXISTS (SELECT 1 FROM sends WHERE id = ? AND status = 'scheduled' AND fire_at = ?)",
+    binds: [sendId, fireAt],
+  };
+}
+
+/** A cancel landed: the send was canceled at this cancel's moment. */
+export function canceledAt(sendId: string, now: number): { sql: string; binds: unknown[] } {
+  return {
+    sql: "EXISTS (SELECT 1 FROM sends WHERE id = ? AND status = 'canceled' AND completed_at = ?)",
+    binds: [sendId, now],
+  };
 }
 
 /** Record that the scheduled send's frozen copy was tested (SPEC §8), which settles a
@@ -1763,7 +1842,8 @@ export async function openDeliveryCount(db: D1Database, sendId: string): Promise
  * the reason into `error` as an inspectable audit trail. It touches ONLY
  * `dispatched` rows, so an already-`accepted` recipient is never disturbed, and it
  * never re-mails anyone (nothing here calls the provider). Only while `lease` holds the
- * send, so no run is waiting on those rows' answers. Returns rows resolved.
+ * send, so no run is waiting on those rows' answers. With `by`, the same batch records the
+ * Resolve in the send's log of acts (SPEC §6), when it settled any row. Returns rows resolved.
  */
 export async function resolveDispatched(
   db: D1Database,
@@ -1772,8 +1852,19 @@ export async function resolveDispatched(
   outcome: "unsent" | "accepted",
   note: string,
   now: number,
+  by: Actor | null,
 ): Promise<number> {
   const guard = holdsLease(sendId, lease);
+  // Recorded only when this Resolve settled a row: the rows it moved carry its note and moment.
+  // A second Resolve that took the lease after the first settled them moves none, and records
+  // nothing, though it held the lease.
+  const settled = {
+    sql: `${guard.sql} AND EXISTS (SELECT 1 FROM deliveries WHERE send_id = ? AND status = ? AND error = ? AND updated_at = ?)`,
+    binds: [...guard.binds, sendId, outcome, note, now],
+  };
+  const record = by
+    ? [recordActStmt(db, { sendId, act: "resolve", at: now, by, resolution: outcome }, settled)]
+    : [];
   const to: CounterCol = outcome === "unsent" ? "c_unsent" : "c_accepted";
   // One batch, the counter move first so it counts the rows about to move: the two land
   // together or not at all. Only rows with no receipt leave `c_in_flight`; one a receipt
@@ -1792,6 +1883,7 @@ export async function resolveDispatched(
           WHERE send_id = ? AND status = 'dispatched' AND ${guard.sql}`,
       )
       .bind(outcome, note, now, sendId, ...guard.binds),
+    ...record,
   ]);
   return moved?.meta.changes ?? 0;
 }

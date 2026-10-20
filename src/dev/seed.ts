@@ -1194,11 +1194,10 @@ export async function seedDatabase(
   const rand = makePrng(options?.seed ?? DEFAULT_SEED);
   const built = size != null ? buildScaledAudience(timeline, size, rand) : buildAudience(timeline);
   built.subscribers.push(...testRecipients(demo.posts, timeline));
-  // The import's record first, since its subscribers name it; the publisher committed it.
-  await insertImport(db, {
-    ...built.importRecord,
-    principal_email: demo.publication.testRecipients[0] ?? "editor@fieldnotes.example",
-  });
+  // The import's record first, since its subscribers name it; the publisher committed it, in
+  // the editor, as they scheduled every send.
+  const publisher = demo.publication.testRecipients[0] ?? "editor@fieldnotes.example";
+  await insertImport(db, { ...built.importRecord, principal_email: publisher });
   await insertSubscribers(db, built.subscribers);
   await insertSuppressions(db, built.suppressions);
 
@@ -1282,6 +1281,7 @@ export async function seedDatabase(
         subject: result.subject,
         recipient_count: audience.length,
         scheduled_at: at,
+        scheduled_by: { email: publisher, act: "schedule" },
         started_at: null,
         completed_at: null,
       });
@@ -1307,6 +1307,7 @@ export async function seedDatabase(
         subject: result.subject,
         recipient_count: demoPost.sentTo.length,
         scheduled_at: fireAt - 6 * 60 * 1000, // Send now: the minimum lead, then the minute
+        scheduled_by: { email: publisher, act: "send_now" },
         started_at: fireAt,
         completed_at: sentAt,
       });
@@ -1341,6 +1342,7 @@ export async function seedDatabase(
       subject: result.subject,
       recipient_count: sentAudience.length,
       scheduled_at: scheduledAt,
+      scheduled_by: { email: publisher, act: "schedule" },
       started_at: fireAt,
       completed_at: completedAt,
     });

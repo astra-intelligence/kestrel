@@ -15,7 +15,7 @@ import { applyDeliveryEvents } from "../src/services/webhook_events";
 import { BatchProvider } from "./support/batching";
 import { toNextTick } from "./support/clock";
 import { condition, has } from "./support/conditions";
-import { addresses, frozenSend, resetDatabase, seedConfirmed } from "./support/fixtures";
+import { addresses, frozenSend, person, resetDatabase, seedConfirmed } from "./support/fixtures";
 import { AUTH, base } from "./support/http";
 import { allowErrorLogs } from "./support/log";
 
@@ -88,7 +88,7 @@ describe("a wedged send", () => {
     ).json()) as SendFeedResponse;
     expect(feed.sends).toEqual([]); // nothing changed, so nothing is reported
 
-    await resolveStuckSend(env, send.id, "accepted", "tester");
+    await resolveStuckSend(env, send.id, "accepted", person("tester"));
     expect((await row(send.id)).status).toBe("sent");
   });
 });
@@ -172,7 +172,7 @@ describe("a batch an earlier release left queued under its key", () => {
     await sweep(env); // the fresh row goes out; the migrated batch is never re-sent
     expect(await sends.deliveryRollup(env.DB, send.id)).toEqual({ dispatched: 2, accepted: 1 });
     expect(isWedged(await row(send.id))).toBe(true);
-    const resolved = await resolveStuckSend(env, send.id, "unsent", "tester");
+    const resolved = await resolveStuckSend(env, send.id, "unsent", person("tester"));
     expect(resolved.completed).toBe(true);
   });
 });
@@ -221,7 +221,7 @@ describe("a wedged send a receipt with no provider id reaches", () => {
     ]);
     expect(p.actions.map((a) => a.name)).toEqual(["resolve"]);
 
-    await resolveStuckSend(env, send.id, "accepted", "tester");
+    await resolveStuckSend(env, send.id, "accepted", person("tester"));
     expect((await row(send.id)).status).toBe("sent");
   });
 });

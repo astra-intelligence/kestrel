@@ -14,10 +14,16 @@ import {
   type SendListResponse,
   type SendPhase,
   type SendResponse,
-  type SendSummary,
   type SendView,
 } from "../../shared/sends";
-import { type FakeApi, type FakeRequest, type FakeRoute, jsonResponse } from "./support";
+import type { Actor } from "../../shared/who_acted";
+import {
+  type FakeApi,
+  type FakeRequest,
+  type FakeRoute,
+  jsonResponse,
+  type SendRowFixture,
+} from "./support";
 
 /** What a scripted send carries beyond its row: what the server would derive for it. */
 export interface SendExtras {
@@ -43,13 +49,18 @@ export function sendRef({ id, status, fire_at, rev }: SendView): SendRef {
   return { id, status, fire_at, rev };
 }
 
+/** A stored actor (JSON) as the API carries it. */
+function actor(stored: string | null): Actor | null {
+  return stored === null ? null : (JSON.parse(stored) as Actor);
+}
+
 /**
  * A stored send row as the API carries it, a `SendView`, for a spec's scripted sends: the
  * facts carried over, the counts from the counters, the audience from `recipient_count`,
  * and plain derived fields (a phase from the status, no conditions or actions) that `over`
  * replaces where a spec needs them.
  */
-export function sendView(row: SendSummary, over: Partial<SendView> = {}): SendView {
+export function sendView(row: SendRowFixture, over: Partial<SendView> = {}): SendView {
   const counts = {
     pending: row.c_pending,
     dispatched: row.c_in_flight,
@@ -75,6 +86,10 @@ export function sendView(row: SendSummary, over: Partial<SendView> = {}): SendVi
     completed_at: row.completed_at,
     remade_at: row.remade_at,
     tested_at: row.tested_at,
+    scheduled_by: actor(row.scheduled_by ?? null),
+    rescheduled_by: actor(row.rescheduled_by ?? null),
+    canceled_by: actor(row.canceled_by ?? null),
+    resolved_by: actor(row.resolved_by ?? null),
     audience: {
       count: row.recipient_count,
       fixed: row.audience_resolved_at !== null,
@@ -206,11 +221,11 @@ const MISSED_MS = 5 * 60_000;
  * `settling` while sent with receipts outstanding (`c_accepted`), `complete` once none are;
  * the halt comes from its `halt_*` fields, `account` reading as refused.
  */
-export function sendServer(rows: SendSummary[] = []) {
-  const sends = new Map<string, { row: SendSummary; extras: SendExtras }>();
+export function sendServer(rows: SendRowFixture[] = []) {
+  const sends = new Map<string, { row: SendRowFixture; extras: SendExtras }>();
   const removed = new Map<string, number>();
   let seq = 0;
-  const put = (row: SendSummary, extras: SendExtras = {}) => {
+  const put = (row: SendRowFixture, extras: SendExtras = {}) => {
     seq += 1;
     sends.set(row.id, { row: { ...row, rev: seq }, extras });
   };
@@ -218,7 +233,7 @@ export function sendServer(rows: SendSummary[] = []) {
     put(row);
   }
   const cursor = () => encodeSendCursor({ seq, at: Date.now() });
-  const derive = ({ row, extras }: { row: SendSummary; extras: SendExtras }, now: number) => {
+  const derive = ({ row, extras }: { row: SendRowFixture; extras: SendExtras }, now: number) => {
     const clock = row.status === "scheduled" && now >= row.fire_at;
     const phase: SendPhase =
       extras.phase ??
@@ -296,7 +311,7 @@ export function sendServer(rows: SendSummary[] = []) {
           : []);
     return { phase, conditions, actions };
   };
-  const view = (s: { row: SendSummary; extras: SendExtras }, now: number): SendView => {
+  const view = (s: { row: SendRowFixture; extras: SendExtras }, now: number): SendView => {
     const { phase, conditions, actions } = derive(s, now);
     return sendView(s.row, {
       as_of: now,
@@ -315,7 +330,7 @@ export function sendServer(rows: SendSummary[] = []) {
   // When a send can next change with no one acting, by the Worker's rule in outline: now
   // while due short of the tolerance or sending with nothing to wait for; a halted send at
   // its retry (less the sweep's half-tick of slack); a scheduled one at its fire time.
-  const nextChange = (s: { row: SendSummary; extras: SendExtras }, now: number) => {
+  const nextChange = (s: { row: SendRowFixture; extras: SendExtras }, now: number) => {
     const { row } = s;
     const { conditions } = derive(s, now);
     const kinds = new Set(conditions.map((c) => c.kind));
@@ -327,7 +342,7 @@ export function sendServer(rows: SendSummary[] = []) {
     }
     return row.halt_retry_at === null ? now : Math.max(now, row.halt_retry_at - 30_000);
   };
-  const byFire = (dir: 1 | -1) => (a: { row: SendSummary }, b: { row: SendSummary }) =>
+  const byFire = (dir: 1 | -1) => (a: { row: SendRowFixture }, b: { row: SendRowFixture }) =>
     dir * (a.row.fire_at - b.row.fire_at);
   const routes: FakeRoute[] = [
     {
@@ -445,7 +460,7 @@ export function sendServer(rows: SendSummary[] = []) {
     /** Write a send: a new one, or every field of one again (`extras` replaced, not merged). */
     put,
     /** Change some of a send's fields, as a write. */
-    edit(id: string, over: Partial<SendSummary>, extras: SendExtras = {}) {
+    edit(id: string, over: Partial<SendRowFixture>, extras: SendExtras = {}) {
       const s = sends.get(id);
       if (!s) {
         throw new Error(`no send ${id}`);

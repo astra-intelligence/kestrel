@@ -19,7 +19,7 @@ describe("the migrations the schema gate expects (SPEC §9)", () => {
 // The exact set, not a containment check: a table a migration adds or drops has to be
 // named here, so the list can't silently fall behind the schema.
 describe("schema (every migration applied)", () => {
-  it("has exactly the app's eleven tables", async () => {
+  it("has exactly the app's twelve tables", async () => {
     const { results } = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'",
     ).all<{ name: string }>();
@@ -39,6 +39,8 @@ describe("schema (every migration applied)", () => {
         "send_tombstones",
         // 0005_imports
         "imports",
+        // 0014_send_acts
+        "send_acts",
       ].sort(),
     );
   });
@@ -674,5 +676,48 @@ describe("schema (0013_who_acted_client)", () => {
     await expect(insert("Claude")).rejects.toThrow(/CHECK/);
     await expect(insert("")).rejects.toThrow(/CHECK/);
     await expect(insert("x".repeat(33))).rejects.toThrow(/CHECK/);
+  });
+});
+
+describe("schema (0014_send_acts)", () => {
+  async function aSend(): Promise<void> {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO posts (id, slug, created_at, updated_at) VALUES ('a', 'one', 0, 0)",
+      ),
+      env.DB.prepare(
+        "INSERT INTO sends (id, post_id, status, fire_at, rendered_html, rendered_text, subject, scheduled_at) VALUES ('s1', 'a', 'scheduled', 0, '', '', '', 0)",
+      ),
+    ]);
+  }
+  const insert = (act: string, actor: string, fireAt: number | null, resolution: string | null) =>
+    env.DB.prepare(
+      "INSERT INTO send_acts (send_id, act, at, actor, fire_at, resolution) VALUES ('s1', ?, 0, ?, ?, ?)",
+    )
+      .bind(act, actor, fireAt, resolution)
+      .run();
+  const PERSON = '{"kind":"human","email":"you@example.com","client":"editor"}';
+
+  it("keeps each act's actor a person or a service token, as JSON (SPEC §11)", async () => {
+    await aSend();
+    await insert("schedule", PERSON, 1, null);
+    await insert("cancel", '{"kind":"service","token_id":"t.access","client":null}', null, null);
+    await expect(insert("cancel", "you@example.com", null, null)).rejects.toThrow(/CHECK/);
+    await expect(insert("cancel", '{"kind":"claude"}', null, null)).rejects.toThrow(/CHECK/);
+  });
+
+  it("keeps a fire time on exactly the acts that set one, and a resolution on a Resolve (SPEC §6)", async () => {
+    await aSend();
+    for (const act of ["schedule", "send_now", "reschedule"]) {
+      await insert(act, PERSON, 1, null);
+      await expect(insert(act, PERSON, null, null)).rejects.toThrow(/CHECK/);
+    }
+    await insert("cancel", PERSON, null, null);
+    await expect(insert("cancel", PERSON, 1, null)).rejects.toThrow(/CHECK/);
+    await insert("resolve", PERSON, null, "unsent");
+    await expect(insert("resolve", PERSON, null, null)).rejects.toThrow(/CHECK/);
+    await expect(insert("resolve", PERSON, null, "maybe")).rejects.toThrow(/CHECK/);
+    await expect(insert("cancel", PERSON, null, "unsent")).rejects.toThrow(/CHECK/);
+    await expect(insert("publish", PERSON, null, null)).rejects.toThrow(/CHECK/);
   });
 });

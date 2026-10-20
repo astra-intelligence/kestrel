@@ -1,6 +1,6 @@
 # Working with Claude
 
-Ask Claude in plain words, the way you'd ask a colleague. It works through the same API as the dashboard, signed in as you, so it can do what you can do there, and nothing more. Everything it changes shows in the dashboard as yours, via Claude Code.
+Ask Claude in plain words, the way you'd ask a colleague. It works through the same API as the dashboard, signed in as you, so it can do what you can do there, and nothing more. Everything it changes shows in the dashboard as yours, via Claude Code, sends included: a post's banner and a send's page say who scheduled, moved, or canceled it ("Scheduled by you@example.com via Claude Code").
 
 To set Claude up, [connect Claude Code](#connect-claude-code), below. Claude reads these same pages from your Kestrel, so it explains things in the words you see here.
 

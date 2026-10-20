@@ -15,6 +15,7 @@
  */
 
 import { tooSoonMessage } from "../../shared/sends";
+import type { Actor } from "../../shared/who_acted";
 import { listImages } from "../db/images";
 import type { PostRow } from "../db/posts";
 import {
@@ -26,14 +27,18 @@ import {
   setPublishingStmt,
 } from "../db/posts";
 import {
+  canceledAt,
   cancelStmt,
   type FrozenRender,
   getActiveSendForPost,
   getSend,
   insertScheduledSendStmt,
   noActiveSendFor,
+  recordActStmt,
+  rescheduledTo,
   rescheduleStmt,
   type SendRow,
+  sendExists,
   settingsVersionIs,
   stampSendsOfPostStmt,
 } from "../db/sends";
@@ -122,13 +127,16 @@ const ACTIVE_SEND_EXISTS =
 /** Create a scheduled Send from the post's current content and lock the post. `postSettings`, when
  *  given, sets the post's listing and slug in the same batch (SPEC §4, §5), already resolved
  *  by the caller: they are not part of the render, so they land beside the lock rather than in
- *  the frozen copy, and a refused freeze changes neither. */
+ *  the frozen copy, and a refused freeze changes neither. `recorded` is the act this freeze is, a
+ *  schedule or Send now, and who took it, which the same batch adds to the send's log of acts
+ *  (SPEC §6, §11); null records none, as a fixture does. */
 export async function freeze(
   env: AppEnv,
   config: Config,
   post: PostRow,
   fireAt: number,
   postSettings: PublishingInput = {},
+  recorded: { act: "schedule" | "send_now"; by: Actor } | null = null,
 ): Promise<SendRow> {
   const active = await getActiveSendForPost(env.DB, post.id);
   if (active) {
@@ -190,6 +198,15 @@ export async function freeze(
           settingsVersionIs(settingsVersion),
         ),
         ...listing,
+        ...(recorded
+          ? [
+              recordActStmt(
+                env.DB,
+                { sendId: id, act: recorded.act, at: now, by: recorded.by, fireAt },
+                sendExists(id),
+              ),
+            ]
+          : []),
       ]);
     } catch (err) {
       // The pre-check above is UX, not the guarantee: a concurrent freeze() for the
@@ -270,13 +287,16 @@ async function windowClosed(env: AppEnv, send: SendRow, what: string) {
  *
  * A move to the time the send already has (on the minute, as it is stored) changes nothing
  * and answers `changed: false` before the minimum lead is checked, so a retried move is safe;
- * any other time passes `acceptFireAt`: at least `minLeadMs` out, stored on the minute.
+ * any other time passes `acceptFireAt`: at least `minLeadMs` out, stored on the minute. With
+ * `by`, a move that lands adds itself to the send's log of acts (SPEC §6, §11), in the same
+ * batch; one that changes nothing records no act.
  */
 export async function reschedule(
   env: AppEnv,
   sendId: string,
   fireAt: number,
   minLeadMs: number,
+  by: Actor | null = null,
 ): Promise<ActionResult> {
   const send = await readForAction(env, sendId);
   const now = Date.now();
@@ -294,10 +314,21 @@ export async function reschedule(
     return { send, changed: false };
   }
   const target = acceptFireAt(fireAt, minLeadMs, { now });
-  const res = await rescheduleStmt(env.DB, sendId, target, now).run();
-  if ((res.meta.changes ?? 0) === 0) {
+  const [res] = await env.DB.batch([
+    rescheduleStmt(env.DB, sendId, target, now),
+    ...(by
+      ? [
+          recordActStmt(
+            env.DB,
+            { sendId, act: "reschedule", at: now, by, fireAt: target },
+            rescheduledTo(sendId, target),
+          ),
+        ]
+      : []),
+  ]);
+  if ((res?.meta.changes ?? 0) === 0) {
     // It changed between the read and the write: answer for what it is now.
-    return reschedule(env, sendId, fireAt, minLeadMs);
+    return reschedule(env, sendId, fireAt, minLeadMs, by);
   }
   log.info("send.rescheduled", {
     sendId,
@@ -310,8 +341,13 @@ export async function reschedule(
 
 /** Cancel a pending Send and unlock its post, in one batch so the two land together:
  *  a post left `scheduled` with no active send would be locked out of the editor.
- *  Only inside the review window; a send canceled already answers `changed: false`. */
-export async function cancel(env: AppEnv, sendId: string): Promise<ActionResult> {
+ *  Only inside the review window; a send canceled already answers `changed: false` and records
+ *  no act. With `by`, a cancel that lands adds itself to the send's log of acts (SPEC §6, §11). */
+export async function cancel(
+  env: AppEnv,
+  sendId: string,
+  by: Actor | null = null,
+): Promise<ActionResult> {
   const send = await readForAction(env, sendId);
   if (send.status === "canceled") {
     return { send, changed: false };
@@ -330,10 +366,13 @@ export async function cancel(env: AppEnv, sendId: string): Promise<ActionResult>
       now,
       noActiveSendFor(send.post_id),
     ),
+    ...(by
+      ? [recordActStmt(env.DB, { sendId, act: "cancel", at: now, by }, canceledAt(sendId, now))]
+      : []),
   ]);
   if ((res?.meta.changes ?? 0) === 0) {
     // It changed between the read and the write: answer for what it is now.
-    return cancel(env, sendId);
+    return cancel(env, sendId, by);
   }
   log.info("send.canceled", { sendId, postId: send.post_id });
   return { send: unwrap(await getSend(env.DB, sendId), "send"), changed: true };

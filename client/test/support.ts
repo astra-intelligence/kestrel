@@ -5,7 +5,7 @@
 // send server over it is `send_server.ts`. Imported by specs only; never part of the bundle.
 
 import { vi } from "vitest";
-import type { SendSummary } from "../../shared/sends";
+import type { SendActorsRow, SendSummary } from "../../shared/sends";
 import type { DeploymentView, SettingsResponse, SettingsView } from "../../shared/settings";
 import { unmount } from "../lifecycle";
 import { appState } from "../state";
@@ -240,11 +240,14 @@ export function settingsResponse(
 }
 
 /**
- * A stored send row (`SendSummary`), for a spec's scripted sends: scheduled an hour from now,
+ * A stored send row as a view is built from it (`SendSummary`, and who last took each act on
+ * it), for a spec's scripted sends: scheduled an hour from now,
  * to ten recipients, nothing handed off or counted yet. A spec sets in `over` whatever it
  * asserts on, so the value reads where the assertion is.
  */
-export function sendSummary(over: Partial<SendSummary> = {}): SendSummary {
+export type SendRowFixture = SendSummary & Partial<SendActorsRow>;
+
+export function sendSummary(over: Partial<SendRowFixture> = {}): SendRowFixture {
   return {
     id: "x1",
     post_id: "p1",
@@ -274,6 +277,10 @@ export function sendSummary(over: Partial<SendSummary> = {}): SendSummary {
     c_complained: 0,
     c_skipped: 0,
     c_unsent: 0,
+    scheduled_by: null,
+    rescheduled_by: null,
+    canceled_by: null,
+    resolved_by: null,
     rev: 1,
     ...over,
   };

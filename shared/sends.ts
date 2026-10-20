@@ -6,6 +6,7 @@
 // so neither can drift.
 
 import type { PageMeta } from "./list";
+import type { Actor } from "./who_acted";
 
 /** A send's statuses, in their order, which the list's `status` filter takes. */
 export const SEND_STATUSES = ["scheduled", "sending", "sent", "canceled"] as const;
@@ -299,6 +300,19 @@ export type SendSummary = Omit<
 >;
 
 /**
+ * Who last took each act on a send, read beside its row from its log of acts (SPEC §6, §11), as
+ * the stored actor (JSON): who scheduled it (by Schedule or Send now), last moved it, canceled
+ * it, and last resolved it while it was wedged; null for an act no one has taken, or none
+ * recorded.
+ */
+export interface SendActorsRow {
+  scheduled_by: string | null;
+  rescheduled_by: string | null;
+  canceled_by: string | null;
+  resolved_by: string | null;
+}
+
+/**
  * How long a send may hand off no one, with nothing else to explain why, before it is
  * flagged as in flight too long (SPEC §12): long enough that a slow tick or a brief stall
  * never alarms, short enough to be told the same afternoon. A send that is handing off is
@@ -416,6 +430,15 @@ export interface SendView {
   remade_at: number | null;
   /** When the scheduled email was last tested; null if never. */
   tested_at: number | null;
+  /**
+   * Who acted on the send (SPEC §6, §11), the latest of each act: who scheduled it (by
+   * Schedule or Send now), last moved its fire time, canceled it, and last resolved it while it
+   * was wedged. Null for an act no one has taken, and for one taken before it was recorded.
+   */
+  scheduled_by: Actor | null;
+  rescheduled_by: Actor | null;
+  canceled_by: Actor | null;
+  resolved_by: Actor | null;
   /**
    * Who the send goes to: `count` is an estimate while the send is scheduled (the audience
    * is resolved when it fires, SPEC §6), and the audience at fire once `fixed`, from

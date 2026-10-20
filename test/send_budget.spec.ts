@@ -21,7 +21,7 @@ import { resolveStuckSend } from "../src/send/resolve";
 import { sweep } from "../src/send/sweep";
 import { BatchProvider, SesLikeProvider } from "./support/batching";
 import { guardD1 } from "./support/d1_guard";
-import { addresses, dueSend, resetDatabase, seedConfirmed, tick } from "./support/fixtures";
+import { addresses, dueSend, person, resetDatabase, seedConfirmed, tick } from "./support/fixtures";
 import { allowErrorLogs } from "./support/log";
 import { answerSes } from "./support/ses";
 
@@ -218,7 +218,7 @@ describe("a batch interrupted after acceptance", () => {
         accepted: 49,
         skipped: 1,
       });
-      const resolved = await resolveStuckSend(env, send.id, "accepted", "op@example.com");
+      const resolved = await resolveStuckSend(env, send.id, "accepted", person("op@example.com"));
       expect(resolved.completed).toBe(true);
       expect((await sends.getSend(env.DB, send.id))!.status).toBe("sent");
     });

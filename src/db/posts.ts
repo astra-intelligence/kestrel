@@ -581,7 +581,7 @@ export async function updatePost(
 
 /**
  * Delete a post and everything that references it — revisions, image rows, and
- * any sends (with their deliveries and notifications) left from prior scheduling. Children are
+ * any sends (with their deliveries, notifications, and log of acts) left from prior scheduling. Children are
  * deleted first so the schema's FKs hold. Callers guard this to drafts (see
  * `requireDraft`), and a post is only a draft with no sent post behind it: a
  * scheduled or sent post can't reach here, so the only sends present are the
@@ -597,6 +597,9 @@ export async function deletePost(db: D1Database, id: string): Promise<void> {
       .prepare(
         "DELETE FROM notifications WHERE send_id IN (SELECT id FROM sends WHERE post_id = ?)",
       )
+      .bind(id),
+    db
+      .prepare("DELETE FROM send_acts WHERE send_id IN (SELECT id FROM sends WHERE post_id = ?)")
       .bind(id),
     tombstoneSendsStmt(db, "post_id = ?", id),
     db.prepare("DELETE FROM sends WHERE post_id = ?").bind(id),

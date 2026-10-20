@@ -28,6 +28,11 @@ export function viewOf(
       post_slug: null,
       post_unlisted_token: null,
       post_email_only: 0,
+      // Who acted lives in the send's log of acts, which a row alone doesn't carry.
+      scheduled_by: null,
+      rescheduled_by: null,
+      canceled_by: null,
+      resolved_by: null,
     },
     {
       provider,

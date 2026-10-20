@@ -16,6 +16,7 @@ import {
   jsonResponse,
   mount,
   resetShell,
+  type SendRowFixture,
   sendSummary,
   settingsResponse,
   stubClipboard,
@@ -25,7 +26,7 @@ import {
 import { renderSentRecord } from "./record";
 
 // A send that went out to 10: 8 delivered, 1 bounced, 1 never handed off.
-const send = (over: Partial<SendSummary> = {}): SendSummary =>
+const send = (over: Partial<SendRowFixture> = {}): SendRowFixture =>
   sendSummary({
     status: "sent",
     subject: "Owls",
@@ -91,7 +92,7 @@ describe("sent record", () => {
 
   // A sent send on the fake server: its read, the feed, and its outcomes all come from its
   // counters, and `receipt` moves them the way a delivery webhook does.
-  const sentSend = (over: Partial<SendSummary> = {}) => {
+  const sentSend = (over: Partial<SendRowFixture> = {}) => {
     const server = sendServer([send(over)]);
     return {
       routes: server.routes,
@@ -521,6 +522,78 @@ describe("sent record", () => {
     expect($(".rec-card").textContent).toMatch(/no one was mailed/);
     expect(document.querySelector(".rec-tiles")).toBeNull();
     expect(fake.unhandled).toHaveLength(0);
+  });
+
+  describe("who acted on the send (SPEC §11, DESIGN §3)", () => {
+    const by = (actor: object) => JSON.stringify(actor);
+    const VIA_CLAUDE = by({ kind: "human", email: "you@example.com", client: "claude-code" });
+
+    it("names who scheduled a sent send and who resolved it, under when it was sent", async () => {
+      fake = fakeApi([
+        ...sentSend({
+          scheduled_by: VIA_CLAUDE,
+          resolved_by: by({ kind: "service", token_id: "ci.access", client: null }),
+        }).routes,
+        noRows,
+      ]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($(".rec-by").textContent).toBe(
+        "Scheduled by you@example.com via Claude Code · resolved by the service token ci.access",
+      );
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("names who scheduled a canceled send, who moved it, and who canceled it", async () => {
+      fake = fakeApi(
+        sentSend({
+          status: "canceled",
+          started_at: null,
+          completed_at: 950_000,
+          c_delivered: 0,
+          c_bounced: 0,
+          c_unsent: 0,
+          scheduled_by: by({ kind: "human", email: "you@example.com", client: "editor" }),
+          rescheduled_by: VIA_CLAUDE,
+          canceled_by: by({ kind: "human", email: "you@example.com", client: null }),
+        }).routes,
+      );
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($(".rec-by").textContent).toBe(
+        "Scheduled by you@example.com · rescheduled by you@example.com via Claude Code · canceled by you@example.com via the API",
+      );
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("names who scheduled a send on its watch, and nothing for a send none is recorded on", async () => {
+      const watched = sendView(
+        send({
+          status: "sending",
+          completed_at: null,
+          scheduled_by: by({ kind: "service", client: null }),
+        }),
+        { phase: "progressing" },
+      );
+      fake = fakeApi([
+        {
+          path: "/api/sends/x1",
+          reply: () => ({ send: watched, outcomes: outcomes(), cursor: "1.1" }),
+        },
+        feedOf(() => watched),
+      ]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect($(".watch-card .rec-by").textContent).toBe("Scheduled by a service token");
+      unmount();
+      fake.restore();
+
+      fake = fakeApi([...sentSend().routes, noRows]);
+      await mount((r, s) => renderSentRecord("x1", r, s));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector(".rec-by")).toBeNull();
+      expect(fake.unhandled).toHaveLength(0);
+    });
   });
 
   it("follows receipts past ten minutes with no cap, never re-reading the whole record", async () => {
