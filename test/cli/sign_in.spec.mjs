@@ -4,7 +4,15 @@
  * loopback callback that receives the browser's approval. Access itself is stubbed at fetch;
  * the flow against a real Access application is checked by hand on a test instance.
  */
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,8 +21,11 @@ import { accessToken, chooseInstance, parseApiArgs, signedInFetch } from "../../
 import {
   configDir,
   credentialsFile,
+  LOCK_STALE_MS,
+  LOCK_WAIT_MS,
   readSignIn,
   readSignIns,
+  withCredentialsLock,
   writeSignIn,
 } from "../../cli/credentials.mjs";
 import { signIn } from "../../cli/login.mjs";
@@ -25,8 +36,10 @@ import {
   listenForCode,
   needsRefresh,
   pkcePair,
+  refreshTokens,
   resourceMetadataUrl,
   SignInError,
+  TOKEN_TIMEOUT_MS,
   tokenFields,
 } from "../../cli/oauth.mjs";
 
@@ -116,12 +129,12 @@ describe("where a sign-in is kept", () => {
     expect(configDir({ KESTREL_CONFIG_DIR: "/elsewhere" }, "linux")).toBe("/elsewhere");
   });
 
-  it("is readable by its owner alone, keyed by origin, and forgetting one leaves the others", () => {
-    writeSignIn(ORIGIN, stored(60_000));
-    writeSignIn("https://b.example.com", stored(60_000, { client_id: "client-b" }));
+  it("is readable by its owner alone, keyed by origin, and forgetting one leaves the others", async () => {
+    await writeSignIn(ORIGIN, stored(60_000));
+    await writeSignIn("https://b.example.com", stored(60_000, { client_id: "client-b" }));
     expect(statSync(credentialsFile()).mode & 0o777).toBe(0o600);
     expect(readSignIn(ORIGIN)?.client_id).toBe("client-1");
-    writeSignIn(ORIGIN, undefined);
+    await writeSignIn(ORIGIN, undefined);
     expect(Object.keys(readSignIns())).toEqual(["https://b.example.com"]);
   });
 });
@@ -199,7 +212,7 @@ describe("the OAuth steps", () => {
 
 describe("a call as the signed-in person", () => {
   it("refreshes an expiring token before sending it, and stores what comes back", async () => {
-    writeSignIn(ORIGIN, stored(10_000));
+    await writeSignIn(ORIGIN, stored(10_000));
     const calls = stubFetch(() =>
       json({ access_token: "oauth:new", expires_in: 900, refresh_token: "refresh-2" }),
     );
@@ -211,7 +224,7 @@ describe("a call as the signed-in person", () => {
   });
 
   it("asks the person to sign in again once the grant has ended", async () => {
-    writeSignIn(ORIGIN, stored(-1));
+    await writeSignIn(ORIGIN, stored(-1));
     stubFetch(() => json({ error: "invalid_grant" }, 400));
     await expect(accessToken(ORIGIN)).rejects.toThrow(
       `Your sign-in to ${ORIGIN} has ended. Run \`npx kestrel login ${ORIGIN}\` again.`,
@@ -219,7 +232,7 @@ describe("a call as the signed-in person", () => {
   });
 
   it("names its client and retries once after a refresh when Access refuses the token, but not on the app's own 401", async () => {
-    writeSignIn(ORIGIN, stored(10 * 60_000));
+    await writeSignIn(ORIGIN, stored(10 * 60_000));
     const edge401 = () =>
       json({ error: "invalid_token" }, 401, {
         "www-authenticate": `Bearer realm="OAuth", resource_metadata="${ORIGIN}/m"`,
@@ -293,11 +306,11 @@ describe("the loopback callback", () => {
 });
 
 describe("refusing a credentials file it can't read", () => {
-  it("names the file and leaves it as it is, rather than dropping the sign-ins it holds", () => {
+  it("names the file and leaves it as it is, rather than dropping the sign-ins it holds", async () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(credentialsFile(), '{"version":2,"instances":{}}');
     expect(() => readSignIns()).toThrow(credentialsFile());
-    expect(() => writeSignIn(ORIGIN, stored(60_000))).toThrow(/left as it is/);
+    await expect(writeSignIn(ORIGIN, stored(60_000))).rejects.toThrow(/left as it is/);
     writeFileSync(credentialsFile(), "not json");
     expect(() => readSignIn(ORIGIN)).toThrow(credentialsFile());
   });
@@ -305,7 +318,7 @@ describe("refusing a credentials file it can't read", () => {
 
 describe("refreshing side by side", () => {
   it("spends one refresh token once, however many calls need a fresh token at the same moment", async () => {
-    writeSignIn(ORIGIN, stored(10_000));
+    await writeSignIn(ORIGIN, stored(10_000));
     let refreshes = 0;
     vi.stubGlobal("fetch", async () => {
       refreshes++;
@@ -322,8 +335,78 @@ describe("refreshing side by side", () => {
   });
 
   it("asks for a new sign-in, by the instance's address, when no refresh token is stored", async () => {
-    writeSignIn(ORIGIN, stored(-1, { refresh_token: undefined }));
+    await writeSignIn(ORIGIN, stored(-1, { refresh_token: undefined }));
     await expect(accessToken(ORIGIN)).rejects.toThrow(`Run \`npx kestrel login ${ORIGIN}\` again.`);
+  });
+});
+
+describe("the credentials lock", () => {
+  it("leaves the lock of whoever took it over, when its holder outlived the staleness rule", async () => {
+    const lock = `${credentialsFile()}.lock`;
+    await withCredentialsLock(async () => {
+      // Another process judged this holder dead and took the lock over while it ran.
+      rmSync(lock);
+      writeFileSync(lock, "999:takeover");
+    });
+    expect(readFileSync(lock, "utf8")).toBe("999:takeover");
+  });
+
+  it("takes over a stale lock, and surfaces a timeout while the body is read", async () => {
+    const lock = `${credentialsFile()}.lock`;
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(lock, "1:dead");
+    const old = new Date(Date.now() - LOCK_STALE_MS - 1000);
+    utimesSync(lock, old, old);
+    expect(await withCredentialsLock(async () => "got it")).toBe("got it");
+    expect(() => statSync(lock)).toThrow();
+    vi.stubGlobal("fetch", async (_url, init) => {
+      const res = new Response("{}", { status: 200 });
+      res.json = () =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(init.signal.reason));
+        });
+      return res;
+    });
+    await expect(refreshTokens(stored(-1), 30)).rejects.toThrow(/didn't answer the token request/);
+  });
+
+  it("removes its own lock on release, and a later holder gets in", async () => {
+    const lock = `${credentialsFile()}.lock`;
+    await withCredentialsLock(async () => {
+      expect(readFileSync(lock, "utf8")).toMatch(/^\d+:[0-9a-f]+$/);
+    });
+    expect(() => statSync(lock)).toThrow();
+    expect(await withCredentialsLock(async () => "again")).toBe("again");
+  });
+
+  it("keeps both entries when a login for one instance races a refresh of another", async () => {
+    const other = "https://b.example.com";
+    await writeSignIn(ORIGIN, stored(10_000));
+    let login;
+    vi.stubGlobal("fetch", async () => {
+      // The login arrives while the refresh holds the lock, so it has to wait its turn.
+      login = writeSignIn(other, stored(60_000, { client_id: "client-b" }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(readSignIns()[other]).toBeUndefined();
+      return json({ access_token: "oauth:new", expires_in: 900, refresh_token: "refresh-2" });
+    });
+    await accessToken(ORIGIN);
+    await login;
+    expect(readSignIn(ORIGIN)?.refresh_token).toBe("refresh-2");
+    expect(readSignIn(other)?.client_id).toBe("client-b");
+  });
+
+  it("gives up on a token request that hangs, well before the lock would go stale", async () => {
+    expect(TOKEN_TIMEOUT_MS).toBeLessThan(LOCK_WAIT_MS);
+    expect(LOCK_WAIT_MS).toBeLessThan(LOCK_STALE_MS);
+    vi.stubGlobal(
+      "fetch",
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(init.signal.reason));
+        }),
+    );
+    await expect(refreshTokens(stored(-1), 30)).rejects.toThrow(/didn't answer the token request/);
   });
 });
 
@@ -421,12 +504,12 @@ describe("kestrel login's sign-in", () => {
 
   it("reuses this computer's registered client while its redirect port is free", async () => {
     const port = await new Promise((resolve) => {
-      const probe = createServer().listen(0, "127.0.0.1", () => {
+      const probe = createServer().listen(0, "127.0.0.1", async () => {
         const p = probe.address().port;
         probe.close(() => resolve(p));
       });
     });
-    writeSignIn(
+    await writeSignIn(
       ORIGIN,
       stored(-1, {
         registration_endpoint: `${AS}/register`,
