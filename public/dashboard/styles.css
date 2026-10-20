@@ -3113,6 +3113,9 @@ button.history-btn svg {
   align-items: center;
   min-width: 0;
   gap: 7px;
+  /* The row's gap plus this matches the space History's own padding leaves after the status,
+     so Save draft, the status, and History sit evenly. */
+  margin-left: 8px;
   font-size: 13px;
   color: var(--muted);
 }
