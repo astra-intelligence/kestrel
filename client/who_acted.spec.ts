@@ -55,12 +55,14 @@ describe("sendActedBy (SPEC §6, §11)", () => {
         resolved_by: null,
       }),
     ).toBe(
-      "Scheduled by the service token ci.access · moved by you@example.com via Claude Code · canceled by you@example.com",
+      "Scheduled by the service token ci.access · rescheduled by you@example.com via Claude Code · canceled by you@example.com",
     );
   });
 
   it("leads with the first act recorded, and says nothing when none is", () => {
-    expect(sendActedBy({ scheduled_by: null, moved_by: you })).toBe("Moved by you@example.com");
+    expect(sendActedBy({ scheduled_by: null, moved_by: you })).toBe(
+      "Rescheduled by you@example.com",
+    );
     expect(
       sendActedBy({ scheduled_by: null, moved_by: null, canceled_by: null, resolved_by: null }),
     ).toBeNull();
@@ -74,7 +76,7 @@ describe("bannerActedBy (DESIGN §4, §10)", () => {
 
   it("names the latest act alone: a move when there was one, else the schedule", () => {
     expect(bannerActedBy({ scheduled_by: you, moved_by: viaClaude }, you)).toBe(
-      "Moved by you@example.com via Claude Code",
+      "Rescheduled by you@example.com via Claude Code",
     );
     expect(bannerActedBy({ scheduled_by: viaClaude, moved_by: null }, you)).toBe(
       "Scheduled by you@example.com via Claude Code",

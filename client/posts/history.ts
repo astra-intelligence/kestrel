@@ -34,7 +34,7 @@ function what(e: HistoryEntry): string {
     case "sent_now":
       return `Send now, for ${fmt(e.fire_at)}`;
     case "moved":
-      return `Moved to ${fmt(e.fire_at)}`;
+      return `Rescheduled for ${fmt(e.fire_at)}`;
     case "canceled":
       return "Canceled the schedule";
     case "resolved":

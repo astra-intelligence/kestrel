@@ -46,14 +46,14 @@ export function actorLabel(actor: Actor): string {
 // A send's acts in the order they happen, each with the words that lead its actor.
 const SEND_ACTS = [
   ["scheduled_by", "scheduled"],
-  ["moved_by", "moved"],
+  ["moved_by", "rescheduled"],
   ["canceled_by", "canceled"],
   ["resolved_by", "resolved"],
 ] as const;
 
 /**
  * Who acted on a send, as one line (DESIGN §3, §4): each act recorded on it, in the order they
- * happen ("Scheduled by you@example.com via Claude Code · moved by you@example.com"). Null when
+ * happen ("Scheduled by you@example.com via Claude Code · rescheduled by you@example.com"). Null when
  * none is recorded, as for a send made before who acted was, or none is known yet.
  */
 export function sendActedBy(
@@ -80,7 +80,7 @@ export function isYouInEditor(actor: Actor, you: Actor | null): boolean {
 
 /**
  * Who last acted on a scheduled send, as its banner shows it (DESIGN §4, §10): the latest act,
- * a move when there was one and otherwise the schedule ("Moved by you@example.com via Claude
+ * a move when there was one and otherwise the schedule ("Rescheduled by you@example.com via Claude
  * Code"), and only when someone other than you in the editor took it (Claude Code, a script, a
  * service token, or another person). Nothing when you did, which you already know, or when none
  * is recorded. The whole record is the post's history.
@@ -90,7 +90,7 @@ export function bannerActedBy(
   you: Actor | null,
 ): string | null {
   const latest = send.moved_by
-    ? { verb: "Moved", actor: send.moved_by }
+    ? { verb: "Rescheduled", actor: send.moved_by }
     : send.scheduled_by
       ? { verb: "Scheduled", actor: send.scheduled_by }
       : null;

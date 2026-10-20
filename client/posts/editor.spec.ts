@@ -665,7 +665,7 @@ describe("editor view", () => {
     linked.sends.edit("s1", { fire_at: Date.now() + 2 * 3_600_000, moved_by: VIA_CLAUDE });
     await vi.advanceTimersByTimeAsync(60_000); // within one idle read
     expect($("#schedBy").hidden).toBe(false);
-    expect($("#schedBy").textContent).toBe("Moved by you@example.com via Claude Code");
+    expect($("#schedBy").textContent).toBe("Rescheduled by you@example.com via Claude Code");
     expect(fake.unhandled).toHaveLength(0);
   });
 

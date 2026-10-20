@@ -561,7 +561,7 @@ describe("sent record", () => {
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
       expect($(".rec-by").textContent).toBe(
-        "Scheduled by you@example.com · moved by you@example.com via Claude Code · canceled by you@example.com via the API",
+        "Scheduled by you@example.com · rescheduled by you@example.com via Claude Code · canceled by you@example.com via the API",
       );
       expect(fake.unhandled).toHaveLength(0);
     });
