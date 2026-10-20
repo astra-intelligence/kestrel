@@ -204,7 +204,7 @@ export async function renderEditor(
   const canSend = postAction(post, "schedule") !== undefined;
   // The post's history (DESIGN §3), beside the save status on a draft and in its place once
   // scheduled. On a draft it names the last edit when it wasn't yours in the editor.
-  const historyBtn = html`<button type="button" class="ghost history-btn" id="historyBtn" aria-expanded="false">${icon("history")}<span id="historyLabel">${locked ? "History" : historyButtonLabel(post, you)}</span></button>`;
+  const historyBtn = html`<button type="button" class="history-btn" id="historyBtn" aria-expanded="false">${icon("history")}<span id="historyLabel">${locked ? "History" : historyButtonLabel(post, you)}</span></button>`;
   // The revision this editor is based on, for optimistic concurrency (SPEC §4).
   // Advanced on each successful save; carried on every save so the server rejects
   // (409) rather than clobbers a newer save from another tab or from Claude.
