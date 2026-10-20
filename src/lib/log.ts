@@ -73,6 +73,8 @@ export const LOG_EVENTS = {
   // Who is calling (SPEC §11).
   "auth.service": "info",
   "auth.unidentified": "warn",
+  // A tool call through the MCP server, with the status its route answered (SPEC §11).
+  "mcp.call": "info",
   // Configuration and the schema (SPEC §9).
   "schema.unchecked": "warn",
   "settings.corrupt": "error",

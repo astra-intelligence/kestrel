@@ -47,6 +47,7 @@ import { json, notFound } from "./lib/errors";
 import { RASTER_IMAGE_TYPES } from "./lib/image_types";
 import { MISSED_THRESHOLD_MS } from "./lib/time";
 import { unwrap } from "./lib/unwrap";
+import * as mcp from "./mcp/server";
 import { buildReferenceResponse, referenceIndexMarkdown, resourceMarkdown } from "./reference";
 import { sendBrief } from "./reference/objects";
 import { openApiDocument } from "./reference/openapi";
@@ -458,6 +459,68 @@ export function createRouter({
             buildInfo().version,
           ),
         ),
+    },
+
+    // --- the MCP server (authed; each tool one route of this manifest) ---
+    // For Claude Desktop and claude.ai, which reach a service only as a connector (SPEC §11).
+    // Under /api so the Access application that gates the API already covers it.
+    {
+      method: "POST",
+      path: mcp.MCP_PATH,
+      access: "admin",
+      accepts: JSON_BODY,
+      resource: "system",
+      title: "Call the MCP server",
+      summary:
+        "The instance's MCP server, which Claude Desktop and claude.ai connect to as a custom connector: one JSON-RPC message a request, answered in JSON.",
+      description:
+        "Stateless MCP over Streamable HTTP, the revisions opened by `initialize` (2025-03-26 through 2025-11-25): `initialize`, `ping`, `tools/list`, and `tools/call`. A notification, or a client's answer to a request, is taken with a 202 and no body; an `MCP-Protocol-Version` this server doesn't speak is a 400. Each tool is one route of this API, named for its anchor in this reference in underscores (`get_post`), taking the route's path parameters, query parameters, and body fields as its arguments. Every admin route is a tool except the dev routes, the ones that take an upload, and this server's own. A call runs its route as the person signed in, naming its client `claude`, so a change records the person via Claude, and a refusal comes back as a tool error led by its code, its words, and the next move.",
+      body: [
+        { name: "jsonrpc", type: '"2.0"', description: "JSON-RPC's version.", required: true },
+        {
+          name: "id",
+          type: "string | number",
+          description: "The request's id, which its answer carries. Absent on a notification.",
+        },
+        {
+          name: "method",
+          type: "string",
+          description:
+            "`initialize`, `ping`, `tools/list`, or `tools/call`, or a notification's. Absent on a client's answer.",
+        },
+        {
+          name: "params",
+          type: "object",
+          description:
+            "The method's parameters: for `tools/call`, the tool's `name` and its `arguments`.",
+        },
+        { name: "result", type: "object", description: "A client's answer: taken, and ignored." },
+        { name: "error", type: "object", description: "A client's answer: taken, and ignored." },
+      ],
+      example: {
+        request: {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "get_post", arguments: { id: "p_abc123" } },
+        },
+      },
+      handler: (c) =>
+        mcp.handle(
+          c,
+          r,
+          mcp.routerTools(r, () => buildReferenceResponse(r.routes.map((route) => route.def))),
+        ),
+    },
+    {
+      method: "GET",
+      path: mcp.MCP_PATH,
+      access: "admin",
+      resource: "system",
+      title: "Open an MCP stream",
+      summary:
+        "Not offered: answers 405, since the MCP server is stateless and sends nothing a client didn't ask for.",
+      handler: mcp.stream,
     },
 
     // --- app settings (authed; runtime preferences, never secrets) ---

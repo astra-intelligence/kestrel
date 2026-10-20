@@ -3,11 +3,12 @@
 // reads as one, since a service token is automation: Claude signs in as the person it works for.
 
 import type { SendView } from "../shared/sends";
-import { type Actor, CLAUDE_CODE_CLIENT, EDITOR_CLIENT } from "../shared/who_acted";
+import { type Actor, CLAUDE_CLIENT, CLAUDE_CODE_CLIENT, EDITOR_CLIENT } from "../shared/who_acted";
 
 // Clients the editor knows by a name of their own. Any other reads as it named itself.
 const CLIENT_NAMES: Record<string, string> = {
   [CLAUDE_CODE_CLIENT]: "Claude Code",
+  [CLAUDE_CLIENT]: "Claude",
 };
 
 /**

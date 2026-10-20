@@ -39,11 +39,11 @@ A change starts at the highest level it touches, and everything below that resta
 | A guarantee or behavior | `docs/SPEC.md` first, then the code and a test whose title cites the section. API.md, DESIGN, and the docs pages wherever they describe it. | Tests, by convention: nothing lists a SPEC promise with no test. |
 | A rule of the API's shape | `docs/API.md`, and `src/reference/concepts.ts` where a client must follow it. | Nothing. |
 | A refusal code or its status | `src/reference/refusals.ts`, API.md's Refusing table, and each route that gives it. | `test/reference.spec.ts`: the codes, statuses, and next moves must match the table. |
-| A route, field, or object | Its entry in `src/app.ts`, its wire type in `shared/`, and its object in `src/reference/objects.ts`. API.md only for a new rule or kind of concept. | The generated reference and its OpenAPI document, and the examples typed against the wire types. |
+| A route, field, or object | Its entry in `src/app.ts`, its wire type in `shared/`, and its object in `src/reference/objects.ts`. API.md only for a new rule or kind of concept. | The generated reference, its OpenAPI document, and the MCP server's tools, and the examples typed against the wire types. |
 | A wire name, renamed | Every copy made by hand: `template/claude/` (context and skills), `docs/publishing/` and the setup guide, API.md, DESIGN, and a Breaking line in the changelog. Grep those paths for the old name. | Nothing. A stale name in `template/claude/` ships into every new instance. |
 | How the editor presents something | `docs/DESIGN.md`, and the docs page that names that screen or label. | `test/docs.spec.ts`, only for links and the headings the editor links to. |
 | A docs page, or a docs index | The index that lists it, and any editor link to its headings. getkestrel.dev parses the indexes (`.claude/rules/docs.md`). | `test/docs.spec.ts`. |
-| `template/claude/` | A changelog line saying what changed and why. | `kestrel check-context`, on each instance at upgrade. |
+| `template/claude/` | A changelog line saying what changed and why, and `src/mcp/instructions.ts` where the change is one a connector's Claude should follow too: it restates the publishing rules for Claude Desktop and claude.ai, which never see the template. | `kestrel check-context`, on each instance at upgrade. Nothing for the instructions. |
 | Anything a publisher or operator would notice | A line under `[Unreleased]` (`.claude/rules/changelog.md`). | The Stop hook's reminder, which never blocks. |
 | The release itself | `.claude/rules/release.md` (policy) and the `release` skill (procedure). | `publish.yml` re-runs the gate before npm. |
 

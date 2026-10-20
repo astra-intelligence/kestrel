@@ -2,7 +2,7 @@
 
 A script or a scheduled job can call the same API the editor uses, with no one signed in. It uses a Cloudflare Access service token, so its changes show as a service token's, never a person's. Anything it schedules waits out the review window, where the publisher can still cancel it.
 
-Claude Code doesn't need this. It signs in as the publisher with `kestrel login`, as [Working with Claude](../publishing/07-working-with-claude.md#connect-claude-code) describes, so its changes show as theirs, via Claude Code. Use a service token only for a program that runs when no one is there.
+Claude doesn't need this. It signs in as the publisher: Claude Code with `kestrel login`, as [Connect Claude Code](../publishing/07-working-with-claude.md#connect-claude-code) describes, and Claude Desktop and claude.ai as a custom connector, as [Connect Claude Desktop or claude.ai](../publishing/07-working-with-claude.md#connect-claude-desktop-or-claudeai) describes, so its changes show as theirs, via Claude. Use a service token only for a program that runs when no one is there.
 
 In this guide, you create a service token, and add a policy for it to your Access application. Then you give the token to your script, check that it works, and point the script at the API reference.
 

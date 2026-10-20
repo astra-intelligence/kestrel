@@ -2,7 +2,7 @@
 
 Kestrel is an open-source newsletter app you run yourself, on Cloudflare and Amazon SES. You own the list, the proof each reader opted in, the record of every send, and a permanent archive of every post.
 
-You write in Markdown, preview the exact email, and schedule it with a window to cancel. Bring your list from another service, and take it out whenever you like. Work in the editor, or ask Claude to do it through the same API.
+You write in Markdown, preview the exact email, and schedule it with a window to cancel. Bring your list from another service, and take it out whenever you like. Work in the editor, or ask Claude to do it through the same API, from Claude Code, Claude Desktop, or claude.ai.
 
 See [getkestrel.dev](https://getkestrel.dev) to learn more about Kestrel.
 
