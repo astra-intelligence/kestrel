@@ -63,16 +63,31 @@ describe("Access claims to a principal", () => {
     expect(JSON.stringify(lines())).not.toContain(CLIENT_ID);
   });
 
-  it("still admits a token with neither as an anonymous service, and warns with its claim names", () => {
+  it("refuses a token with neither as unidentified, and warns with its claim names only (SPEC §11)", () => {
     const lines = logged();
-    expect(principalFromClaims({ sub: "device-7", iss: "https://team" }, undefined)).toEqual({
-      kind: "service",
-      via: "access",
-    });
+    expect(principalFromClaims({ sub: "device-7", iss: "https://team" }, undefined)).toBe(
+      "access_unidentified",
+    );
     expect(lines()).toEqual([
       expect.objectContaining({ event: "auth.unidentified", level: "warn", claims: "iss,sub" }),
     ]);
     expect(JSON.stringify(lines())).not.toContain("device-7");
+  });
+
+  it("reads an empty claim as no claim: an empty common_name names no token, an empty email no person (SPEC §11)", () => {
+    const lines = logged();
+    expect(principalFromClaims({ common_name: "", sub: "" }, undefined)).toBe(
+      "access_unidentified",
+    );
+    expect(principalFromClaims({ email: "", common_name: "x.access" }, undefined)).toEqual({
+      kind: "service",
+      tokenId: "x.access",
+      via: "access",
+    });
+    expect(lines()).toEqual([
+      expect.objectContaining({ event: "auth.service", claims: "common_name,email" }),
+      expect.objectContaining({ event: "auth.unidentified", claims: "common_name,sub" }),
+    ]);
   });
 });
 
@@ -311,12 +326,25 @@ describe("the auth mode follows how the request signed in", () => {
       principal: { kind: "service", token_id: "e367c0ffee5eb4.access", client: null },
       auth: { mode: "access" },
     });
-    // One with neither claim is still admitted for now, with no name to give.
+    // One with neither claim is refused, saying why: some other kind of Access policy let
+    // it in, so signing in the same way again can't help.
     const unidentified = await fetchWith(vars, "/api/whoami", { headers: await assertion({}) });
+    expect(unidentified.status).toBe(401);
+    expect(unidentified.headers.get("WWW-Authenticate")).toBe('Bearer realm="kestrel"');
     expect(await unidentified.json()).toEqual({
-      principal: { kind: "service", client: null },
-      auth: { mode: "access" },
+      error: "unauthorized",
+      reason: "access_unidentified",
     });
+    // A person the allowlist leaves out is a plain 401, with nothing to explain.
+    const outside = await fetchWith(
+      { ...vars, ACCESS_ALLOWED_EMAILS: "you@example.com" },
+      "/api/whoami",
+      {
+        headers: await assertion({ email: "intruder@example.com" }),
+      },
+    );
+    expect(outside.status).toBe(401);
+    expect(await outside.json()).toEqual({ error: "unauthorized" });
   });
 
   // Access issues for the bare host, so a team domain stored as a URL must still verify.
