@@ -1098,6 +1098,49 @@ export function recordActStmt(
     );
 }
 
+/** One act on one of a post's sends, as its log keeps it. */
+export interface PostActRow {
+  send_id: string;
+  act: SendAct;
+  at: number;
+  /** The actor, as JSON. */
+  actor: string;
+  fire_at: number | null;
+  resolution: "unsent" | "accepted" | null;
+}
+
+/**
+ * Every recorded act on a post's sends, oldest first, and whether any of its sends was acted on
+ * before acts were recorded: a send with no schedule or Send now in its log.
+ */
+export async function listPostActs(
+  db: D1Database,
+  postId: string,
+): Promise<{ acts: PostActRow[]; incomplete: boolean }> {
+  const [acts, missing] = await db.batch([
+    db
+      .prepare(
+        `SELECT a.send_id, a.act, a.at, a.actor, a.fire_at, a.resolution
+           FROM send_acts a JOIN sends s ON s.id = a.send_id
+          WHERE s.post_id = ? ORDER BY a.id ASC`,
+      )
+      .bind(postId),
+    db
+      .prepare(
+        `SELECT EXISTS (
+           SELECT 1 FROM sends s WHERE s.post_id = ? AND NOT EXISTS (
+             SELECT 1 FROM send_acts a WHERE a.send_id = s.id AND a.act IN ('schedule', 'send_now')
+           )
+         ) AS n`,
+      )
+      .bind(postId),
+  ]);
+  return {
+    acts: (acts?.results ?? []) as PostActRow[],
+    incomplete: ((missing?.results?.[0] as { n: number } | undefined)?.n ?? 0) === 1,
+  };
+}
+
 /** The send exists: a freeze's insert landed. */
 export function sendExists(sendId: string): { sql: string; binds: unknown[] } {
   return { sql: "EXISTS (SELECT 1 FROM sends WHERE id = ?)", binds: [sendId] };

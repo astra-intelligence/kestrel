@@ -139,3 +139,19 @@ export function lateStr(fireAt: number): string {
   const min = Math.max(0, Math.floor((Date.now() - fireAt) / 60_000));
   return `Missed its fire time · ${min} min late`;
 }
+
+/** When something happened, relative while it's recent (within the day) and a date after that:
+ *  "just now", "4 min ago", "3 h ago", or the short date-time. */
+export function agoStr(at: number, now = Date.now()): string {
+  const min = Math.floor((now - at) / 60_000);
+  if (min < 1) {
+    return "just now";
+  }
+  if (min < 60) {
+    return `${min} min ago`;
+  }
+  if (min < 24 * 60) {
+    return `${Math.floor(min / 60)} h ago`;
+  }
+  return fmt(at);
+}

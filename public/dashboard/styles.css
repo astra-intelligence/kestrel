@@ -2932,6 +2932,173 @@ body.web-mode .content {
    each state too, so the cue survives a reader who can't tell the dot's color. The
    "unsaved" cue reads the same amber as the shared save bar so both save models feel
    like one app. :empty (locked posts, which can't autosave) collapses it out. */
+/* The post's History button (DESIGN §3), a Ghost button beside the save status on a draft and
+   at the left of the actions bar once scheduled. Its words wrap rather than push the buttons
+   out. */
+.history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  min-width: 0;
+  text-align: left;
+}
+.history-btn svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.history-btn[aria-expanded="true"] {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+/* A scheduled send never tested, said quietly beside the control that settles it (SPEC §8). */
+.test-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* The post's history: a drawer at the right on a wide screen, beside the page, which makes room
+   for it so the banner's controls stay in reach; a sheet from the bottom on a narrow one. */
+.history-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-modal);
+  width: 380px;
+  max-width: 100vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
+}
+.history-drawer:focus {
+  outline: none;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.history-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+}
+.history-close {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.history-close svg {
+  width: 16px;
+  height: 16px;
+}
+.history-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 20px 16px;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.history-row:last-child {
+  border-bottom: 0;
+}
+.history-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--status-draft-bg);
+  color: var(--status-draft-fg);
+}
+.history-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.history-send .history-icon {
+  background: var(--status-scheduled-bg);
+  color: var(--status-scheduled-fg);
+}
+.history-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+}
+.history-who {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.history-foot {
+  margin: 8px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+.history-backdrop {
+  display: none;
+}
+@media (min-width: 1180px) {
+  body.history-open .content {
+    margin-right: 380px;
+  }
+}
+@media (max-width: 720px) {
+  /* On a phone the History button's words take a line of their own under Save draft and the
+     save status, rather than squeezing them. */
+  .actions-bar > .row:first-child:not(:only-child) {
+    flex-wrap: wrap;
+  }
+  .actions-bar > .row:first-child:not(:only-child) > .history-btn {
+    flex: 1 1 100%;
+  }
+  .history-drawer {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 80vh;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.12);
+  }
+  .history-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    background: rgba(0, 0, 0, 0.35);
+  }
+}
+
 .save-status {
   display: inline-flex;
   align-items: center;

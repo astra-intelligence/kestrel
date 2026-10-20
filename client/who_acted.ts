@@ -66,3 +66,29 @@ export function sendActedBy(
   const line = parts.join(" · ");
   return line ? line.charAt(0).toUpperCase() + line.slice(1) : null;
 }
+
+/** Whether `actor` is `you` working in the editor, the one actor the editor never needs to name:
+ *  the person signed in here, through the editor. */
+export function isYouInEditor(actor: Actor, you: Actor | null): boolean {
+  return (
+    actor.kind === "human" &&
+    you?.kind === "human" &&
+    actor.email === you.email &&
+    actor.client === EDITOR_CLIENT
+  );
+}
+
+/**
+ * Who acted on a send, as the scheduled banner shows it (DESIGN §4, §10): the whole line when
+ * any act on it was taken by someone other than you in the editor (Claude Code, a script, a
+ * service token, or another person), and nothing when every act was yours in the editor, which
+ * you already know.
+ */
+export function sendActedByOthers(
+  send: Partial<Pick<SendView, "scheduled_by" | "moved_by" | "canceled_by" | "resolved_by">>,
+  you: Actor | null,
+): string | null {
+  const actors = [send.scheduled_by, send.moved_by, send.canceled_by, send.resolved_by];
+  const others = actors.some((a) => a && !isYouInEditor(a, you));
+  return others ? sendActedBy(send) : null;
+}

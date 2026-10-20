@@ -10,6 +10,7 @@ import { appState } from "../state";
 import { feedReads, sendRef, sendServer, sendView } from "../test/send_server";
 import {
   $,
+  $$,
   type FakeApi,
   type FakeRequest,
   type FakeRoute,
@@ -244,6 +245,8 @@ describe("editor view", () => {
     restoreHidden();
     vi.restoreAllMocks();
     vi.useRealTimers();
+    appState.session = null;
+    document.querySelector(".history-drawer")?.dispatchEvent(new Event("history-close"));
   });
 
   // The editor mounted the way the router mounts it; `handle()` is what the router sees.
@@ -636,24 +639,46 @@ describe("editor view", () => {
     }
   });
 
-  it("names who scheduled the send under its time, and who moved it when that happens elsewhere (SPEC §11)", async () => {
-    const linked = scheduledPost(Date.now() + 3_600_000);
-    linked.sends.edit("s1", {
-      scheduled_by: JSON.stringify({ kind: "human", email: "you@example.com", client: "editor" }),
-    });
-    await open(linked.routes);
-    expect($("#schedBy").hidden).toBe(false);
-    expect($("#schedBy").textContent).toBe("Scheduled by you@example.com");
+  const YOU = { kind: "human", email: "you@example.com", client: "editor" } as const;
+  const VIA_CLAUDE = JSON.stringify({ ...YOU, client: "claude-code" });
+  const signedIn = () => {
+    appState.session = { principal: YOU, auth: { mode: "dev" } };
+  };
 
-    linked.sends.edit("s1", {
-      fire_at: Date.now() + 2 * 3_600_000,
-      moved_by: JSON.stringify({ kind: "human", email: "you@example.com", client: "claude-code" }),
-    });
+  it("names no one on the banner when every act on the send was yours in the editor (DESIGN §4)", async () => {
+    signedIn();
+    const linked = scheduledPost(Date.now() + 3_600_000);
+    linked.sends.edit("s1", { scheduled_by: JSON.stringify(YOU), moved_by: JSON.stringify(YOU) });
+    await open(linked.routes);
+    expect($("#schedBy").hidden).toBe(true);
+    expect($(".banner-scheduled").textContent).not.toMatch(/Scheduled by/);
+    expect(fake.unhandled).toHaveLength(0);
+  });
+
+  it("names every act on the banner once one came through another client, and follows it (SPEC §11)", async () => {
+    signedIn();
+    const linked = scheduledPost(Date.now() + 3_600_000);
+    linked.sends.edit("s1", { scheduled_by: JSON.stringify(YOU) });
+    await open(linked.routes);
+    expect($("#schedBy").hidden).toBe(true);
+
+    linked.sends.edit("s1", { fire_at: Date.now() + 2 * 3_600_000, moved_by: VIA_CLAUDE });
     await vi.advanceTimersByTimeAsync(60_000); // within one idle read
+    expect($("#schedBy").hidden).toBe(false);
     expect($("#schedBy").textContent).toBe(
       "Scheduled by you@example.com · moved by you@example.com via Claude Code",
     );
     expect(fake.unhandled).toHaveLength(0);
+  });
+
+  it("names a send a service token scheduled, by the token's name", async () => {
+    signedIn();
+    const linked = scheduledPost(Date.now() + 3_600_000);
+    linked.sends.edit("s1", {
+      scheduled_by: JSON.stringify({ kind: "service", token_id: "ci.access", client: null }),
+    });
+    await open(linked.routes);
+    expect($("#schedBy").textContent).toBe("Scheduled by the service token ci.access");
   });
 
   it("names no one under the time of a send none is recorded on", async () => {
@@ -687,19 +712,134 @@ describe("editor view", () => {
     expect(fake.unhandled).toHaveLength(0);
   });
 
-  it("says on the banner that no test has been sent, until one is (SPEC §8)", async () => {
+  it("says quietly beside Send test email that no test has been sent, until one is (SPEC §8)", async () => {
     const linked = scheduledPost();
     await open(linked.routes);
-    expect($("#schedUntested").hidden).toBe(false);
-    expect($("#schedUntestedMsg").textContent).toBe(
-      "No test of this email has been sent yet. Send yourself a test to check what will go out.",
-    );
+    expect($("#testHint").hidden).toBe(false);
+    expect($("#testHint").textContent).toBe("Not tested yet");
+    expect($("#testHint").nextElementSibling?.id).toBe("testBtn");
+    // Not on the banner, which keeps the notes that change what happens to the send.
+    expect($(".banner-scheduled").textContent).not.toMatch(/test/i);
     expect($("#schedRemade").hidden).toBe(true);
 
     linked.sends.edit("s1", { tested_at: Date.now() }); // a test lands, here or from Claude
     await vi.advanceTimersByTimeAsync(60_000);
-    expect($("#schedUntested").hidden).toBe(true);
+    expect($("#testHint").hidden).toBe(true);
     expect(fake.unhandled).toHaveLength(0);
+  });
+
+  describe("the post's history (DESIGN §3)", () => {
+    const historyRoute = (entries: unknown[], incomplete = false): FakeRoute => ({
+      path: "/api/posts/p1/history",
+      reply: () => ({ entries, incomplete }),
+    });
+    const entry = (over: Record<string, unknown>) => ({
+      at: Date.now() - 120_000,
+      actor: YOU,
+      revision: null,
+      send_id: null,
+      fire_at: null,
+      resolution: null,
+      ...over,
+    });
+
+    it("sits beside the save status on a draft, reading History when the last edit was yours", async () => {
+      signedIn();
+      const server = draftServer(draft({ author: "you@example.com", author_client: "editor" }));
+      await open([{ path: "/api/posts/p1", reply: server.get }]);
+      expect($("#historyBtn").previousElementSibling?.id).toBe("saveStatus");
+      expect($("#historyLabel").textContent).toBe("History");
+    });
+
+    it("names the last edit on a draft when it came through another client, until you save", async () => {
+      signedIn();
+      const server = draftServer(
+        draft({
+          author: "you@example.com",
+          author_client: "claude-code",
+          updated_at: Date.now() - 120_000,
+        }),
+      );
+      await open([
+        { path: "/api/posts/p1", reply: server.get },
+        { path: "/api/posts/p1", method: "PUT", reply: (r) => server.put(r) },
+      ]);
+      expect($("#historyLabel").textContent).toBe(
+        "Last edit by you@example.com via Claude Code · 2 min ago",
+      );
+      await typeInto($<HTMLTextAreaElement>("#f-markdown"), "# Owls\n\nHoot hoot.");
+      $<HTMLButtonElement>("#saveBtn").click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect($("#historyLabel").textContent).toBe("History");
+    });
+
+    it("sits at the left of a scheduled post's actions bar", async () => {
+      const linked = scheduledPost(Date.now() + 3_600_000);
+      await open(linked.routes);
+      expect($("#historyLabel").textContent).toBe("History");
+      expect($(".actions-bar > .row:first-child #historyBtn")).toBeTruthy();
+    });
+
+    it("opens a drawer of every act and edit, folding a run of edits, and closes on Escape", async () => {
+      signedIn();
+      const linked = scheduledPost(Date.now() + 3_600_000);
+      await open([
+        ...linked.routes,
+        historyRoute(
+          [
+            entry({
+              kind: "scheduled",
+              actor: JSON.parse(VIA_CLAUDE),
+              send_id: "s1",
+              fire_at: Date.now() + 3_600_000,
+            }),
+            entry({ kind: "edited", revision: 3, actor: JSON.parse(VIA_CLAUDE) }),
+            entry({ kind: "edited", revision: 2, actor: JSON.parse(VIA_CLAUDE) }),
+            entry({ kind: "created", revision: 1 }),
+          ],
+          true,
+        ),
+      ]);
+      const btn = $<HTMLButtonElement>("#historyBtn");
+      btn.click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(btn.getAttribute("aria-expanded")).toBe("true");
+      const rows = $$(".history-drawer .history-row");
+      expect(rows.map((r) => $(".history-what", r).textContent)).toEqual([
+        expect.stringMatching(/^Scheduled for /),
+        "Edited · versions 2–3",
+        "Created",
+      ]);
+      expect(rows.map((r) => $(".history-who", r).textContent)).toEqual([
+        "you@example.com via Claude Code · 2 min ago",
+        "you@example.com via Claude Code · 2 min ago",
+        "you@example.com · 2 min ago",
+      ]);
+      expect($(".history-drawer .history-foot").textContent).toBe(
+        "Earlier changes to this post's sends weren't recorded.",
+      );
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(document.querySelector(".history-drawer")).toBeNull();
+      expect(btn.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(btn);
+      expect(fake.unhandled).toHaveLength(0);
+    });
+
+    it("closes with a second press, and when the editor goes", async () => {
+      const linked = scheduledPost(Date.now() + 3_600_000);
+      await open([...linked.routes, historyRoute([entry({ kind: "created", revision: 1 })])]);
+      const btn = $<HTMLButtonElement>("#historyBtn");
+      btn.click();
+      await vi.advanceTimersByTimeAsync(0);
+      btn.click();
+      expect(document.querySelector(".history-drawer")).toBeNull();
+      btn.click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector(".history-drawer")).not.toBeNull();
+      unmount();
+      expect(document.querySelector(".history-drawer")).toBeNull();
+      expect(document.body.classList.contains("history-open")).toBe(false);
+    });
   });
 
   it("says on the banner when the server warns the send may spend D1's daily writes (SPEC §8)", async () => {

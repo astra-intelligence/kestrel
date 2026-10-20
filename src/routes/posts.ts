@@ -3,6 +3,9 @@
 import { encodeSendCursor } from "../../shared/cursor";
 import type {
   BaseRequiredError,
+  HistoryEntry,
+  HistoryKind,
+  PostHistoryResponse,
   PostListResponse,
   PostResponse,
   PostSavedResponse,
@@ -11,9 +14,16 @@ import type {
   RevisionResponse,
   StaleRevisionError,
 } from "../../shared/posts";
+import type { Actor } from "../../shared/who_acted";
 import * as images from "../db/images";
 import * as posts from "../db/posts";
-import { currentSendSeq, getActiveSendForPost } from "../db/sends";
+import {
+  currentSendSeq,
+  getActiveSendForPost,
+  listPostActs,
+  readActor,
+  type SendAct,
+} from "../db/sends";
 import { fieldError, optBoolean, optString, optStringOrNull, readJsonObject } from "../lib/body";
 import { badRequest, json, notFound, refusal } from "../lib/errors";
 import { listPage, parseListParams } from "../lib/list";
@@ -251,6 +261,70 @@ export async function listRevisions(c: RequestContext): Promise<Response> {
       metadata: JSON.parse(r.metadata),
     })),
   };
+  return json(body);
+}
+
+// A send act as a post's history names it.
+const ACT_KIND: Record<SendAct, HistoryKind> = {
+  schedule: "scheduled",
+  send_now: "sent_now",
+  move: "moved",
+  cancel: "canceled",
+  resolve: "resolved",
+};
+
+/** Who saved a revision, in the who-acted shape: a person with their client, or a service token
+ *  (which a revision names only as `service`); null when no author was recorded. */
+function revisionActor(r: Pick<posts.RevisionRow, "author" | "client">): Actor | null {
+  if (r.author === null) {
+    return null;
+  }
+  return r.author === "service"
+    ? { kind: "service", client: null }
+    : { kind: "human", email: r.author, client: r.client };
+}
+
+/**
+ * A post's history (SPEC §6, §11): every revision and every recorded act on its sends, newest
+ * first, each with who acted. Read-only; restoring a revision is not offered here.
+ */
+export async function history(c: RequestContext): Promise<Response> {
+  const post = await posts.getPost(c.env.DB, param(c, "id"));
+  if (!post) {
+    throw notFound("post");
+  }
+  const [revs, { acts, incomplete }] = await Promise.all([
+    posts.listRevisions(c.env.DB, post.id),
+    listPostActs(c.env.DB, post.id),
+  ]);
+  const entries: HistoryEntry[] = [
+    ...revs.map(
+      (r, i): HistoryEntry => ({
+        kind: i === 0 ? "created" : "edited",
+        at: r.created_at,
+        actor: revisionActor(r),
+        revision: i + 1,
+        send_id: null,
+        fire_at: null,
+        resolution: null,
+      }),
+    ),
+    ...acts.map(
+      (a): HistoryEntry => ({
+        kind: ACT_KIND[a.act],
+        at: a.at,
+        actor: readActor(a.actor),
+        revision: null,
+        send_id: a.send_id,
+        fire_at: a.fire_at,
+        resolution: a.resolution,
+      }),
+    ),
+  ];
+  // Newest first; each list is already oldest first, so a stable sort keeps a tie in order.
+  entries.reverse();
+  entries.sort((a, b) => b.at - a.at);
+  const body: PostHistoryResponse = { entries, incomplete };
   return json(body);
 }
 

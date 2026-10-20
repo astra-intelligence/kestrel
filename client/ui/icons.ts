@@ -8,6 +8,8 @@ import article from "./icons/article.svg";
 import bold from "./icons/bold.svg";
 import book from "./icons/book.svg";
 import branch from "./icons/branch.svg";
+import calendar from "./icons/calendar.svg";
+import calendarX from "./icons/calendar-x.svg";
 import check from "./icons/check.svg";
 import circleCheck from "./icons/circle-check.svg";
 import circleMinus from "./icons/circle-minus.svg";
@@ -16,6 +18,7 @@ import copyout from "./icons/copyout.svg";
 import desktop from "./icons/desktop.svg";
 import editable from "./icons/editable.svg";
 import heading from "./icons/heading.svg";
+import history from "./icons/history.svg";
 import indent from "./icons/indent.svg";
 import info from "./icons/info.svg";
 import infoFilled from "./icons/info-filled.svg";
@@ -43,11 +46,14 @@ import x from "./icons/x.svg";
 const ICONS = {
   article: unsafeHtml(article),
   bold: unsafeHtml(bold),
+  calendar: unsafeHtml(calendar),
+  "calendar-x": unsafeHtml(calendarX),
   check: unsafeHtml(check),
   code: unsafeHtml(code),
   copyout: unsafeHtml(copyout),
   editable: unsafeHtml(editable),
   heading: unsafeHtml(heading),
+  history: unsafeHtml(history),
   indent: unsafeHtml(indent),
   info: unsafeHtml(info),
   "info-filled": unsafeHtml(infoFilled),

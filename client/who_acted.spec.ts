@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actorLabel, sendActedBy, whoActed } from "./who_acted";
+import { actorLabel, sendActedBy, sendActedByOthers, whoActed } from "./who_acted";
 
 describe("whoActed (SPEC §11, Who acted)", () => {
   it("shows a person in the editor alone", () => {
@@ -65,5 +65,30 @@ describe("sendActedBy (SPEC §6, §11)", () => {
       sendActedBy({ scheduled_by: null, moved_by: null, canceled_by: null, resolved_by: null }),
     ).toBeNull();
     expect(sendActedBy({})).toBeNull();
+  });
+});
+
+describe("sendActedByOthers (DESIGN §4, §10)", () => {
+  const you = { kind: "human", email: "you@example.com", client: "editor" } as const;
+
+  it("says nothing when every act was yours in the editor", () => {
+    expect(sendActedByOthers({ scheduled_by: you, moved_by: you }, you)).toBeNull();
+    expect(sendActedByOthers({}, you)).toBeNull();
+  });
+
+  it("names every act once one was anyone else's, you through another client included", () => {
+    expect(
+      sendActedByOthers({ scheduled_by: you, moved_by: { ...you, client: "claude-code" } }, you),
+    ).toBe("Scheduled by you@example.com · moved by you@example.com via Claude Code");
+    expect(sendActedByOthers({ scheduled_by: { ...you, email: "them@example.com" } }, you)).toBe(
+      "Scheduled by them@example.com",
+    );
+    expect(
+      sendActedByOthers({ scheduled_by: { kind: "service", token_id: "t", client: null } }, you),
+    ).toBe("Scheduled by the service token t");
+  });
+
+  it("names every act when no one is signed in to compare with", () => {
+    expect(sendActedByOthers({ scheduled_by: you }, null)).toBe("Scheduled by you@example.com");
   });
 });

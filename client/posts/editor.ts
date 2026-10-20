@@ -35,6 +35,7 @@ import { at, every, mount, onAbort, poll, type ViewHandle } from "../lifecycle";
 import { followSend, readSendsNow, type StageChange } from "../send_state";
 import { openRescheduleModal } from "../sends/dialogs";
 import { can, conditionOf, has } from "../sends/progress";
+import { appState } from "../state";
 import { $, $$ } from "../ui/dom";
 import { EMAIL_FRAME_SANDBOX, openLinksInNewTab } from "../ui/email_frame";
 import {
@@ -51,10 +52,11 @@ import { highlightMarkdown } from "../ui/highlight";
 import { type Html, html, setHtml } from "../ui/html";
 import { type IconName, icon } from "../ui/icons";
 import { busy, fieldError, modal, renderError, toast } from "../ui/widgets";
-import { sendActedBy, whoActed } from "../who_acted";
+import { sendActedByOthers, whoActed } from "../who_acted";
 import { activeSend, postAction } from "./actions";
 import { createAutosave } from "./autosave";
 import { DirtyTracker } from "./dirty";
+import { historyButtonLabel, toggleHistory } from "./history";
 import { trackSaves } from "./pending_save";
 import {
   destinationHtml,
@@ -186,6 +188,7 @@ export async function renderEditor(
     }
   }
   const { post, markdown } = data;
+  const you = appState.session?.principal ?? null;
   // The post's publishing settings as stored (SPEC §4, §5): whether it is included in the
   // archive, and its archive address. Neither is part of the email, so both change while the
   // post is scheduled too, through Post settings, and a dialog's edits reach them only on Save,
@@ -199,6 +202,9 @@ export async function renderEditor(
   // Whether the server would take a schedule or a send now: a draft, while a provider is
   // connected. The dialog offers both views only then (DESIGN §4).
   const canSend = postAction(post, "schedule") !== undefined;
+  // The post's history (DESIGN §3), beside the save status on a draft and in its place once
+  // scheduled. On a draft it names the last edit when it wasn't yours in the editor.
+  const historyBtn = html`<button type="button" class="ghost history-btn" id="historyBtn" aria-expanded="false">${icon("history")}<span id="historyLabel">${locked ? "History" : historyButtonLabel(post, you)}</span></button>`;
   // The revision this editor is based on, for optimistic concurrency (SPEC §4).
   // Advanced on each successful save; carried on every save so the server rejects
   // (409) rather than clobbers a newer save from another tab or from Claude.
@@ -232,7 +238,7 @@ export async function renderEditor(
         <button type="button" class="ghost" id="settingsBtn">${icon("settings")}<span>Post settings</span></button>
       </div>
     </div>
-    ${locked && scheduled ? html`<div class="banner banner-scheduled banner-split"><div class="banner-top"><div class="sched-main"><span id="schedWhen"></span><div class="sched-by" id="schedBy" hidden></div>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-remade" id="schedUntested" hidden><span id="schedUntestedMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Edit schedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div><div class="banner-bottom sched-dest"><span class="sched-dest-icon" id="schedDestIcon">${destinationIcon(pub)}</span><span id="schedDest">${destinationHtml(pub)}</span></div></div>` : null}
+    ${locked && scheduled ? html`<div class="banner banner-scheduled banner-split"><div class="banner-top"><div class="sched-main"><span id="schedWhen"></span><div class="sched-by" id="schedBy" hidden></div>${heldWhenFiresHtml("banner")}<div class="sched-remade" id="schedRemade" hidden><span id="schedRemadeMsg"></span></div><div class="sched-note" id="schedDailyWrites" hidden><span class="sched-note-mark" aria-hidden="true">⚠️</span><span class="sched-note-msg" id="schedDailyWritesMsg"></span></div></div><span class="row" id="schedControls"><button type="button" class="ghost" id="rescheduleSchedule">Edit schedule</button><button type="button" class="ghost" id="cancelSchedule">Cancel</button></span></div><div class="banner-bottom sched-dest"><span class="sched-dest-icon" id="schedDestIcon">${destinationIcon(pub)}</span><span id="schedDest">${destinationHtml(pub)}</span></div></div>` : null}
     <div id="freshnessBanner" class="banner banner-conflict" role="alert" hidden></div>
     <div class="editor-form">
       <label for="f-subject">Subject</label>
@@ -265,10 +271,15 @@ export async function renderEditor(
       <div class="actions-bar">
         ${
           locked
-            ? html`<div class="row"><button type="button" class="secondary" id="testBtn">${icon("send")}<span>Send test email</span></button></div>`
+            ? html`<div class="row">${historyBtn}</div>
+               <div class="row">
+                 <span class="test-hint" id="testHint" hidden>Not tested yet</span>
+                 <button type="button" class="secondary" id="testBtn">${icon("send")}<span>Send test email</span></button>
+               </div>`
             : html`<div class="row">
                  <button type="button" class="ghost" id="saveBtn">Save draft</button>
                  <span class="save-status" id="saveStatus" aria-live="polite"></span>
+                 ${historyBtn}
                </div>
                <div class="row">
                  <button type="button" class="secondary" id="testBtn">${icon("send")}<span>Send test email</span></button>
@@ -690,6 +701,8 @@ export async function renderEditor(
       paintPublishing();
       revisions.saved(u.current_revision); // our save is now the newest; poll against it
       dirty.markSaved(sent);
+      // The last edit is yours, in the editor, now.
+      $("#historyLabel").textContent = "History";
       saveFailed = false;
       saveError = null;
       retryDelay = 0;
@@ -1033,24 +1046,24 @@ export async function renderEditor(
     // shows what will go out. The server says so until a test of the re-made copy lands,
     // the same fact Claude reads. The banner only says so: Send test email is in the actions
     // bar below, and a second one here would crowd the banner's own controls. A send never
-    // tested at all says so the same way, until its first test lands.
+    // tested at all is said quietly instead (SPEC §8), as "Not tested yet" beside Send test
+    // email, the control that settles it, until its first test lands.
     // On Workers Free's limits, a send too large for D1's daily writes says so here too, in
     // the server's words, for as long as it is scheduled (DESIGN §4). It never blocks.
     const remadeEl = $("#schedRemade");
-    const untestedEl = $("#schedUntested");
+    const testHintEl = $("#testHint");
     const dailyWritesEl = $("#schedDailyWrites");
     const byEl = $("#schedBy");
     const paintConditions = () => {
-      // Who scheduled it and who last moved it (SPEC §11), once the send's own read says.
-      const by = sendActedBy(current);
+      // Who acted on it (SPEC §11), once the send's own read says, and only when someone other
+      // than you in the editor did (DESIGN §4): the send that needs noticing.
+      const by = sendActedByOthers(current, you);
       byEl.hidden = by === null;
       byEl.textContent = by ?? "";
       const remade = conditionOf(current, "remade");
       remadeEl.hidden = !remade;
       $("#schedRemadeMsg").textContent = remade?.message ?? "";
-      const untested = conditionOf(current, "untested");
-      untestedEl.hidden = !untested;
-      $("#schedUntestedMsg").textContent = untested?.message ?? "";
+      testHintEl.hidden = !conditionOf(current, "untested");
       const dailyWrites = conditionOf(current, "daily_writes");
       dailyWritesEl.hidden = !dailyWrites;
       $("#schedDailyWritesMsg").textContent = dailyWrites?.message ?? "";
@@ -1253,6 +1266,9 @@ export async function renderEditor(
   // Pre-fills from the default test recipients (Settings) and accepts
   // several — one per line. Each address is a separate test send through the same
   // per-recipient path as a real send (I5).
+  const historyBtnEl = $<HTMLButtonElement>("#historyBtn");
+  historyBtnEl.onclick = () => toggleHistory(id, historyBtnEl, signal);
+
   $<HTMLButtonElement>("#testBtn").onclick = () => {
     // A scheduled post's test is its frozen copy, exactly as it will fire (SPEC §5);
     // the dialog is where that is said (DESIGN §3).

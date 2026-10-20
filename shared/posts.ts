@@ -4,6 +4,7 @@
 
 import type { PageMeta } from "./list";
 import type { SendView } from "./sends";
+import type { Actor } from "./who_acted";
 
 /** A post's statuses, in their order, which the list's `status` filter takes. */
 export const POST_STATUSES = ["draft", "scheduled", "sent"] as const;
@@ -205,6 +206,42 @@ export interface PostRevision {
 /** GET /api/posts/:id/revisions: the history, oldest first, without the bodies. */
 export interface RevisionListResponse {
   revisions: (PostRevision & { is_current: boolean })[];
+}
+
+/** What one entry of a post's history records: a revision saved (the first one creates the post),
+ *  or an act on one of its sends. */
+export type HistoryKind =
+  | "created"
+  | "edited"
+  | "scheduled"
+  | "sent_now"
+  | "moved"
+  | "canceled"
+  | "resolved";
+
+/** One entry of a post's history (SPEC §6, §11): what happened, when, and who acted. */
+export interface HistoryEntry {
+  kind: HistoryKind;
+  at: number;
+  /** Who acted; null for a revision saved with no author recorded. */
+  actor: Actor | null;
+  /** The revision's number, from 1, for `created` and `edited`; null otherwise. */
+  revision: number | null;
+  /** The send acted on, for an act on a send; null for a revision. */
+  send_id: string | null;
+  /** The fire time a schedule, Send now, or move set; null otherwise. */
+  fire_at: number | null;
+  /** The resolution a Resolve chose; null otherwise. */
+  resolution: "unsent" | "accepted" | null;
+}
+
+/** GET /api/posts/:id/history: every revision and every recorded act on the post's sends,
+ *  newest first. */
+export interface PostHistoryResponse {
+  entries: HistoryEntry[];
+  /** True when one of the post's sends was acted on before acts were recorded, so the history
+   *  is missing those acts. */
+  incomplete: boolean;
 }
 
 /** GET /api/posts/:id/revisions/:n: one revision, with its body. */

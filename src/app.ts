@@ -22,7 +22,7 @@ import { UNLISTED_PATH } from "../shared/archive_url";
 import { FREE_PLAN_LIST } from "../shared/free_plan";
 import { IMPORT_LIMITS } from "../shared/imports";
 import { SORT_DIRS } from "../shared/list";
-import { POST_STATUSES } from "../shared/posts";
+import { POST_STATUSES, type PostHistoryResponse } from "../shared/posts";
 import type { ReferenceField, ReferenceResponse } from "../shared/reference";
 import {
   type DeliveryListResponse,
@@ -906,6 +906,58 @@ export function createRouter({
       summary: "The post's revision history.",
       returns: { object: "revision", as: "revisions", list: true },
       handler: postRoutes.listRevisions,
+    },
+    {
+      method: "GET",
+      path: "/api/posts/:id/history",
+      access: "admin",
+      resource: "posts",
+      title: "Read a post's history",
+      summary: "Every revision of the post and every recorded act on its sends, newest first.",
+      description:
+        "What happened to the post and who did it: each saved revision (the first created the post) and each schedule, Send now, move, cancel, and Resolve on its sends, in the who-acted shape `GET /api/whoami` answers. A revision names a service token only as one, with no `token_id`. Read-only: a revision's text is at `GET /api/posts/:id/revisions/:n`.",
+      example: {
+        response: {
+          entries: [
+            {
+              kind: "scheduled",
+              at: 1768381200000,
+              actor: { kind: "human", email: "you@example.com", client: "claude-code" },
+              revision: null,
+              send_id: "s_xyz789",
+              fire_at: 1768554000000,
+              resolution: null,
+            },
+            {
+              kind: "edited",
+              at: 1768381100000,
+              actor: { kind: "human", email: "you@example.com", client: "editor" },
+              revision: 2,
+              send_id: null,
+              fire_at: null,
+              resolution: null,
+            },
+          ],
+          incomplete: false,
+        } satisfies PostHistoryResponse,
+      },
+      returns: {
+        fields: [
+          {
+            name: "entries",
+            type: "object[]",
+            description:
+              "Newest first, each `{ kind, at, actor, revision, send_id, fire_at, resolution }`. `kind` is `created` or `edited` for a revision (with its number as `revision`), or `scheduled`, `sent_now`, `moved`, `canceled`, or `resolved` for an act on a send (with `send_id`, the `fire_at` a schedule, Send now, or move set, and the `resolution` a Resolve chose). `actor` is who acted, null for a revision with no author recorded.",
+          },
+          {
+            name: "incomplete",
+            type: "boolean",
+            description:
+              "True when one of the post's sends was acted on before acts were recorded, so those acts are missing.",
+          },
+        ],
+      },
+      handler: postRoutes.history,
     },
     {
       method: "GET",
