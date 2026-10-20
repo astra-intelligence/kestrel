@@ -758,7 +758,9 @@ describe("editor view", () => {
         draft({
           author: "you@example.com",
           author_client: "claude-code",
-          updated_at: Date.now() - 120_000,
+          authored_at: Date.now() - 120_000,
+          // A later change to the post that isn't an edit, such as a cancel, never reads as one.
+          updated_at: Date.now(),
         }),
       );
       await open([

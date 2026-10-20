@@ -39,6 +39,7 @@ const post = (over: Partial<Post> = {}): Post => ({
   updated_at: NOW - 50_000,
   author: "human",
   author_client: "editor",
+  authored_at: null,
   send: null,
   actions: [],
   ...over,

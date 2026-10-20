@@ -26,6 +26,7 @@ type Answered =
   | "archive_live"
   | "author"
   | "author_client"
+  | "authored_at"
   | "send"
   | "actions";
 
@@ -438,22 +439,28 @@ export function getCurrentRevision(db: D1Database, post: PostRow): Promise<Revis
     .first<RevisionRow>();
 }
 
-/** Who wrote each post's current revision, by post id; a post with no revision is left out. */
+/** Who wrote each post's current revision, and when, by post id; a post with no revision is
+ *  left out. */
 export async function currentAuthors(
   db: D1Database,
   posts: Pick<PostRow, "id" | "current_revision">[],
-): Promise<Map<string, Authorship>> {
+): Promise<Map<string, Authorship & { created_at: number }>> {
   const ids = posts.flatMap((p) => (p.current_revision ? [p.current_revision] : []));
   if (ids.length === 0) {
     return new Map();
   }
   const { results } = await db
     .prepare(
-      "SELECT post_id, author, client FROM post_revisions WHERE id IN (SELECT value FROM json_each(?))",
+      "SELECT post_id, author, client, created_at FROM post_revisions WHERE id IN (SELECT value FROM json_each(?))",
     )
     .bind(JSON.stringify(ids))
-    .all<{ post_id: string } & Authorship>();
-  return new Map(results.map((r) => [r.post_id, { author: r.author, client: r.client }]));
+    .all<{ post_id: string; created_at: number } & Authorship>();
+  return new Map(
+    results.map((r) => [
+      r.post_id,
+      { author: r.author, client: r.client, created_at: r.created_at },
+    ]),
+  );
 }
 
 export async function listRevisions(db: D1Database, postId: string): Promise<RevisionRow[]> {

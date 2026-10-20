@@ -80,6 +80,9 @@ export interface Post {
   /** The client the current revision's author came through, as it named itself (`editor`,
    *  `claude-code`); null when it named none, and on a service token's (SPEC §11). */
   author_client: string | null;
+  /** When the current revision was saved: when its text last changed, which `updated_at`, moved
+   *  by any change to the post (a schedule or a cancel included), is not. */
+  authored_at: number | null;
   created_at: number;
   updated_at: number;
   /**

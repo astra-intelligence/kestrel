@@ -72,7 +72,7 @@ describe("historyButtonLabel (SPEC §11, DESIGN §3)", () => {
   const post = (author: string | null, author_client: string | null) => ({
     author,
     author_client,
-    updated_at: NOW - 120_000,
+    authored_at: NOW - 120_000,
   });
 
   it("reads History while the last edit was yours in the editor, or no one's recorded", () => {

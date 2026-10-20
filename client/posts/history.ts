@@ -110,7 +110,7 @@ const actorLabel0 = (a: Actor | null) => (a ? actorLabel(a) : "No one recorded")
  * ago"), by the same rule as the scheduled banner's who-acted line.
  */
 export function historyButtonLabel(
-  post: Pick<Post, "author" | "author_client" | "updated_at">,
+  post: Pick<Post, "author" | "author_client" | "authored_at">,
   you: Actor | null,
 ): string {
   if (post.author === null) {
@@ -123,7 +123,8 @@ export function historyButtonLabel(
   if (isYouInEditor(actor, you)) {
     return "History";
   }
-  return `Last edit by ${whoActed(post.author, post.author_client)} · ${agoStr(post.updated_at)}`;
+  const who = `Last edit by ${whoActed(post.author, post.author_client)}`;
+  return post.authored_at === null ? who : `${who} · ${agoStr(post.authored_at)}`;
 }
 
 function rowsHtml(body: PostHistoryResponse): Html {

@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryEntry } from "../shared/posts";
 import { DEV_TOKEN_ID } from "../src/auth/dev_token";
 import * as posts from "../src/db/posts";
@@ -123,6 +123,29 @@ describe("a post's history (SPEC §6, §11)", () => {
     });
     const { entries } = await historyOf(post.id);
     expect(entries.map((e) => e.actor)).toEqual([{ kind: "service", client: null }, null]);
+  });
+
+  it("dates the post's last edit by its current revision, not by a later schedule or cancel", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const start = Date.now();
+      vi.setSystemTime(start);
+      const created = await readJson(
+        await call(EDITOR, "POST", "/api/posts", { subject: "S", markdown: "# One" }),
+      );
+      const id: string = created.post.id;
+      expect(created.post.authored_at).toBe(start);
+      vi.setSystemTime(start + 60_000);
+      const scheduled = await readJson(
+        await call(EDITOR, "POST", `/api/posts/${id}/schedule`, { fire_at: inHours(1) }),
+      );
+      vi.setSystemTime(start + 120_000);
+      await call(EDITOR, "POST", `/api/sends/${scheduled.send.id}/cancel`);
+      const post = (await readJson(await call(EDITOR, "GET", `/api/posts/${id}`))).post;
+      expect([post.authored_at, post.updated_at]).toEqual([start, start + 120_000]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("answers 404 for a post that isn't there", async () => {

@@ -557,6 +557,7 @@ const POST_EXAMPLE = {
   current_revision: "r_1",
   author: "you@example.com",
   author_client: "editor",
+  authored_at: 1768381200000,
   created_at: 1768381200000,
   updated_at: 1768381200000,
   send: null,
@@ -644,6 +645,12 @@ const POST_FIELDS: ReferenceField[] = [
     type: "string | null",
     description:
       "The client the current revision's author came through, as it named itself in `Kestrel-Client`: `editor` for the web editor, `claude-code` for Claude Code, or another name as given. Null when the request named none, and on a service token's revision, since the token already names the program.",
+  },
+  {
+    name: "authored_at",
+    type: "number | null",
+    description:
+      "When the current revision was saved, the time to show beside `author`. `updated_at` moves with any change to the post, a schedule or a cancel included.",
   },
   { name: "created_at", type: "number", description: "When it was made." },
   { name: "updated_at", type: "number", description: "When it last changed." },
