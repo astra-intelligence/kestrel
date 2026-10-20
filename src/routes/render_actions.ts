@@ -115,12 +115,24 @@ function postPage(html: string): Response {
   });
 }
 
+/**
+ * The email as the publisher's preview shows it, its page and its text alike: the recipient's
+ * fields filled as a test fills them, so its unsubscribe link opens the same page a test
+ * email's does rather than one calling the link invalid (SPEC §7).
+ */
+function asPreviewed(c: RequestContext, email: RenderedEmail): RenderedEmail {
+  return substituteRecipient(email, {
+    ".Email.UnsubscribeURL": testUnsubscribeUrl(c.config),
+    ".Email.SentTo": "",
+  });
+}
+
 export async function preview(c: RequestContext): Promise<Response> {
   const { input, email, warnings, frozen } = await loadPostEmail(c);
   const body: PreviewResponse = {
     url: `${c.config.appOrigin}/api/posts/${input.post.id}/preview`,
     subject: email.subject,
-    text: email.text,
+    text: asPreviewed(c, email).text,
     warnings,
     frozen: frozen !== null,
   };
@@ -129,13 +141,7 @@ export async function preview(c: RequestContext): Promise<Response> {
 
 export async function previewPage(c: RequestContext): Promise<Response> {
   const { email } = await loadPostEmail(c);
-  const html = substituteRecipient(email, {
-    // The preview is the email shown to the publisher, so its link opens the same page
-    // a test email's does, not one calling the link invalid (SPEC §7).
-    ".Email.UnsubscribeURL": testUnsubscribeUrl(c.config),
-    ".Email.SentTo": "",
-  }).html;
-  return postPage(html);
+  return postPage(asPreviewed(c, email).html);
 }
 
 /**

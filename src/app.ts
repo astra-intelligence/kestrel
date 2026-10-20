@@ -1082,7 +1082,7 @@ export function createRouter({
             name: "text",
             type: "string",
             description:
-              "The email's plain-text part, from the same render as the page, as a reader whose mail client shows no HTML reads it.",
+              "The email's plain-text part, from the same render as the page, as a reader whose mail client shows no HTML reads it. The recipient's fields are filled as a test fills them, as on the page.",
           },
           {
             name: "warnings",

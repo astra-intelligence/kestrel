@@ -320,6 +320,9 @@ describe("a tool call runs its routes as the person, via Claude (SPEC §11, Who 
     const preview = await callOk("preview_post", { id: created.post.id });
     expect(preview).toMatchObject({ subject: "Hello", frozen: false, warnings: [] });
     expect(preview.text).toContain("Waxwings arrived.");
+    // Filled as the preview page fills it: a test's unsubscribe page, never a raw placeholder.
+    expect(preview.text).toMatch(/Unsubscribe: \S+\/unsubscribe\?test=1/);
+    expect(preview.text).not.toContain("%%");
     expect(preview.editor).toMatch(new RegExp(`/dashboard/\\?to=/edit/${created.post.id}$`));
   });
 
