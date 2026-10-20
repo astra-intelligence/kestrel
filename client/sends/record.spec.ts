@@ -554,14 +554,14 @@ describe("sent record", () => {
           c_bounced: 0,
           c_unsent: 0,
           scheduled_by: by({ kind: "human", email: "you@example.com", client: "editor" }),
-          moved_by: VIA_CLAUDE,
+          rescheduled_by: VIA_CLAUDE,
           canceled_by: by({ kind: "human", email: "you@example.com", client: null }),
         }).routes,
       );
       await mount((r, s) => renderSentRecord("x1", r, s));
       await vi.advanceTimersByTimeAsync(0);
       expect($(".rec-by").textContent).toBe(
-        "Scheduled by you@example.com · moved by you@example.com via Claude Code · canceled by you@example.com via the API",
+        "Scheduled by you@example.com · rescheduled by you@example.com via Claude Code · canceled by you@example.com via the API",
       );
       expect(fake.unhandled).toHaveLength(0);
     });

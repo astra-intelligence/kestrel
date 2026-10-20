@@ -46,18 +46,18 @@ export function actorLabel(actor: Actor): string {
 // A send's acts in the order they happen, each with the words that lead its actor.
 const SEND_ACTS = [
   ["scheduled_by", "scheduled"],
-  ["moved_by", "moved"],
+  ["rescheduled_by", "rescheduled"],
   ["canceled_by", "canceled"],
   ["resolved_by", "resolved"],
 ] as const;
 
 /**
  * Who acted on a send, as one line (DESIGN §3, §4): each act recorded on it, in the order they
- * happen ("Scheduled by you@example.com via Claude Code · moved by you@example.com"). Null when
+ * happen ("Scheduled by you@example.com via Claude Code · rescheduled by you@example.com"). Null when
  * none is recorded, as for a send made before who acted was, or none is known yet.
  */
 export function sendActedBy(
-  send: Partial<Pick<SendView, "scheduled_by" | "moved_by" | "canceled_by" | "resolved_by">>,
+  send: Partial<Pick<SendView, "scheduled_by" | "rescheduled_by" | "canceled_by" | "resolved_by">>,
 ): string | null {
   const parts = SEND_ACTS.flatMap(([field, verb]) => {
     const actor = send[field];

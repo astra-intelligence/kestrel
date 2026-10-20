@@ -1487,11 +1487,11 @@ export function createRouter({
       resource: "sends",
       title: "Reschedule a send",
       summary: "Move a scheduled send's fire time without re-freezing the render.",
-      description: `Moves only \`fire_at\`, within the review window: the frozen email is untouched and a re-made send keeps its \`remade_at\`. For a content change, cancel, edit, and schedule again. The same minimum lead as scheduling (${formatLead(minLeadMs)}, as Schedule a post describes), and the time is rounded up to the next whole minute as when scheduling. A move that lands records who moved it as \`moved_by\`; a move to the time it already has answers \`changed: false\` before the lead is checked, and records no one. \`email_only\`, \`slug\`, or \`slug_auto\` is a 400: those are the post's, at \`PUT /api/posts/:id/settings\`. The editor's "Edit schedule" is this route and that one together, so a publisher who asks to edit the schedule may mean the time, the post's settings, or both.`,
+      description: `Moves only \`fire_at\`, within the review window: the frozen email is untouched and a re-made send keeps its \`remade_at\`. For a content change, cancel, edit, and schedule again. The same minimum lead as scheduling (${formatLead(minLeadMs)}, as Schedule a post describes), and the time is rounded up to the next whole minute as when scheduling. A reschedule that lands records who rescheduled it as \`rescheduled_by\`; one to the time it already has answers \`changed: false\` before the lead is checked, and records no one. \`email_only\`, \`slug\`, or \`slug_auto\` is a 400: those are the post's, at \`PUT /api/posts/:id/settings\`. The editor's "Edit schedule" is this route and that one together, so a publisher who asks to edit the schedule may mean the time, the post's settings, or both.`,
       example: {
         request: { fire_at: "2026-01-16T09:00:00Z" },
         response: {
-          send: { ...scheduledBrief, rev: 58, moved_by: viaClaude },
+          send: { ...scheduledBrief, rev: 58, rescheduled_by: viaClaude },
           cursor: "58.1768467620000",
           changed: true,
         },

@@ -50,19 +50,26 @@ describe("sendActedBy (SPEC §6, §11)", () => {
     expect(
       sendActedBy({
         scheduled_by: { kind: "service", token_id: "ci.access", client: null },
-        moved_by: { kind: "human", email: "you@example.com", client: "claude-code" },
+        rescheduled_by: { kind: "human", email: "you@example.com", client: "claude-code" },
         canceled_by: you,
         resolved_by: null,
       }),
     ).toBe(
-      "Scheduled by the service token ci.access · moved by you@example.com via Claude Code · canceled by you@example.com",
+      "Scheduled by the service token ci.access · rescheduled by you@example.com via Claude Code · canceled by you@example.com",
     );
   });
 
   it("leads with the first act recorded, and says nothing when none is", () => {
-    expect(sendActedBy({ scheduled_by: null, moved_by: you })).toBe("Moved by you@example.com");
+    expect(sendActedBy({ scheduled_by: null, rescheduled_by: you })).toBe(
+      "Rescheduled by you@example.com",
+    );
     expect(
-      sendActedBy({ scheduled_by: null, moved_by: null, canceled_by: null, resolved_by: null }),
+      sendActedBy({
+        scheduled_by: null,
+        rescheduled_by: null,
+        canceled_by: null,
+        resolved_by: null,
+      }),
     ).toBeNull();
     expect(sendActedBy({})).toBeNull();
   });

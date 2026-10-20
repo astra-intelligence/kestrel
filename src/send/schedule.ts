@@ -33,9 +33,9 @@ import {
   getActiveSendForPost,
   getSend,
   insertScheduledSendStmt,
-  movedTo,
   noActiveSendFor,
   recordActStmt,
+  rescheduledTo,
   rescheduleStmt,
   type SendRow,
   sendExists,
@@ -320,8 +320,8 @@ export async function reschedule(
       ? [
           recordActStmt(
             env.DB,
-            { sendId, act: "move", at: now, by, fireAt: target },
-            movedTo(sendId, target),
+            { sendId, act: "reschedule", at: now, by, fireAt: target },
+            rescheduledTo(sendId, target),
           ),
         ]
       : []),

@@ -647,11 +647,15 @@ describe("editor view", () => {
 
     linked.sends.edit("s1", {
       fire_at: Date.now() + 2 * 3_600_000,
-      moved_by: JSON.stringify({ kind: "human", email: "you@example.com", client: "claude-code" }),
+      rescheduled_by: JSON.stringify({
+        kind: "human",
+        email: "you@example.com",
+        client: "claude-code",
+      }),
     });
     await vi.advanceTimersByTimeAsync(60_000); // within one idle read
     expect($("#schedBy").textContent).toBe(
-      "Scheduled by you@example.com · moved by you@example.com via Claude Code",
+      "Scheduled by you@example.com · rescheduled by you@example.com via Claude Code",
     );
     expect(fake.unhandled).toHaveLength(0);
   });

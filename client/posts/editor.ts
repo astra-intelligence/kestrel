@@ -1573,7 +1573,7 @@ type BannerSend = Pick<SendView, "id" | "fire_at" | "rev" | "conditions"> &
   Partial<
     Pick<
       SendView,
-      "phase" | "actions" | "scheduled_by" | "moved_by" | "canceled_by" | "resolved_by"
+      "phase" | "actions" | "scheduled_by" | "rescheduled_by" | "canceled_by" | "resolved_by"
     >
   >;
 

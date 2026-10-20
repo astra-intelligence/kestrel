@@ -70,7 +70,7 @@ async function view(id: string): Promise<SendView> {
 /** Who acted on a send, as its view reports each act. */
 const actedBy = (v: SendView) => ({
   scheduled_by: v.scheduled_by,
-  moved_by: v.moved_by,
+  rescheduled_by: v.rescheduled_by,
   canceled_by: v.canceled_by,
   resolved_by: v.resolved_by,
 });
@@ -111,7 +111,7 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
       expect(send.scheduled_by).toEqual(who.actor);
       expect(actedBy(await view(send.id))).toEqual({
         scheduled_by: who.actor,
-        moved_by: null,
+        rescheduled_by: null,
         canceled_by: null,
         resolved_by: null,
       });
@@ -127,10 +127,10 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     it(`records ${who.name} as who moved it`, async () => {
       const id = await scheduled(EDITOR);
       const res = await call(who, "POST", `/api/sends/${id}/reschedule`, { fire_at: inTwoHours() });
-      expect((await readJson(res)).send.moved_by).toEqual(who.actor);
+      expect((await readJson(res)).send.rescheduled_by).toEqual(who.actor);
       expect(actedBy(await view(id))).toEqual({
         scheduled_by: EDITOR.actor,
-        moved_by: who.actor,
+        rescheduled_by: who.actor,
         canceled_by: null,
         resolved_by: null,
       });
@@ -142,7 +142,7 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
       expect((await readJson(res)).send.canceled_by).toEqual(who.actor);
       expect(actedBy(await view(id))).toEqual({
         scheduled_by: EDITOR.actor,
-        moved_by: null,
+        rescheduled_by: null,
         canceled_by: who.actor,
         resolved_by: null,
       });
@@ -164,7 +164,7 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     await call(EDITOR, "POST", `/api/sends/${id}/cancel`);
     expect(actedBy(await view(id))).toEqual({
       scheduled_by: SERVICE.actor,
-      moved_by: NO_CLIENT.actor,
+      rescheduled_by: NO_CLIENT.actor,
       canceled_by: EDITOR.actor,
       resolved_by: null,
     });
@@ -175,7 +175,7 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     const fireAt = (await view(id)).fire_at;
     // A move to the time it already has.
     await call(CLAUDE_CODE, "POST", `/api/sends/${id}/reschedule`, { fire_at: fireAt });
-    expect((await view(id)).moved_by).toBeNull();
+    expect((await view(id)).rescheduled_by).toBeNull();
     // A cancel repeated keeps who canceled it first.
     await call(EDITOR, "POST", `/api/sends/${id}/cancel`);
     await call(SERVICE, "POST", `/api/sends/${id}/cancel`);
@@ -194,7 +194,7 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     const tooSoon = new Date(Date.now() + 1000).toISOString();
     const res = await call(SERVICE, "POST", `/api/sends/${id}/reschedule`, { fire_at: tooSoon });
     expect((await readJson(res)).error).toBe("fire_at_too_soon");
-    expect((await view(id)).moved_by).toBeNull();
+    expect((await view(id)).rescheduled_by).toBeNull();
   });
 
   it("records no one for a cancel after the window closed", async () => {
@@ -232,7 +232,7 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     const send = await frozenSend(Date.now() + 3_600_000);
     expect(actedBy(await view(send.id))).toEqual({
       scheduled_by: null,
-      moved_by: null,
+      rescheduled_by: null,
       canceled_by: null,
       resolved_by: null,
     });
@@ -251,8 +251,8 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     const send = await view(id);
     expect(results.map((r) => [r.act, JSON.parse(r.actor)])).toEqual([
       ["schedule", EDITOR.actor],
-      ["move", CLAUDE_CODE.actor],
-      ["move", SERVICE.actor],
+      ["reschedule", CLAUDE_CODE.actor],
+      ["reschedule", SERVICE.actor],
       ["cancel", EDITOR.actor],
     ]);
     // The last move set the time the send was canceled at; a cancel sets none.

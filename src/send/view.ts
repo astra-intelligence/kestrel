@@ -285,7 +285,7 @@ export function buildSendView(
     remade_at: send.remade_at,
     tested_at: send.tested_at,
     scheduled_by: readActor(send.scheduled_by),
-    moved_by: readActor(send.moved_by),
+    rescheduled_by: readActor(send.rescheduled_by),
     canceled_by: readActor(send.canceled_by),
     resolved_by: readActor(send.resolved_by),
     audience: {
