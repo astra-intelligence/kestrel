@@ -436,17 +436,19 @@ const SEND_FIELDS: ReferenceField[] = [
     name: "moved_by",
     type: "{ kind, email, token_id, client } | null",
     description:
-      "Who last moved its fire time (a reschedule that changed it), in the same shape; null if no one has.",
+      "Who last moved its fire time (a reschedule that changed it), in the same shape; null if no one has, and for a move made before who acted was recorded.",
   },
   {
     name: "canceled_by",
     type: "{ kind, email, token_id, client } | null",
-    description: "Who canceled it, in the same shape; null unless it was canceled.",
+    description:
+      "Who canceled it, in the same shape; null unless it was canceled, and for a send canceled before who acted was recorded.",
   },
   {
     name: "resolved_by",
     type: "{ kind, email, token_id, client } | null",
-    description: "Who last resolved it while it was wedged, in the same shape; null if no one has.",
+    description:
+      "Who last resolved it while it was wedged, in the same shape; null if no one has, and for a Resolve made before who acted was recorded.",
   },
   {
     name: "audience",

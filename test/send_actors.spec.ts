@@ -197,6 +197,24 @@ describe("a send records who acted on it (SPEC §6, §11)", () => {
     expect((await view(id)).moved_by).toBeNull();
   });
 
+  it("records no one for a cancel after the window closed", async () => {
+    const id = await scheduled(EDITOR);
+    // Its fire time has passed, so the window is closed whether or not the sweep has started it.
+    await env.DB.prepare("UPDATE sends SET fire_at = ? WHERE id = ?")
+      .bind(Date.now() - 60_000, id)
+      .run();
+    const res = await call(SERVICE, "POST", `/api/sends/${id}/cancel`);
+    expect((await readJson(res)).error).toBe("window_closed");
+    expect((await view(id)).canceled_by).toBeNull();
+  });
+
+  it("records no one for a Resolve on a send that isn't wedged", async () => {
+    const id = await scheduled(EDITOR);
+    const res = await call(SERVICE, "POST", `/api/sends/${id}/resolve`, { resolution: "unsent" });
+    expect((await readJson(res)).error).toBe("not_wedged");
+    expect((await view(id)).resolved_by).toBeNull();
+  });
+
   it("shows who acted on every read of the send: the list and the feed as well", async () => {
     const before = (await readJson(await call(EDITOR, "GET", "/api/sends"))).cursor;
     const id = await scheduled(CLAUDE_CODE);
