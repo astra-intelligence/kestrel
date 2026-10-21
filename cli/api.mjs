@@ -7,7 +7,9 @@
  * comes back. Locally there is no Access: the target is this directory's dev server, and
  * the credential is the dev server's human token, so a local run is a person via Claude
  * Code just as a deployed one is. Every request carries `Kestrel-Client: claude-code`
- * unless `--client` names another program.
+ * unless `--client` names another program, so a person's own script can name itself. It
+ * never names the editor: the server trusts the name it is sent (SPEC, Trusted, not guarded),
+ * and the editor's name lifts a step only a person in the editor may take (SPEC §7).
  *
  * It prints the answer's body as it came, so a script or Claude reads a refusal whole; a
  * non-2xx answer also prints its status, and a refusal's code, message, field, and next move,
@@ -52,10 +54,20 @@ const USAGE = `Usage: kestrel api <method> <path> [options]
   --form <name=value>           a multipart field, repeatable; name=@file attaches a file
   --url <url>                   the instance (default: KESTREL_URL, else your one sign-in)
   --local                       this directory's dev server, started by kestrel dev
-  --client <name>               the Kestrel-Client name to send (default ${DEFAULT_CLIENT})
+  --client <name>               your own script's Kestrel-Client name (default ${DEFAULT_CLIENT});
+                                never editor, which only the editor names itself
 
 The routes, fields, and refusals come from the instance's own /api/openapi.json, so they
 match the release it runs. A field the route doesn't take is refused before the request.`;
+
+// The name only the editor sends; `kestrel api` refuses to claim it (SPEC §7, §11).
+const EDITOR_CLIENT = "editor";
+
+// The server's rule for a client name (shared/who_acted.ts), mirrored since the CLI is plain
+// Node; a spec holds the two equal. Checking it here, after the trim fetch applies to a header
+// value, means the name refused is the one the server would have read.
+export const CLIENT_NAME_MAX = 32;
+export const CLIENT_NAME_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
 
 const ONE_WAY = "Send the body one way: --data, --form, or -f and -F fields, not two.";
 
@@ -117,6 +129,22 @@ export function parseApiArgs(argv) {
       opts.forms.push(value);
     } else {
       opts[key] = value;
+    }
+  }
+  if (opts.client !== undefined) {
+    opts.client = opts.client.trim();
+    if (
+      opts.client.length > CLIENT_NAME_MAX ||
+      !new RegExp(CLIENT_NAME_PATTERN).test(opts.client)
+    ) {
+      throw new SignInError(
+        `--client takes one short lowercase word, its parts joined by hyphens (my-script), up to ${CLIENT_NAME_MAX} characters.`,
+      );
+    }
+    if (opts.client === EDITOR_CLIENT) {
+      throw new SignInError(
+        "--client editor is refused: only the editor names itself the editor, since some acts only a person in the editor may confirm. Name your own program, or leave --client out.",
+      );
     }
   }
   const { list, ...rest } = opts;
