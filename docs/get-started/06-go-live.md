@@ -18,8 +18,8 @@ If someone else is the publisher, let them sign in first:
 
 Each of these guides adds one thing, and you can come back to any of them later.
 
-- [Working with Claude](../publishing/07-working-with-claude.md), so Claude Code, Claude Desktop, or claude.ai can draft, proofread, and schedule posts as the publisher, through the same API the editor uses.
-- [Connect automation to the API](../guides/01-connect-claude.md), so a script can call the API with a service token, when no one is signed in.
+- [Allow Claude to connect](../guides/01-allow-claude.md), so the publisher can connect Claude Desktop, claude.ai, or Claude Code, and have it draft, proofread, and schedule posts as them, through the same API the editor uses.
+- [Automate with a service token](../guides/02-automate.md), so a script can call the API with a service token, when no one is signed in.
 - [Notifications through Cloudflare's email](../guides/03-notifications.md), so problems are reported even when the email provider has stopped sending.
 - [Rate-limit the subscribe form](../guides/05-rate-limit.md), before the subscribe link is shared widely.
 - [As your list grows](../guides/09-as-your-list-grows.md), from about 1,000 subscribers.

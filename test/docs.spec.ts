@@ -17,7 +17,7 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       "publishing/set-up-your-publication/write-a-post",
       "publishing/set-up-your-publication/share-your-subscribe-link",
       "publishing/go-further/email-template",
-      "publishing/go-further/working-with-claude",
+      "publishing/go-further/connect-claude",
       "publishing/rules-and-troubleshooting/sending-rules",
       "publishing/rules-and-troubleshooting/troubleshooting",
       "self-hosting/get-started/deploy",
@@ -25,7 +25,8 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       "self-hosting/get-started/ses",
       "self-hosting/get-started/verify",
       "self-hosting/get-started/go-live",
-      "self-hosting/guides/connect-claude",
+      "self-hosting/guides/allow-claude",
+      "self-hosting/guides/automate",
       "self-hosting/guides/notifications",
       "self-hosting/guides/rate-limit",
       "self-hosting/guides/as-your-list-grows",
@@ -130,7 +131,7 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       'href="#/docs/as-your-list-grows"',
     );
     expect(docs.find((d) => d.slug === "connect-claude")?.html).toContain(
-      'href="#/docs/working-with-claude/connect-claude-code"',
+      'href="#/docs/allow-claude"',
     );
   });
 
@@ -179,6 +180,7 @@ describe("each doc as Markdown, for an agent (docMarkdown)", () => {
     expect(docMarkdown("scheduling-and-sending")).toBe(docMarkdown("write-a-post"));
     expect(docMarkdown("after-a-send")).toBe(docMarkdown("troubleshooting"));
     expect(docMarkdown("try-locally")).toBe(docMarkdown("deploy"));
+    expect(docMarkdown("working-with-claude")).toBe(docMarkdown("connect-claude"));
   });
 
   it("serves a set's index by its id, linking its pages and the other set", () => {

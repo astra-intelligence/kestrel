@@ -42,22 +42,22 @@ export function configRefusal(data: unknown): ConfigRefusal | null {
  */
 export const CONFIGURATION_REFERENCE = "https://getkestrel.dev/docs/configuration/";
 
-/** Each variable's heading in the Configuration reference, by its GitHub-style anchor; a
- *  secret's is the Secrets table. */
+/** Each variable's section in the Configuration reference, by its GitHub-style anchor: Vars or
+ *  Secrets, where the variable leads its own entry. */
 export const REFERENCE_ANCHORS: Readonly<Record<string, string>> = {
-  PROVIDER: "provider",
-  ALLOW_FAKE_PROVIDER: "provider",
+  PROVIDER: "vars",
+  ALLOW_FAKE_PROVIDER: "vars",
   APP_ORIGIN: "vars",
   AWS_REGION: "vars",
-  FROM_ADDRESS: "from_address-and-sending_domain",
-  SENDING_DOMAIN: "from_address-and-sending_domain",
-  ARCHIVE_BASE_PATH: "archive_base_path",
-  SES_MAX_SEND_RATE: "ses_max_send_rate",
-  SUBREQUEST_BUDGET: "subrequest_budget",
-  MIN_LEAD_SECONDS: "min_lead_seconds",
-  ARCHIVE_ORIGIN: "archive_origin-and-media_public_base",
-  MEDIA_PUBLIC_BASE: "archive_origin-and-media_public_base",
-  NOTIFY_FROM: "notify_from",
+  FROM_ADDRESS: "vars",
+  SENDING_DOMAIN: "vars",
+  ARCHIVE_BASE_PATH: "vars",
+  SES_MAX_SEND_RATE: "vars",
+  SUBREQUEST_BUDGET: "vars",
+  MIN_LEAD_SECONDS: "vars",
+  ARCHIVE_ORIGIN: "vars",
+  MEDIA_PUBLIC_BASE: "vars",
+  NOTIFY_FROM: "vars",
   ACCESS_TEAM_DOMAIN: "secrets",
   ACCESS_AUD: "secrets",
   ACCESS_ALLOWED_EMAILS: "secrets",

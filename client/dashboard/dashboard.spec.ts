@@ -192,6 +192,10 @@ describe("dashboard", () => {
       "Connect Claude →",
       "API reference →",
     ]);
+    expect($$(".pub-links a").map((a) => a.getAttribute("href"))).toEqual([
+      "#/docs/connect-claude",
+      "#/api-reference",
+    ]);
     expect($$(".pub-links a svg").length).toBe(2);
     expect(fake.unhandled).toEqual([]);
   });
@@ -224,7 +228,7 @@ describe("dashboard", () => {
     // The same two links, same shape, once connected: the reference first, each with its glyph.
     expect($$(".pub-links a").map((a) => a.textContent?.trim())).toEqual([
       "API reference →",
-      "Connection guide →",
+      "Working with Claude →",
     ]);
     expect($$(".pub-links a svg").length).toBe(2);
     expect($("#dashScheduled").textContent).toBe("Nothing scheduled.");
@@ -240,7 +244,7 @@ describe("dashboard", () => {
     expect($(".conn-status").textContent).toBe("Claude is connected.");
     expect($$(".pub-links a").map((a) => a.getAttribute("href"))).toEqual([
       "#/api-reference",
-      "#/docs/working-with-claude",
+      "#/docs/connect-claude/working-with-claude",
     ]);
     expect(fake.unhandled).toEqual([]);
   });
