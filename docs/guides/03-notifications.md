@@ -21,7 +21,7 @@ Cloudflare's email sends only from a domain set up with Email Routing. Use your 
 
 1. Cloudflare adds MX, SPF, and DKIM records for `newsletter.example.com`, and locks them. Wait until they show as added.
 
-Avoid turning on Email Routing for a domain that already receives mail elsewhere, such as `example.com` with Google Workspace. Email Routing takes over that domain's MX records. Don't send notifications from `send.example.com` either, since your email provider sends from it. Email Routing there to forward readers' replies, as [Connect Amazon SES](../get-started/04-ses.md#3-receive-replies-at-your-from-address) sets up, is fine, since it only receives.
+Avoid turning on Email Routing for a domain that already receives mail elsewhere, such as `example.com` with Google Workspace. Email Routing takes over that domain's MX records. Don't send notifications from `send.example.com` either, since your email provider sends from it. Email Routing there to forward readers' replies, as [Connect Amazon SES](../get-started/04-ses.md#9-receive-replies-at-your-from-address) sets up, is fine, since it only receives.
 
 ## 2. Verify the notifications address
 
@@ -74,7 +74,7 @@ A `send_email` binding named `NOTIFY` moves notifications to Cloudflare's email.
 
 ## Check it
 
-1. In the editor, open **Settings → Notifications**. **Sent through** reads "Cloudflare Email, separate from your newsletter's provider", and **From address** shows `kestrel@newsletter.example.com`.
+1. In the editor, open **Settings → Notifications**. **Sent through** reads "Cloudflare Email, separate from your newsletter's provider", and **From address** shows `Kestrel <kestrel@newsletter.example.com>`.
 
 1. Select **Send a test notification**. It arrives at the notifications address, and **Last notification** shows it as delivered.
 
