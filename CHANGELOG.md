@@ -10,6 +10,8 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+**Upgrading from 1.15.1.** At the top level of your instance's `wrangler.jsonc`, outside `env`, add `"workers_dev": false` and `"preview_urls": false`, and change `triggers` to `{ "crons": [] }`, as a new instance now has, so a deploy without `--env production` answers on no address and never runs the send sweep. Keep the empty list rather than deleting the line, since only a list clears a schedule, and keep the `* * * * *` cron in `production`'s own `triggers`. If you ever deployed without `--env production`, that Worker is still live: remove it with `npx wrangler delete --name kestrel`. Run `npm run check-context` in your instance's repository: this release changes the operator's Claude context, and a copy you've edited is merged by hand.
+
 ### Added
 
 - Two new log lines: `send.scheduled` (info) for each schedule and Send now, with `act` saying which, and `send.resolved` (warn) for each Resolve of a wedged send, with the resolution and how many recipients it settled. A failed `mcp.call` now carries `code`, the refusal code of the route that turned it down, so failed tool calls can be filtered (SPEC §12).
@@ -17,6 +19,8 @@ To move a running instance from one version to another, follow [Upgrade to a new
 ### Changed
 
 - The operator's Claude context (`.claude/CLAUDE.md`) says how to put images in a post: upload each from a file on disk, since a pasted image isn't one, and reference it by its filename with alt text, never by the upload's URL, which can leave a sent post with a broken image. Merge it into your instance's copy; `kestrel check-context` shows the change.
+- A new instance's development settings now answer on no address and run no schedule if deployed by mistake, without `--env production`, so a deploy that forgets it can't put the email stand-in and the local sign-in on a public address, or run the send sweep through the stand-in. The setup guide's Deploy step says how to remove such a deploy.
+- A safety caution in the instance's Claude context: never deploy or store a secret without `--env production`, keep the top level's addresses and schedule off, and how to remove a deploy that went out without it, with the person's agreement.
 
 ### Fixed
 
