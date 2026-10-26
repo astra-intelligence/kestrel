@@ -8,12 +8,12 @@
 
 import type { SettingsResponse } from "../shared/settings";
 import { api } from "./api";
-import { probeSession, renderIdentity } from "./auth";
+import { probeSession, renderIdentity, showReauth } from "./auth";
 import { renderSidebarBrand } from "./brand";
 import { startDevReload } from "./dev_reload";
 import { installRoomBar } from "./room/shell";
 import { adoptLinkedRoute, installRouter, route } from "./router";
-import { installShell } from "./shell";
+import { app, installShell } from "./shell";
 import { appState } from "./state";
 import { installTooltips } from "./ui/widgets";
 
@@ -27,7 +27,6 @@ async function boot(): Promise<unknown> {
   const session = await probeSession();
   if (session) {
     appState.session = session;
-    document.body.classList.remove("signed-out");
     renderIdentity();
     // Load the publication identity for the sidebar brand. Non-fatal: on failure the
     // brand keeps its "Kestrel" placeholder and routing still proceeds.
@@ -37,6 +36,10 @@ async function boot(): Promise<unknown> {
       /* keep the placeholder brand */
     }
     renderSidebarBrand();
+    // The page starts signed out (public/dashboard/index.html), so nothing of the
+    // publication shows until there is a session: a locked editor never flashes the
+    // sidebar. It shows here, with its brand, before the first view is routed.
+    document.body.classList.remove("signed-out");
     // Dev build only: pick up a rebuilt bundle or an edited stylesheet without a hand
     // refresh. The production build compiles this out (see scripts/build-client.mjs).
     if (__DEV__) {
@@ -50,4 +53,13 @@ async function boot(): Promise<unknown> {
   // probeSession has already put up the wall it landed on.
   return undefined;
 }
-boot();
+boot().catch((err: unknown) => {
+  // The page starts signed out, so a boot that fails before the sidebar shows would leave it
+  // blank: put up the sign-in wall, whose reload starts over. Once the app has shown, a
+  // failure is the view's to report, and a wall already up stays as it is.
+  if (document.body.classList.contains("signed-out") && !app.querySelector(".auth-wall")) {
+    showReauth();
+  }
+  // Still reported as uncaught, so the console says what went wrong.
+  reportError(err);
+});
