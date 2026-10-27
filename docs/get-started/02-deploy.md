@@ -29,9 +29,9 @@ Throughout these guides, replace the example names with your own, and any value 
 
 Your instance's repository holds its configuration, its database migrations, and the release of Kestrel it runs. Kestrel itself installs from npm as `@kurtbruns/kestrel`, so the repository stays small, and an upgrade changes the version it names.
 
-1. On GitHub, [create a new repository](https://github.com/new) named `newsletter`. It can be private. Leave it empty, with no README, license, or `.gitignore`.
+1. On GitHub, [create a new repository](https://github.com/new) named after your publication. These guides use `newsletter`. It can be private. Leave it empty, with no README, license, or `.gitignore`.
 
-1. Clone it, and write a new instance into it. Replace `YOUR_USERNAME` with your GitHub username:
+1. Clone it, and write a new instance into it. Replace `YOUR_USERNAME` with your GitHub username, and `newsletter` with your repository's name:
 
     ```bash
     git clone https://github.com/YOUR_USERNAME/newsletter.git
@@ -86,16 +86,18 @@ Every command from here on acts on your Cloudflare account through the Wrangler 
 
 Each command creates the resource and writes it into the `production` block of `wrangler.jsonc`, under the binding the app already uses. Name `--env production` on each one, or Wrangler writes to the top level, which is local development.
 
+The commands below use `newsletter`. Use your instance's names instead: `kestrel init` printed them, and they're in the `production` block of `wrangler.jsonc`.
+
 1. Create the database:
 
     ```bash
-    npx wrangler d1 create kestrel-production --env production --binding DB --update-config
+    npx wrangler d1 create newsletter-production --env production --binding DB --update-config
     ```
 
 1. Create the bucket for images:
 
     ```bash
-    npx wrangler r2 bucket create kestrel-media-production --env production --binding MEDIA --update-config
+    npx wrangler r2 bucket create newsletter-media-production --env production --binding MEDIA --update-config
     ```
 
 Each prints a snippet to add to your configuration. There's nothing to paste: `--update-config` has filled in the database's id, and the `MEDIA` binding already names the bucket. Wrangler also rewrites `wrangler.jsonc` in its own layout, with tabs and one value per line, and your settings stay.
@@ -117,7 +119,7 @@ Each prints a snippet to add to your configuration. There's nothing to paste: `-
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "kestrel-production",
+          "database_name": "newsletter-production", // named by init; leave it
           "database_id": "…", // already filled in by section 3; leave it
           "migrations_dir": "migrations"
         }
@@ -174,10 +176,10 @@ npx wrangler deploy --env production
 
 This deploys the release your instance runs, with your settings. The output ends with the hostname the app now answers on. Deploying also registers the once-a-minute schedule that sends posts, which you can see under the Worker's **Triggers** tab in the Cloudflare dashboard.
 
-Always name `--env production`, here and on every wrangler command that stores a secret. Without it, wrangler deploys the top level, local development, as a second Worker named `kestrel` that answers nowhere and never sends. If that happens, remove it:
+Always name `--env production`, here and on every wrangler command that stores a secret. Without it, wrangler deploys the top level, local development, as a second Worker that answers nowhere and never sends. It takes the top level's `name` in `wrangler.jsonc`, such as `newsletter-dev`. If that happens, remove it by that name:
 
 ```bash
-npx wrangler delete --name kestrel
+npx wrangler delete --name newsletter-dev
 ```
 
 ## Check it
