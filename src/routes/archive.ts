@@ -33,6 +33,7 @@ import {
 import { fillDeliveryTokens } from "../render/template_engine";
 import type { RequestContext } from "../router";
 import { param } from "../router";
+import { signupsOpen } from "./public";
 import { archiveHomeUrl, devDashboardUrl, readerIdentity, readerMessage } from "./reader";
 
 /** A post's date as the reader surface shows it. */
@@ -66,6 +67,7 @@ export async function landing(c: RequestContext): Promise<Response> {
     archiveUrl: archiveHomeUrl(c.config),
     featured,
     recent,
+    signupsOpen: signupsOpen(c.config),
     devDashboardUrl: devDashboardUrl(c.config),
   });
 }

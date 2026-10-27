@@ -10,6 +10,11 @@ To move a running instance from one version to another, follow [Upgrade to a new
 
 <!-- Add entries under Added / Changed / Fixed / Breaking. One operator-facing line each; see .claude/rules/changelog.md. Upgrade steps (a migration, a new setting) go once, in the Upgrading paragraph, never on an entry. -->
 
+### Changed
+
+- Until a post is listed, the home page is the subscribe form itself, with its line saying each signup is confirmed by email. A first visitor, or AWS reviewing the site for SES production access, sees how joining works without a click.
+- Name your publication now suggests a tagline that says what the newsletter covers and how often it goes out.
+
 ### Fixed
 
 - A locked editor (before Access is set up, or after a sign-in Kestrel refuses) no longer flashes the editor's sidebar before its explanation: the dashboard shows the publication's chrome only once it knows who is signing in.

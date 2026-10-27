@@ -19,6 +19,7 @@ import { param } from "../router";
 import { formatPublishedDate, nothingHereYetPage, webVersion } from "./archive";
 import {
   confirmStatePage,
+  signupsOpen,
   subscribeCheckInboxPage,
   subscribeFormPage,
   subscribeNotAnEmailPage,
@@ -83,6 +84,7 @@ async function previewOf(c: RequestContext, journey: string, state: string): Pro
         archiveUrl: archiveHomeUrl(c.config),
         featured,
         recent,
+        signupsOpen: signupsOpen(c.config),
       });
     }
     case "reading/archive":
@@ -100,6 +102,7 @@ async function previewOf(c: RequestContext, journey: string, state: string): Pro
         homeUrl: home,
         archiveUrl: archiveHomeUrl(c.config),
         recent: [],
+        signupsOpen: signupsOpen(c.config),
       });
     case "reading/archive-empty":
       return archiveIndexPage({
