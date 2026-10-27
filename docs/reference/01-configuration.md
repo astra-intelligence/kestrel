@@ -46,9 +46,9 @@ Vars go in the environment block's `vars`. Every value is a string.
 
 - `PROVIDER` optional
 
-    The email provider: `ses`, or `fake` for local development. Default: none, so no provider is connected. Refused unless it's exactly `ses`, `fake`, or `none`: a misspelling, or `SES`, is never taken for another. `resend`, which earlier releases supported, is refused with a pointer to [Connect Amazon SES](../get-started/04-ses.md).
+    The email provider: `ses`, or `fake` for local development. Default: none, so no provider is connected. Refused unless it's exactly `ses`, `fake`, or `none`: a misspelling, or `SES`, is never taken for another. `resend`, which earlier releases supported, is refused with a pointer to [Connect Amazon SES](../get-started/05-ses.md).
 
-    Until it's set, or while it's empty, the app runs with no provider connected. Posts can be written and previewed, but everything that would send email is refused: scheduling, sending now, test emails, and the confirmation emails that signups need. The subscribe page says signups aren't open yet, and Settings shows **No email provider connected**. Setting it to `none` means the same. A new instance's `production` block declares it empty, so wrangler doesn't warn that the top level's value is missing there. [Connect Amazon SES](../get-started/04-ses.md) changes it to `ses`.
+    Until it's set, or while it's empty, the app runs with no provider connected. Posts can be written and previewed, but everything that would send email is refused: scheduling, sending now, test emails, and the confirmation emails that signups need. The subscribe page says signups aren't open yet, and Settings shows **No email provider connected**. Setting it to `none` means the same. A new instance's `production` block declares it empty, so wrangler doesn't warn that the top level's value is missing there. [Connect Amazon SES](../get-started/05-ses.md) changes it to `ses`.
 
     Change it, or move to another SES account or region, only while no send is sending. The dashboard lists any send in progress.
 
@@ -64,7 +64,7 @@ Vars go in the environment block's `vars`. Every value is a string.
 
 - `AWS_REGION` required with SES
 
-    The SES region. The template sets `us-east-1`.
+    The SES region. The template sets `us-east-1`. SES keeps identities, quotas, and the sandbox separately in each region, so set the region where you verified your sending hostname. On an AWS page, go by the region menu at the top right, not the page's address. A page for a global service, such as IAM or Billing, has no region to choose, so open SES before you choose. A few newer regions must be [enabled for your account](https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-regions.html) first.
 
 - `FROM_ADDRESS` required with a real provider
 
@@ -84,9 +84,9 @@ Vars go in the environment block's `vars`. Every value is a string.
 
 - `SES_MAX_SEND_RATE` optional
 
-    Your SES account's maximum send rate, in messages a second. Default: `14`, a common starting rate, not your account's. Refused unless it's a whole number above zero.
+    A cap on the send rate, in messages a second. Usually left unset: the app reads your SES account's maximum send rate itself, about every ten minutes while nothing is sending, and keeps to the lower of the two when both are known. Without either, it sends at `14`, a common starting rate, not your account's. Refused unless it's a whole number above zero. **Settings → Email sender** shows the rate a send keeps to, and where it comes from.
 
-    The app sends SES one request a second, the most SES takes, and each request carries one second of this rate, up to 50 recipients. Set it to the maximum send rate on your SES **Account dashboard**: `1` in the sandbox, and whatever AWS grants after that. To send faster, ask AWS to raise that rate to 50 before you move to Workers Paid: on Workers Free, a rate of 50 sends nearly four times as many recipients a minute as 14, and a higher rate adds nothing there. A rate set too high only means SES throttles some requests. Those recipients wait for the next minute, and no one is mailed twice.
+    The app sends SES one request a second, the most SES takes, and each request carries one second of the rate, up to 50 recipients. Set this only to send slower than your account allows, or when the app's key can't read the account (it needs `ses:GetAccount`). To send faster, ask AWS to raise that rate to 50 before you move to Workers Paid: on Workers Free, a rate of 50 sends nearly four times as many recipients a minute as 14, and a higher rate adds nothing there. A rate set too high only means SES throttles some requests. Those recipients wait for the next minute, and no one is mailed twice.
 
 - `SUBREQUEST_BUDGET` optional
 
@@ -180,7 +180,7 @@ Wrangler doesn't carry bindings or vars over from the top level of `wrangler.jso
 
 - `observability` optional
 
-    Workers Logs, where the app's log lines land. On in the template. Kestrel sets no sampling, since sampling could drop the one minute that reports a stuck or missed send, so leave `head_sampling_rate` at its default of 1. Cloudflare's own daily limit on the Free plan can still stop new logs for the rest of the day, as [Read the logs](../get-started/05-verify.md#8-read-the-logs) describes.
+    Workers Logs, where the app's log lines land. On in the template. Kestrel sets no sampling, since sampling could drop the one minute that reports a stuck or missed send, so leave `head_sampling_rate` at its default of 1. Cloudflare's own daily limit on the Free plan can still stop new logs for the rest of the day, as [Read the logs](../get-started/07-verify.md#7-read-the-logs) describes.
 
 - `DB` required
 
@@ -196,7 +196,7 @@ Wrangler doesn't carry bindings or vars over from the top level of `wrangler.jso
 
 ## What the app refuses
 
-The app checks its configuration on every request. It refuses to run on one that would do the wrong thing quietly, and each setting above says what it refuses. In local development, `SIMULATE_SENDS` must also be off (`off`, `0`, `false`, `no`, or empty), `not-connected` to run as a deployment with no email provider yet, or the provider a local send models: `ses` or `generic` (also `1`, `on`, `true`, or `yes`), optionally followed by `:none` for no injected failures or `:realistic`, the default. Case doesn't matter. A deployed instance ignores it.
+The app checks its configuration on every request. It refuses to run on one that would do the wrong thing quietly, and each setting above says what it refuses. In local development, `SIMULATE_SENDS` must also be off (`off`, `0`, `false`, `no`, or empty), `not-connected` to run as a deployment with no email provider yet, or the provider a local send models: `ses` or `generic` (also `1`, `on`, `true`, or `yes`), optionally followed by `:none` for no injected failures or `:realistic`, the default. `SIMULATE_ACCOUNT` must be off, or, beside `SIMULATE_SENDS=ses`, the SES account state local development stands in for: `sandbox`, `pending`, `denied`, `production`, or `permission`, optionally followed by `:unrouted`. Case doesn't matter. A deployed instance ignores both.
 
 Until it's fixed, no sends go out, and each place says what its reader can act on:
 

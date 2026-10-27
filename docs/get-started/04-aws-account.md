@@ -1,8 +1,8 @@
-# Create an AWS account for your newsletter
+# Create an AWS account
 
-Kestrel sends the newsletter's email through Amazon SES, which runs in an Amazon Web Services (AWS) account. This guide creates that account, so it's ready when you reach [Connect Amazon SES](../get-started/04-ses.md). Do it before you start Get started. Sign-up asks for things that can take time to set up, such as an email address that receives mail.
+Kestrel sends the newsletter's email through Amazon SES, which runs in an Amazon Web Services (AWS) account. This page assumes a brand-new account, made for the newsletter. If you'd rather use one you already have, skip to [Connect Amazon SES](05-ses.md).
 
-Create one account for each publication. SES keeps the sandbox, sending quotas, verified identities, and suppression list separately for each account and region. AWS can also pause an account's sending, so publications that share an account share each other's problems. To run several, [AWS Organizations](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_introduction.html) keeps their accounts under one bill. Keep its management account apart, with no newsletter in it.
+If you plan to run multiple publications, you may want to consider setting up one account for each publication. With this setup, you can use [AWS Organizations](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_introduction.html) to keep the accounts under one bill. Multiple publications can be run through one account. However, they share its sandbox, sending quotas, and suppression list, and AWS can pause sending for the whole account if one publication's bounces or complaints run high.
 
 In this guide, you choose the account's email address, sign up, and secure the account's root user. Then you set a monthly budget, so AWS emails you if the account ever costs more than you expect.
 
@@ -43,7 +43,7 @@ The root user can do anything in the account, including close it, so it needs mo
 
 1. Under **Multi-factor authentication (MFA)**, choose **Assign MFA device**. Enter a device name, select **Passkey or Security Key**, and follow the prompts. A passkey on your computer or phone works.
 
-1. Leave **Access keys** empty. A root user's key could do anything the root user can. [Connect Amazon SES](../get-started/04-ses.md#5-create-the-apps-aws-key) makes a separate key that can only send email.
+1. Leave **Access keys** empty. A root user's key could do anything the root user can. [Connect Amazon SES](05-ses.md#5-create-the-apps-aws-key) makes a separate key that can only send email.
 
 ## 4. Set a budget alert
 
@@ -65,4 +65,4 @@ AWS charges for what you use, with no spending limit, so a mistake or a leaked k
 
 1. Under **Budgets**, your budget is listed, and its email recipient shows as **Active**.
 
-The account is ready for [Connect Amazon SES](../get-started/04-ses.md), once the app is deployed and behind Access.
+Next, [connect Amazon SES](05-ses.md).

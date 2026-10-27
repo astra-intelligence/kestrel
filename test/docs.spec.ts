@@ -23,10 +23,11 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
       "publishing/rules-and-troubleshooting/troubleshooting",
       "self-hosting/get-started/deploy",
       "self-hosting/get-started/access",
+      "self-hosting/get-started/aws-account",
       "self-hosting/get-started/ses",
+      "self-hosting/get-started/production-access",
       "self-hosting/get-started/verify",
       "self-hosting/get-started/go-live",
-      "self-hosting/guides/aws-account",
       "self-hosting/guides/allow-claude",
       "self-hosting/guides/automate",
       "self-hosting/guides/notifications",
@@ -134,6 +135,14 @@ describe("docs registry (the two sets' index files and the pages they list)", ()
     );
     expect(docs.find((d) => d.slug === "connect-claude")?.html).toContain(
       'href="#/docs/allow-claude"',
+    );
+  });
+
+  it("opens the page Settings and the dashboard send the publisher to for production access", () => {
+    const { docs } = renderDocs();
+    expect(editorSources["../client/provider_status.ts"]).toContain('"#/docs/production-access"');
+    expect(docs.find((d) => d.slug === "production-access")?.title).toBe(
+      "Request production access",
     );
   });
 

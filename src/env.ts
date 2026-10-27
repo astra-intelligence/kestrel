@@ -23,8 +23,11 @@ import {
   MIN_LEAD_FLOOR_MS,
 } from "../shared/sends";
 import {
+  SIMULATED_ACCOUNTS,
   SIMULATION_FAULTS,
   SIMULATION_PROFILES,
+  type SimulatedAccount,
+  type SimulatedAccountView,
   type SimulationFaults,
   type SimulationProfile,
   type SimulationView,
@@ -70,6 +73,15 @@ export interface Secrets {
    * in a deployed one. `.dev.vars.example` ships it on.
    */
   SIMULATE_SENDS?: string;
+  /**
+   * The SES account local dev stands in for (SPEC §10), so the editor can be seen in each
+   * state the account check reports: `sandbox`, `pending` (AWS reviewing a request),
+   * `denied`, `production`, or `permission` (a key not allowed to read the account),
+   * optionally with `:unrouted` for bounces that reach no configuration set. Needs
+   * `SIMULATE_SENDS=ses`; `off` or unset leaves the account unread, as before. Honored only
+   * in a dev-shaped env.
+   */
+  SIMULATE_ACCOUNT?: string;
 }
 
 /**
@@ -162,12 +174,17 @@ export interface Config {
   /** AWS region for SES. */
   awsRegion: string;
   /**
-   * The SES account's maximum send rate, in messages a second, which sizes the SES adapter's
-   * batches, sent one a second: going over it is a throttle, which halts the send for at
-   * least a minute. Defaults to 14, a common starting rate that AWS does not promise any
-   * account; the SES sandbox allows 1, and the account dashboard shows the account's own.
+   * The SES send rate, in messages a second, which sizes the SES adapter's batches, sent one
+   * a second: going over the account's own is a throttle, which halts the send for at least a
+   * minute. `SES_MAX_SEND_RATE`, else 14, a common starting rate that AWS does not promise any
+   * account. A send keeps to the account's own rate in its place once the account check has
+   * read it (`sesSendRate`), and to the lower of the two when both are known.
    */
   sesMaxSendRate: number;
+  /** `SES_MAX_SEND_RATE` as set, or null when unset: a cap on the account's own rate (SPEC §12). */
+  sesMaxSendRateSetting: number | null;
+  /** `SES_CONFIGURATION_SET`, or undefined when unset. */
+  sesConfigurationSet?: string;
   /** Cloudflare Access: both set, enabling JWT validation, or neither (one alone is refused). */
   accessTeamDomain?: string;
   accessAud?: string;
@@ -323,7 +340,13 @@ export function getConfig(env: AppEnv): Config {
   // Only ever read in a dev-shaped env; a deployed env is never dev-shaped, so neither the
   // simulation nor the not-connected preview can engage there whatever the var says.
   const local = devShaped ? readSimulateSends(env.SIMULATE_SENDS) : null;
+  if (devShaped && (local === null || local === "not-connected")) {
+    // The account stands in only beside a simulated SES; set without one, it is refused here
+    // rather than ignored, so the developer learns why the editor shows no account.
+    readSimulateAccount(env.SIMULATE_ACCOUNT, null);
+  }
   const notConnectedPreview = local === "not-connected";
+  const sesMaxSendRateSetting = readPositiveInt("SES_MAX_SEND_RATE", env.SES_MAX_SEND_RATE);
   // The preview runs as a deployment with no provider and no `NOTIFY` binding does: the
   // provider channel, over the not-connected adapter, which carries nothing.
   const notifyChannel: NotifyChannel = notConnectedPreview
@@ -344,8 +367,9 @@ export function getConfig(env: AppEnv): Config {
     sendingDomain: env.SENDING_DOMAIN,
     fromAddress: env.FROM_ADDRESS,
     awsRegion: env.AWS_REGION,
-    sesMaxSendRate:
-      readPositiveInt("SES_MAX_SEND_RATE", env.SES_MAX_SEND_RATE) ?? DEFAULT_SES_MAX_SEND_RATE,
+    sesMaxSendRate: sesMaxSendRateSetting ?? DEFAULT_SES_MAX_SEND_RATE,
+    sesMaxSendRateSetting: sesMaxSendRateSetting ?? null,
+    sesConfigurationSet: orUndefined(env.SES_CONFIGURATION_SET?.trim()),
     accessTeamDomain,
     accessAud,
     accessAllowedEmails: parseEmailList(env.ACCESS_ALLOWED_EMAILS),
@@ -356,7 +380,10 @@ export function getConfig(env: AppEnv): Config {
     devShaped,
     devAuthSecret,
     devRunId: devMode ? orUndefined(env.DEV_RUN_ID) : undefined,
-    simulation: local === "not-connected" ? null : local,
+    simulation:
+      local === "not-connected" || local === null
+        ? null
+        : { ...local, account: readSimulateAccount(env.SIMULATE_ACCOUNT, local.profile) },
     notConnectedPreview,
     subrequestBudget: Math.max(
       MIN_SUBREQUEST_BUDGET,
@@ -646,7 +673,9 @@ const SIMULATION_GENERIC = new Set(["1", "on", "true", "yes"]);
  * and optionally `:realistic` (the default) or `:none`. Anything else is refused rather than
  * read as off, so a typo can't quietly turn the simulation off or pick the wrong provider.
  */
-function readSimulateSends(v: string | undefined): SimulationView | "not-connected" | null {
+function readSimulateSends(
+  v: string | undefined,
+): Omit<SimulationView, "account"> | "not-connected" | null {
   const raw = (v ?? "").trim().toLowerCase();
   if (SIMULATION_OFF.has(raw)) {
     return null;
@@ -667,6 +696,40 @@ function readSimulateSends(v: string | undefined): SimulationView | "not-connect
     );
   }
   return { profile: profile as SimulationProfile, faults: faults as SimulationFaults };
+}
+
+/**
+ * `SIMULATE_ACCOUNT` as the SES account a local server stands in for, or null to leave it
+ * unread: off (or unset), or one of the states optionally followed by `:unrouted`. It models
+ * the SES account, so it needs the `ses` send profile. Anything else is refused, as
+ * `SIMULATE_SENDS` is, so a typo can't quietly show a state the developer didn't pick.
+ */
+function readSimulateAccount(
+  v: string | undefined,
+  profile: SimulationProfile | null,
+): SimulatedAccountView | null {
+  const raw = (v ?? "").trim().toLowerCase();
+  if (SIMULATION_OFF.has(raw)) {
+    return null;
+  }
+  const [state = "", routing, ...rest] = raw.split(":");
+  if (
+    rest.length > 0 ||
+    !(SIMULATED_ACCOUNTS as readonly string[]).includes(state) ||
+    (routing !== undefined && routing !== "unrouted")
+  ) {
+    throw new ConfigError(
+      "SIMULATE_ACCOUNT",
+      `must be off, or one of ${SIMULATED_ACCOUNTS.join(", ")} optionally followed by :unrouted, not "${v?.trim()}"`,
+    );
+  }
+  if (profile !== "ses") {
+    throw new ConfigError(
+      "SIMULATE_ACCOUNT",
+      `stands in for the SES account, so it needs SIMULATE_SENDS=ses, not "${profile ?? "off"}"`,
+    );
+  }
+  return { state: state as SimulatedAccount, bounces_routed: routing === undefined };
 }
 
 function parseEmailList(v: string | undefined): string[] | undefined {
