@@ -37,7 +37,11 @@ The editor lives under `/dashboard`, and the API under `/api`. One application c
 
     Each path covers everything under it. Leave every other path out. The home page, the archive, subscribing, unsubscribing, images, and your email provider's webhooks must stay public.
 
-1. **(Optional)** Choose how long a sign-in lasts. The application's session duration defaults to 24 hours, so everyone signs in again each day. You can set anything from immediately to one month, as Cloudflare's [session management](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/) describes. A longer session suits a publisher on their own computer, and a shorter one is safer on a shared one.
+1. Add only these two public hostnames. If the form also shows an empty private hostname or IP row, remove it, or saving fails with an error naming `use_clientless_isolation_app_launcher_url`.
+
+1. Name the application after your app's hostname, `newsletter.example.com`. Cloudflare suggests a name made from the subdomain, which won't tell two newsletters apart.
+
+1. **(Optional)** Choose how long a sign-in lasts. The application's session duration defaults to 24 hours, so everyone signs in again each day. You can set anything from immediately to one month, as Cloudflare's [session management](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/) describes. For example, a week may suit a publisher on their own computer.
 
 ## 3. Allow yourself in
 
@@ -45,13 +49,13 @@ Every Access application denies everyone until a policy allows them.
 
 1. Under **Access policies**, create a new policy:
 
-    - **Policy name:** `Publishers`
+    - **Policy name:** the publication's name and `publishers`, such as `Example publishers`
     - **Action:** Allow
     - **Include:** the **Emails** selector, with your email address
 
 1. Select **Create**.
 
-Cloudflare's own login is on by default, and admits members of your Cloudflare account, so the email in your `Publishers` policy should be one. To let someone sign in another way, such as a one-time code by email, add it under **Zero Trust → Integrations → Identity providers**.
+Cloudflare's own login is on by default, and admits members of your Cloudflare account, so the email in the policy you made should be one. To let someone sign in another way, such as a one-time code by email, add it under **Zero Trust → Integrations → Identity providers**.
 
 ## 4. Give the app its two values
 
@@ -109,6 +113,6 @@ If a check fails:
 
 - **The editor says the configuration needs a fix.** Store the secret it names. While only one of the two is stored, `/health` answers `500` naming the other, and the public pages say the newsletter is temporarily unavailable.
 - **Cloudflare lets you in, but the editor answers `401`.** Check the two secrets for a typo, and that `ACCESS_ALLOWED_EMAILS`, if you set it, includes your address.
-- **The editor says Access let you in but didn't say who you are.** Your login carried no email, which happens through a kind of policy the app doesn't accept, such as a device check. Sign out, and sign in through the `Publishers` policy.
+- **The editor says Access let you in but didn't say who you are.** Your login carried no email, which happens through a kind of policy the app doesn't accept, such as a device check. Sign out, and sign in through the policy you made above.
 
 Next, [connect Amazon SES](04-ses.md).
