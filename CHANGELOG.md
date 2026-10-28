@@ -15,10 +15,12 @@ To move a running instance from one version to another, follow [Upgrade to a new
 ### Changed
 
 - Connect Amazon SES follows the SES, SNS, and IAM consoles as they are now: it creates the key's policy before its user, sets SNS's longer retry policy on the subscription form, and leaves alone the SES statement a topic created from SES already has. It says why the other six event types stay off, and ends its replies section with a check in Email Routing's Activity log.
+- `kestrel api` run without `--url` or `KESTREL_URL` names the instance it calls on stderr ("calling …, the only instance you're signed in to"), so a call from another instance's folder no longer goes to that sign-in unseen.
 
 ### Fixed
 
 - Connect Amazon SES's IAM policy, `kestrel-send-email`, now includes `ses:SendTemplatedEmail` and `ses:SendBulkTemplatedEmail`. Every SES email has been sent as an inline template since 1.8.0, so a key with only the guide's earlier actions had every email refused, test emails included. The advice for an SES credentials refusal names all four send actions.
+- When renewing a sign-in gets a 404 from its Access team, `kestrel api` says so, naming the instance and the team, and to run `npx kestrel login` again, instead of "Access refused the token request (404)". A real refusal still reads "Access refused the token request", now naming the instance.
 
 ## [1.18.0] - 2026-10-26
 

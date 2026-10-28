@@ -52,7 +52,7 @@ const USAGE = `Usage: kestrel api <method> <path> [options]
   --data <json|@file|->         the request body: inline, from a file, or from stdin
   --type <media type>           the body's type (default application/json)
   --form <name=value>           a multipart field, repeatable; name=@file attaches a file
-  --url <url>                   the instance (default: KESTREL_URL, else your one sign-in)
+  --url <url>                   the instance (default: KESTREL_URL, else the only one you're signed in to)
   --local                       this directory's dev server, started by kestrel dev
   --client <name>               your own script's Kestrel-Client name (default ${DEFAULT_CLIENT});
                                 never editor, which only the editor names itself
@@ -182,8 +182,15 @@ export function parseApiArgs(argv) {
 /**
  * Which instance a call goes to: `--url`, then `KESTREL_URL`, then the one instance this
  * person is signed in to. Several sign-ins and nothing naming one is a refusal, not a guess.
+ * The one sign-in is named on stderr through `say`, since nothing in the command named it and
+ * a person in another instance's folder should see the mismatch; stdout stays the answer's.
  */
-export function chooseInstance({ url, env = process.env, signIns }) {
+export function chooseInstance({
+  url,
+  env = process.env,
+  signIns,
+  say = (line) => process.stderr.write(`${line}\n`),
+}) {
   if (url) {
     return instanceOrigin(url);
   }
@@ -192,6 +199,9 @@ export function chooseInstance({ url, env = process.env, signIns }) {
   }
   const origins = Object.keys(signIns);
   if (origins.length === 1) {
+    say(
+      `kestrel api: calling ${origins[0]}, the only instance you're signed in to. Pass --url to call a different one.`,
+    );
     return origins[0];
   }
   if (origins.length === 0) {
@@ -280,8 +290,23 @@ export async function accessToken(origin, { force = false, env = process.env } =
       writeSignInHeld(origin, { ...now, ...fields }, env);
       return fields.access_token;
     } catch (err) {
-      if (err instanceof SignInError && err.oauthError === "invalid_grant") {
+      if (!(err instanceof SignInError)) {
+        throw err;
+      }
+      if (err.oauthError === "invalid_grant") {
         throw new SignInError(ended);
+      }
+      // The token endpoint saved at sign-in wasn't found; signing in again discovers where the
+      // instance signs in now. It says what happened, not why: a renamed team domain and a
+      // moved endpoint both answer 404.
+      if (err.status === 404) {
+        const team = new URL(now.token_endpoint).host;
+        throw new SignInError(
+          `Couldn't renew your sign-in to ${origin}: its Access team, ${team}, answered 404 (not found). Run \`npx kestrel login ${origin}\` again.`,
+        );
+      }
+      if (err.status) {
+        throw new SignInError(`Access refused the token request for ${origin} (${err.detail}).`);
       }
       throw err;
     }

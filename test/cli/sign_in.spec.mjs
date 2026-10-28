@@ -63,6 +63,7 @@ beforeEach(() => {
   vi.stubEnv("KESTREL_URL", "");
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   rmSync(dir, { recursive: true, force: true });
@@ -124,9 +125,27 @@ describe("which instance a URL names", () => {
     expect(chooseInstance({ env: { KESTREL_URL: "https://b.example.com" }, signIns: one })).toBe(
       "https://b.example.com",
     );
-    expect(chooseInstance({ env: {}, signIns: one })).toBe(ORIGIN);
+    expect(chooseInstance({ env: {}, signIns: one, say: () => {} })).toBe(ORIGIN);
     expect(() => chooseInstance({ env: {}, signIns: two })).toThrow(/Name one with --url/);
     expect(() => chooseInstance({ env: {}, signIns: {} })).toThrow(/kestrel login/);
+  });
+
+  it("names the one sign-in on stderr when nothing named the instance, and only then", () => {
+    const one = { [ORIGIN]: {} };
+    const said = [];
+    const say = (line) => said.push(line);
+    chooseInstance({ url: ORIGIN, env: {}, signIns: one, say });
+    chooseInstance({ env: { KESTREL_URL: ORIGIN }, signIns: one, say });
+    expect(said).toEqual([]);
+    const stdout = vi.spyOn(process.stdout, "write");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    chooseInstance({ env: {}, signIns: one });
+    expect(stderr.mock.calls).toEqual([
+      [
+        `kestrel api: calling ${ORIGIN}, the only instance you're signed in to. Pass --url to call a different one.\n`,
+      ],
+    ]);
+    expect(stdout).not.toHaveBeenCalled();
   });
 });
 
@@ -239,6 +258,22 @@ describe("a call as the signed-in person", () => {
     stubFetch(() => json({ error: "invalid_grant" }, 400));
     await expect(accessToken(ORIGIN)).rejects.toThrow(
       `Your sign-in to ${ORIGIN} has ended. Run \`npx kestrel login ${ORIGIN}\` again.`,
+    );
+  });
+
+  it("names the instance and the Access team that answered 404, and to sign in again", async () => {
+    await writeSignIn(ORIGIN, stored(-1));
+    stubFetch(() => new Response("Not Found", { status: 404 }));
+    await expect(accessToken(ORIGIN)).rejects.toThrow(
+      `Couldn't renew your sign-in to ${ORIGIN}: its Access team, team.cloudflareaccess.com, answered 404 (not found). Run \`npx kestrel login ${ORIGIN}\` again.`,
+    );
+  });
+
+  it('keeps "Access refused" for a real refusal from a team that answers, naming the instance', async () => {
+    await writeSignIn(ORIGIN, stored(-1));
+    stubFetch(() => json({ error: "invalid_client", error_description: "unknown client" }, 401));
+    await expect(accessToken(ORIGIN)).rejects.toThrow(
+      `Access refused the token request for ${ORIGIN} (401: invalid_client, unknown client).`,
     );
   });
 
