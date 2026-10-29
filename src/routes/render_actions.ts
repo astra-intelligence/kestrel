@@ -27,12 +27,14 @@ import { getSettings } from "../db/settings";
 import { fieldError, type JsonObject, optString, readJsonObject } from "../lib/body";
 import { badRequest, json, notFound } from "../lib/errors";
 import { POST_PAGE_SECURITY_HEADERS } from "../lib/page_headers";
+import { readerPostMeta } from "../lib/page";
 import { fakeNotifications } from "../notify/fake";
 import { getProvider, requireConnectedProvider } from "../providers";
 import { fakeOutbox } from "../providers/fake";
 import {
   type RenderedEmail,
   type RenderInput,
+  archiveUrl,
   render,
   substituteRecipient,
 } from "../render/render";
@@ -40,7 +42,7 @@ import { type EmailBranding, resolveBranding } from "../render/template_engine";
 import type { RequestContext } from "../router";
 import { param } from "../router";
 import { sendTest } from "../services/test_send";
-import { webVersion } from "./archive";
+import { pageBodyText, webVersion } from "./archive";
 import { testUnsubscribeUrl } from "./public";
 import { readerIdentity } from "./reader";
 
@@ -150,12 +152,21 @@ export async function previewPage(c: RequestContext): Promise<Response> {
  * once scheduled), so the publisher can proof the page before it is permanent (SPEC §5).
  */
 export async function webPage(c: RequestContext): Promise<Response> {
-  const { email, dateMs } = await loadPostEmail(c);
+  const { input, email, dateMs } = await loadPostEmail(c);
+  const identity = await readerIdentity(c, c.config);
   return postPage(
     webVersion(email.html, {
       config: c.config,
-      identity: await readerIdentity(c, c.config),
+      identity,
       dateMs,
+      // The preview is the post page: carry the same share metadata the public
+      // page will, so the publisher proofs exactly what readers will see (SPEC §5).
+      meta: readerPostMeta(
+        identity,
+        archiveUrl(c.config, input.post.slug),
+        email.subject,
+        pageBodyText(email.html),
+      ),
     }),
   );
 }

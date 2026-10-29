@@ -1123,7 +1123,7 @@ describe("reader pages describe themselves (issue #899)", () => {
 
   it("post page advertises the subject as og:title, the opening text as description, article type (I3)", async () => {
     await updateSettings(env.DB, {
-      publication: { name: "Chicken scratch", tagline: "Chicken scratch, delivered weekly." },
+      publication: { name: "Chicken scratch", tagline: "Chicken scratch, delivered weekly.", address: "12 Marsh Lane" },
     });
     const post = await sendPost("The starlings are back", "# Welcome\n\nThe river kept what it kept. A long enough body that the preview should carry some of it into the description.");
     const body = await (await SELF.fetch(`${base}/archive/${post.slug}`)).text();
@@ -1135,6 +1135,12 @@ describe("reader pages describe themselves (issue #899)", () => {
     expect(head).toContain('name="description"');
     expect(head).not.toContain('<meta name="description" content="Chicken scratch');
     expect(head).toContain("The river kept what it kept");
+    // The description describes the post, never the email's own chrome or an
+    // inbox-only footer line (I3 — the archive page omits those too).
+    const description = head.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? "";
+    expect(description).not.toContain("prefers-color-scheme");
+    expect(description).not.toContain("k-bg");
+    expect(description).not.toContain("12 Marsh Lane");
   });
 
   it("leaves a tag out when its source is empty — no tagline, no logo (SPEC §9)", async () => {

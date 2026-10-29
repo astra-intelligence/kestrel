@@ -34,6 +34,7 @@ import {
   omitEmailOnly,
 } from "../render/render";
 import { fillDeliveryTokens } from "../render/template_engine";
+import { htmlToText } from "../render/text";
 import type { RequestContext } from "../router";
 import { param } from "../router";
 import { signupsOpen } from "./public";
@@ -138,6 +139,14 @@ export function webVersion(
     .join(readerMetaTags(opts.meta) + ARCHIVE_POST_HEAD + readerIconLink(opts.identity.logoUrl) + dev.head);
 }
 
+/** The text a reader would read on the post page, for the share description: the
+ *  frozen HTML's post content — the email's own chrome (its `<head>`) dropped and
+ *  the email-only regions omitted, exactly as the served page drops them (I3) — so
+ *  the description never quotes a style block or an inbox-only footer line. */
+export function pageBodyText(html: string): string {
+  return htmlToText(omitEmailOnly(html).replace(/<head[\s\S]*?<\/head>/gi, ""));
+}
+
 /** One page for every archive address with no published post (see `archivePage`). */
 export function nothingHereYetPage(c: RequestContext): Promise<Response> {
   return readerMessage(c, {
@@ -160,7 +169,15 @@ async function postPage(c: RequestContext, post: PostRow, send: SendRow): Promis
     identity,
     dateMs: send.started_at ?? send.fire_at,
     devDashboardUrl: devDashboardUrl(c.config),
-    meta: readerPostMeta(identity, archiveUrl(c.config, post.slug), send.subject, send.rendered_text),
+    meta: readerPostMeta(
+      identity,
+      archiveUrl(c.config, post.slug),
+      send.subject,
+      // The description is the post's opening text as the page shows it — the same
+      // email-only omission the body goes through (I3), so an inbox-only footer can
+      // never leak into a public page's description.
+      pageBodyText(send.rendered_html),
+    ),
   });
   return new Response(html, {
     headers: {
