@@ -265,6 +265,10 @@ export function readerPage(opts: {
   homeUrl: string | null;
   title: string;
   mainHtml: string;
+  /** Share/preview metadata (description + Open Graph tags) for this page, when it
+   *  has values to advertise. Left out on private pages, which carry a noindex
+   *  header and need not describe themselves to a search engine or a share surface. */
+  meta?: ReaderMeta;
   /** When set, the masthead shows the subscribe CTA linking here. Omitted on the
    *  subscribe pages themselves, where the CTA would point at the current page. */
   subscribeUrl?: string;
@@ -310,7 +314,7 @@ export function readerPage(opts: {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(opts.title)}</title>
+<title>${escapeHtml(opts.title)}</title>${readerMetaTags(opts.meta)}
 ${readerIconLink(logoUrl)}${FRAUNCES_FONT_LINKS}
 <style>${READER_STYLE}</style>${readerBannerStyle(opts.banner)}${devDashboardStyle(opts.devDashboardUrl)}
 </head>
@@ -336,6 +340,93 @@ ${devDashboardBadge(opts.devDashboardUrl)}
  *  one, so a publication with no name gets "Archive", not "Archive · ". */
 export function pageTitle(page: string, name: string): string {
   return name ? `${page} · ${name}` : page;
+}
+
+/** Share/preview metadata a reader page advertises: a description and Open Graph
+ *  tags, each from words the publisher already wrote — the tagline, the name, the
+ *  logo — never an empty attribute, and nothing on top of the page's own text
+ *  (no SEO-only fields, no schema markup). A tag is left out when its source is
+ *  empty, and `url`/`type` are included only when a caller can name them. */
+export interface ReaderMeta {
+  /** og:type — `website` for the home page and archive index, `article` for a post. */
+  type?: string;
+  /** The page's canonical URL (og:url). Omitted when the caller has none to name. */
+  url?: string;
+  /** og:title — the publication name on index pages, the post subject on a post. */
+  title?: string;
+  /** The description: `meta name="description"` and og:description. */
+  description?: string;
+  /** og:image — the publication logo's URL when one is set. */
+  image?: string;
+}
+
+/** The description a post page advertises: the send's plain-text body, collapsed to
+ *  one line and shortened to about 160 characters (the search/share preview length),
+ *  or "" with no body text so a caller can fall back to the tagline. */
+export function postDescription(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (!flat) {
+    return "";
+  }
+  return flat.length > 160 ? `${flat.slice(0, 157).trimEnd()}…` : flat;
+}
+
+/** The `<meta>` / `og:` tags a reader page carries, or "" when the page names no
+ *  tag-worthy value. Every tag's source is optional; an empty source is left out,
+ *  never emitted empty. */
+export function readerMetaTags(meta: ReaderMeta | undefined): string {
+  if (!meta) {
+    return "";
+  }
+  const parts: string[] = [];
+  if (meta.description) {
+    parts.push(`<meta name="description" content="${escapeHtmlAttr(meta.description)}">`);
+    parts.push(`<meta property="og:description" content="${escapeHtmlAttr(meta.description)}">`);
+  }
+  if (meta.title) {
+    parts.push(`<meta property="og:title" content="${escapeHtmlAttr(meta.title)}">`);
+  }
+  if (meta.image) {
+    parts.push(`<meta property="og:image" content="${escapeHtmlAttr(meta.image)}">`);
+  }
+  if (meta.url) {
+    parts.push(`<meta property="og:url" content="${escapeHtmlAttr(meta.url)}">`);
+  }
+  if (meta.type) {
+    parts.push(`<meta property="og:type" content="${escapeHtmlAttr(meta.type)}">`);
+  }
+  return parts.length ? `\n${parts.join("\n")}` : "";
+}
+
+/** The share metadata an index page (home or archive) advertises from its identity:
+ *  the publication's name as og:title, its tagline as the description (when set),
+ *  its logo as og:image (when set), and the caller-named URL/type. */
+export function readerIndexMeta(identity: ReaderIdentity, url: string): ReaderMeta {
+  return {
+    type: "website",
+    url,
+    title: identity.name,
+    description: identity.tagline,
+    image: identity.logoUrl,
+  };
+}
+
+/** The share metadata a post page advertises: the subject as og:title, the post's
+ *  opening text (falling back to the tagline) as the description, the logo when set,
+ *  `article` type and the canonical archive URL. */
+export function readerPostMeta(
+  identity: ReaderIdentity,
+  url: string,
+  subject: string,
+  bodyText: string,
+): ReaderMeta {
+  return {
+    type: "article",
+    url,
+    title: subject,
+    description: postDescription(bodyText) || identity.tagline,
+    image: identity.logoUrl,
+  };
 }
 
 /** What a message page takes: the shell's identity and links, plus its own copy.
@@ -492,6 +583,7 @@ export function landingPage(opts: {
     // The front door is titled by the publication; with no name, by what it is.
     title: opts.identity.name || "Home",
     mainHtml: main,
+    meta: readerIndexMeta(opts.identity, opts.homeUrl),
     devDashboardUrl: opts.devDashboardUrl,
   });
 }
@@ -502,6 +594,8 @@ export function archiveIndexPage(opts: {
   identity: ReaderIdentity;
   subscribeUrl: string;
   homeUrl: string;
+  /** The index's own public URL, its canonical address for og:url. */
+  archiveUrl: string;
   posts: ArchiveIndexPost[];
   /** Dev-only editor shortcut (§11); set only on a dev-shaped instance. */
   devDashboardUrl?: string;
@@ -515,6 +609,7 @@ export function archiveIndexPage(opts: {
     homeUrl: opts.homeUrl,
     title: pageTitle("Archive", opts.identity.name),
     mainHtml: `<p class="r-ey">Archive</p>${list}`,
+    meta: readerIndexMeta(opts.identity, opts.archiveUrl),
     devDashboardUrl: opts.devDashboardUrl,
   });
 }

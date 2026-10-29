@@ -92,6 +92,7 @@ async function previewOf(c: RequestContext, journey: string, state: string): Pro
         identity: await readerIdentity(c, c.config),
         subscribeUrl,
         homeUrl: home,
+        archiveUrl: archiveHomeUrl(c.config),
         posts: samplePosts(c, Date.now()),
       });
     // The same two pages before the first post is sent.
@@ -109,6 +110,7 @@ async function previewOf(c: RequestContext, journey: string, state: string): Pro
         identity: await readerIdentity(c, c.config),
         subscribeUrl,
         homeUrl: home,
+        archiveUrl: archiveHomeUrl(c.config),
         posts: [],
       });
     case "reading/post": {

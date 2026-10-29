@@ -451,6 +451,7 @@ describe("reader surface — no admin link once deployed (§11)", () => {
       identity,
       subscribeUrl: "https://app.example/subscribe",
       homeUrl: "https://app.example/",
+      archiveUrl: "https://app.example/archive",
       posts: [],
     }).text();
     expect(deployed).not.toContain("/dashboard");
@@ -1089,5 +1090,78 @@ describe("the publication logo as the tab icon (SPEC §5)", () => {
       expect(iconsOf(page), path).toEqual([icon]);
       expect(headOf(page), path).toContain(icon);
     }
+  });
+});
+
+describe("reader pages describe themselves (issue #899)", () => {
+  it("home page advertises the publication name, tagline, and logo as share metadata", async () => {
+    await updateSettings(env.DB, {
+      publication: { name: "Chicken scratch", tagline: "Chicken scratch, delivered weekly." },
+    });
+    await publish("A Post", 1_000);
+    const body = await (await SELF.fetch(`${base}/`)).text();
+    const head = body.slice(0, body.indexOf("</head>"));
+    expect(head).toContain('<meta name="description" content="Chicken scratch, delivered weekly.">');
+    expect(head).toContain('<meta property="og:title" content="Chicken scratch">');
+    expect(head).toContain('<meta property="og:description" content="Chicken scratch, delivered weekly.">');
+    expect(head).toContain('<meta property="og:type" content="website">');
+    expect(head).toContain(`<meta property="og:url" content="http://localhost:8787/">`);
+  });
+
+  it("archive index advertises the same identity with its own canonical URL", async () => {
+    await updateSettings(env.DB, {
+      publication: { name: "Chicken scratch", tagline: "Chicken scratch, delivered weekly." },
+    });
+    await publish("A Post", 1_000);
+    const body = await (await SELF.fetch(`${base}/archive`)).text();
+    const head = body.slice(0, body.indexOf("</head>"));
+    expect(head).toContain('<meta name="description" content="Chicken scratch, delivered weekly.">');
+    expect(head).toContain('<meta property="og:title" content="Chicken scratch">');
+    expect(head).toContain('<meta property="og:type" content="website">');
+    expect(head).toContain(`<meta property="og:url" content="http://localhost:8787/archive">`);
+  });
+
+  it("post page advertises the subject as og:title, the opening text as description, article type (I3)", async () => {
+    await updateSettings(env.DB, {
+      publication: { name: "Chicken scratch", tagline: "Chicken scratch, delivered weekly." },
+    });
+    const post = await sendPost("The starlings are back", "# Welcome\n\nThe river kept what it kept. A long enough body that the preview should carry some of it into the description.");
+    const body = await (await SELF.fetch(`${base}/archive/${post.slug}`)).text();
+    const head = body.slice(0, body.indexOf("</head>"));
+    expect(head).toContain('<meta property="og:title" content="The starlings are back">');
+    expect(head).toContain('<meta property="og:type" content="article">');
+    expect(head).toContain(`<meta property="og:url" content="http://localhost:8787/archive/${post.slug}">`);
+    // Opening text of the plain-text body, shortened; NOT the tagline fallback.
+    expect(head).toContain('name="description"');
+    expect(head).not.toContain('<meta name="description" content="Chicken scratch');
+    expect(head).toContain("The river kept what it kept");
+  });
+
+  it("leaves a tag out when its source is empty — no tagline, no logo (SPEC §9)", async () => {
+    await sendPost("Bare", "no tagline here");
+    const body = await (await SELF.fetch(`${base}/`)).text();
+    const head = body.slice(0, body.indexOf("</head>"));
+    expect(head).not.toContain("og:description");
+    expect(head).not.toContain("og:image");
+    expect(head).not.toContain('name="description"');
+    // Title still names the page; type/url still describe it.
+    expect(head).toContain('<meta property="og:url" content="http://localhost:8787/">');
+    expect(head).toContain('<meta property="og:type" content="website">');
+  });
+
+  it("advertises the logo as og:image on every page when one is set, never in a sent email (I3)", async () => {
+    const key = newLogoKey(1);
+    await setPublicationLogo(env.DB, { version: 1, contentType: "image/png", key });
+    const post = await sendPost("With logo", "body");
+    const image = `<meta property="og:image" content="${getConfig(env).mediaPublicBase}/${key}">`;
+    for (const path of ["/", "/archive", `/archive/${post.slug}`]) {
+      const body = await (await SELF.fetch(`${base}${path}`)).text();
+      const head = body.slice(0, body.indexOf("</head>"));
+      expect(head, path).toContain(image);
+    }
+    // The frozen record and the outgoing email still carry no og tags (I3).
+    const send = (await latestSentSendForPost(env.DB, post.id))!;
+    expect(send.rendered_html).not.toContain("og:");
+    expect(fakeOutbox()[0]!.html).not.toContain("og:");
   });
 });

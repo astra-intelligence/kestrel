@@ -20,7 +20,10 @@ import {
   archiveLink,
   landingPage,
   type ReaderIdentity,
+  type ReaderMeta,
   readerIconLink,
+  readerMetaTags,
+  readerPostMeta,
 } from "../lib/page";
 import { POST_PAGE_SECURITY_HEADERS } from "../lib/page_headers";
 import {
@@ -83,6 +86,7 @@ export async function archiveIndex(c: RequestContext): Promise<Response> {
     identity,
     subscribeUrl: `${c.config.appOrigin}/subscribe`,
     homeUrl: `${c.config.appOrigin}/`,
+    archiveUrl: archiveHomeUrl(c.config),
     posts: posts.map((i) => ({
       title: i.subject,
       url: archiveUrl(c.config, i.slug),
@@ -108,6 +112,10 @@ export function webVersion(
     /** The date the masthead carries: when the post went out, or will. */
     dateMs: number;
     devDashboardUrl?: string;
+    /** Share/preview metadata for the post page: the subject as og:title, the
+     *  post's opening text (falling back to the tagline) as the description,
+     *  the logo when set, and the canonical archive URL. */
+    meta?: ReaderMeta;
   },
 ): string {
   const masthead = archiveMasthead({
@@ -127,7 +135,7 @@ export function webVersion(
     .split(ARCHIVE_MASTHEAD_ANCHOR)
     .join(masthead + dev.masthead)
     .split(ARCHIVE_HEAD_ANCHOR)
-    .join(ARCHIVE_POST_HEAD + readerIconLink(opts.identity.logoUrl) + dev.head);
+    .join(readerMetaTags(opts.meta) + ARCHIVE_POST_HEAD + readerIconLink(opts.identity.logoUrl) + dev.head);
 }
 
 /** One page for every archive address with no published post (see `archivePage`). */
@@ -146,11 +154,13 @@ export function nothingHereYetPage(c: RequestContext): Promise<Response> {
  *  email-only post: anyone with its link can open it, but no list or search engine is
  *  offered it (SPEC §5). A header, not a meta tag, so the frozen copy is served unchanged (I3). */
 async function postPage(c: RequestContext, post: PostRow, send: SendRow): Promise<Response> {
+  const identity = await readerIdentity(c, c.config);
   const html = webVersion(send.rendered_html, {
     config: c.config,
-    identity: await readerIdentity(c, c.config),
+    identity,
     dateMs: send.started_at ?? send.fire_at,
     devDashboardUrl: devDashboardUrl(c.config),
+    meta: readerPostMeta(identity, archiveUrl(c.config, post.slug), send.subject, send.rendered_text),
   });
   return new Response(html, {
     headers: {
