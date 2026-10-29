@@ -24,10 +24,12 @@ async function storedTokens(): Promise<string[]> {
   return results.map((r) => r.t);
 }
 
-/** A raw answer's text, held to carrying neither token's key nor any stored token's value. */
-async function expectNoTokens(what: string, text: string): Promise<void> {
+/** A raw answer's text, held to carrying neither token's key nor any token's value: those
+ *  stored before the calls (a re-arm rotates a confirm token and an erasure wipes both) and
+ *  those stored now. */
+async function expectNoTokens(what: string, text: string, before: string[]): Promise<void> {
   expect(text, what).not.toMatch(/confirm_token|unsub_token/);
-  for (const token of await storedTokens()) {
+  for (const token of [...before, ...(await storedTokens())]) {
     expect(text.includes(token), `${what} carries a token`).toBe(false);
   }
 }
@@ -88,6 +90,8 @@ async function tool(name: string, args: Record<string, unknown>): Promise<string
 describe("a subscriber's tokens never leave the server (SPEC I1)", () => {
   it("leaves both tokens off every API answer that carries a subscriber", async () => {
     await seedList();
+    const before = await storedTokens();
+    expect(before).toContain("cfm-pending-secret");
     const answers: [string, Response, number][] = [
       ["list", await call("GET", "/api/subscribers"), 200],
       ["by email", await call("GET", `/api/subscribers?email=${PENDING}`), 200],
@@ -103,12 +107,13 @@ describe("a subscriber's tokens never leave the server (SPEC I1)", () => {
     for (const [what, res, status] of answers) {
       const text = await res.text();
       expect(res.status, `${what}: ${text}`).toBe(status);
-      await expectNoTokens(what, text);
+      await expectNoTokens(what, text, before);
     }
   });
 
   it("leaves both tokens off what the connector's tools hand Claude", async () => {
     await seedList();
+    const before = await storedTokens();
     const answers: [string, string][] = [
       ["read the list", await tool("kestrel_api_read", { path: "/api/subscribers" })],
       ["read one", await tool("kestrel_api_read", { path: "/api/subscribers/id-p" })],
@@ -121,7 +126,7 @@ describe("a subscriber's tokens never leave the server (SPEC I1)", () => {
     ];
     for (const [what, text] of answers) {
       expect(text, what).toContain(PENDING);
-      await expectNoTokens(what, text);
+      await expectNoTokens(what, text, before);
     }
   });
 });
