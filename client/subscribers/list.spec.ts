@@ -1,15 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ExportRow, toImportCsv } from "../../shared/imports";
 import type { Subscriber } from "../../shared/subscribers";
+import { appState } from "../state";
 import {
   $,
   $$,
   captureDownloads,
   type FakeApi,
+  type FakeRoute,
   fakeApi,
   jsonResponse,
   mount,
+  providerStatus,
   resetShell,
+  settingsResponse,
   settle,
   typeInto,
 } from "../test/support";
@@ -640,6 +644,50 @@ describe("subscribers view", () => {
     ]);
     $("#importSubs").click();
     expect(location.hash).toBe("#/subscribers/import");
+  });
+
+  // SPEC §9: in the SES sandbox the confirmation reaches only addresses verified in SES, so
+  // the empty list holds the subscribe page until AWS grants production access.
+  describe("on SES", () => {
+    const emptyList: FakeRoute = {
+      path: "/api/subscribers",
+      reply: () => ({
+        counts: { pending: 0, confirmed: 0, unsubscribed: 0, suppressed: 0 },
+        subscribers: [],
+        page: { ...page, total: 0 },
+      }),
+    };
+    const onSes = (status: Parameters<typeof providerStatus>[0]): FakeRoute[] => {
+      appState.appConfig = settingsResponse({ deployment: { provider: "ses" } });
+      return [emptyList, { path: "/api/provider", reply: () => providerStatus(status) }];
+    };
+
+    it("offers the import alone in the sandbox, and holds the subscribe page until production access", async () => {
+      fake = fakeApi(onSes({ state: "sandbox", unknown_reason: null }));
+      await mount((r, s) => renderSubscribers(undefined, r, s));
+      await settle();
+      expect($("#subList").textContent).toBe(
+        "No subscribers yet. Import your list from another service. Once AWS grants production access, share your subscribe page. Request production access",
+      );
+      expect($$<HTMLAnchorElement>("#subList a").map((a) => a.getAttribute("href"))).toEqual([
+        "#/subscribers/import",
+        "#/docs/production-access",
+      ]);
+      expect(fake.unhandled).toEqual([]);
+    });
+
+    it.each([
+      ["in production", { state: "production", unknown_reason: null }],
+      ["while the app can't tell", { state: "unknown", unknown_reason: "not_checked" }],
+    ] as const)("suggests the subscribe page %s", async (_, status) => {
+      fake = fakeApi(onSes(status));
+      await mount((r, s) => renderSubscribers(undefined, r, s));
+      await settle();
+      expect($("#subList").textContent).toBe(
+        "No subscribers yet. Import your list from another service, or share your subscribe page.",
+      );
+      expect(fake.calls.some((c) => c.url.pathname === "/api/provider")).toBe(true);
+    });
   });
 
   it("keeps a list whose only subscribers have unsubscribed from reading as empty", async () => {
