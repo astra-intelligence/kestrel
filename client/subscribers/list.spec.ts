@@ -687,7 +687,46 @@ describe("subscribers view", () => {
         "No subscribers yet. Import your list from another service, or share your subscribe page.",
       );
       expect(fake.calls.some((c) => c.url.pathname === "/api/provider")).toBe(true);
+      expect(fake.unhandled).toEqual([]);
     });
+
+    it("suggests the subscribe page when the provider read fails", async () => {
+      fake = fakeApi([
+        onSes({})[0]!,
+        { path: "/api/provider", reply: () => jsonResponse({ error: "down" }, 500) },
+      ]);
+      await mount((r, s) => renderSubscribers(undefined, r, s));
+      await settle();
+      expect($("#subList").textContent).toBe(
+        "No subscribers yet. Import your list from another service, or share your subscribe page.",
+      );
+      expect(fake.calls.some((c) => c.url.pathname === "/api/provider")).toBe(true);
+    });
+  });
+
+  // Only SES has an account whose sandbox AWS reviews, so nothing else asks (SPEC §9).
+  it.each([
+    ["off SES", "fake"],
+    ["with no provider connected", "none"],
+  ] as const)("never asks for the provider's state %s", async (_, provider) => {
+    appState.appConfig = settingsResponse({ deployment: { provider } });
+    fake = fakeApi([
+      {
+        path: "/api/subscribers",
+        reply: () => ({
+          counts: { pending: 0, confirmed: 0, unsubscribed: 0, suppressed: 0 },
+          subscribers: [],
+          page: { ...page, total: 0 },
+        }),
+      },
+    ]);
+    await mount((r, s) => renderSubscribers(undefined, r, s));
+    await settle();
+    expect($("#subList").textContent).toBe(
+      "No subscribers yet. Import your list from another service, or share your subscribe page.",
+    );
+    expect(fake.unhandled).toEqual([]);
+    expect(fake.calls.map((c) => c.url.pathname)).not.toContain("/api/provider");
   });
 
   it("keeps a list whose only subscribers have unsubscribed from reading as empty", async () => {
